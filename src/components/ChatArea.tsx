@@ -210,7 +210,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setCurrentResponses([]);
     
-    // Build conversation context
+    // Build conversation context from current messages
     const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
     messages.forEach(msg => {
       contextMessages.push({ 
@@ -297,7 +297,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setCurrentResponses([]);
     
-    // Build conversation context
+    // Build conversation context from current messages
     const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
     messages.forEach(msg => {
       contextMessages.push({ 

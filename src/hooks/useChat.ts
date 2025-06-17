@@ -90,6 +90,10 @@ export const useChat = () => {
 
     if (!currentSessionId) return [];
 
+    // Get the current session with the most up-to-date messages
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (!session) return [];
+
     // Create user message immediately and add to session
     const userMessage: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -100,19 +104,19 @@ export const useChat = () => {
     };
 
     // Update session with user message immediately
-    setSessions(prev => prev.map(session => 
-      session.id === currentSessionId
+    setSessions(prev => prev.map(sessionItem => 
+      sessionItem.id === currentSessionId
         ? { 
-            ...session, 
-            messages: [...session.messages, userMessage],
-            title: session.messages.length === 0 ? content.slice(0, 30) + (content.length > 30 ? '...' : '') : session.title,
+            ...sessionItem, 
+            messages: [...sessionItem.messages, userMessage],
+            title: sessionItem.messages.length === 0 ? content.slice(0, 30) + (content.length > 30 ? '...' : '') : sessionItem.title,
             updatedAt: new Date()
           }
-        : session
+        : sessionItem
     ));
 
     // Update session title in database if it's the first message
-    if (currentSession?.messages.length === 0) {
+    if (session.messages.length === 0) {
       try {
         const title = content.slice(0, 30) + (content.length > 30 ? '...' : '');
         await databaseService.updateChatSession(currentSessionId, title);
@@ -124,21 +128,18 @@ export const useChat = () => {
     setIsLoading(true);
 
     try {
-      // Build conversation context from session messages (including the new user message)
+      // Build conversation context from the current session messages INCLUDING the new user message
       const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
       
-      // Get updated session with the new user message
-      const updatedSession = sessions.find(s => s.id === currentSessionId);
-      if (updatedSession) {
-        updatedSession.messages.forEach(msg => {
-          contextMessages.push({ 
-            role: msg.role, 
-            content: msg.content 
-          });
+      // Add all existing messages from the session
+      session.messages.forEach(msg => {
+        contextMessages.push({ 
+          role: msg.role, 
+          content: msg.content 
         });
-      }
+      });
       
-      // Add current message to context
+      // Add the current user message to context
       contextMessages.push({ role: 'user', content });
 
       // Get user's current tier for API key selection
@@ -161,13 +162,12 @@ export const useChat = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentSessionId, createNewSession, user, currentSession, sessions, getCurrentTier]);
+  }, [currentSessionId, createNewSession, user, sessions, getCurrentTier]);
 
   const selectResponse = useCallback(async (selectedResponse: APIResponse, userMessage: string, images: string[] = []) => {
     if (!currentSessionId) return;
 
-    // IMPORTANT: Don't add the user message again here since it was already added in sendMessage
-    // Just add the selected AI response to the session
+    // Create the AI response message
     const aiMessage: Message = {
       id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       content: selectedResponse.content,
@@ -176,6 +176,7 @@ export const useChat = () => {
       provider: selectedResponse.provider
     };
 
+    // Update the session with the AI response
     setSessions(prev => prev.map(session => 
       session.id === currentSessionId
         ? { 
