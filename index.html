@@ -18,6 +18,41 @@
       
       .bolt-badge {
         animation: rotate 8s linear infinite;
+        cursor: grab;
+        user-select: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .bolt-badge:active {
+        cursor: grabbing;
+        transform: scale(1.1);
+        animation-play-state: paused;
+      }
+      
+      .bolt-badge-container {
+        position: fixed;
+        z-index: 9999;
+        width: 80px;
+        height: 80px;
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .bolt-badge-container.dragging {
+        transition: none;
+        z-index: 10000;
+      }
+      
+      .bolt-badge-container.anchoring {
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      /* Hover effect */
+      .bolt-badge-container:hover {
+        transform: scale(1.05);
+      }
+      
+      .bolt-badge-container:hover .bolt-badge {
+        animation-duration: 4s;
       }
     </style>
   </head>
@@ -25,20 +60,206 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     
-    <!-- Bolt.new rotating badge -->
-    <a
-      href="https://bolt.new"
-      target="_blank"
-      rel="noopener noreferrer"
-      style="position: fixed; top: 20px; right: 20px; z-index: 9999; width: 80px; height: 80px;"
-      title="Made with bolt.new"
+    <!-- Draggable Bolt.new badge -->
+    <div
+      id="bolt-badge-container"
+      class="bolt-badge-container"
+      style="top: 20px; right: 20px;"
+      title="Made with bolt.new - Drag to reposition"
     >
-      <img
-        src="/public/white_circle_360x360.png"
-        alt="bolt.new badge"
-        class="bolt-badge"
-        style="width: 100%; height: 100%; object-fit: contain;"
+      <a
+        href="https://bolt.new"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="display: block; width: 100%; height: 100%;"
       >
-    </a>
+        <img
+          src="/public/white_circle_360x360.png"
+          alt="bolt.new badge"
+          class="bolt-badge"
+          style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;"
+          draggable="false"
+        >
+      </a>
+    </div>
+
+    <script>
+      (function() {
+        const container = document.getElementById('bolt-badge-container');
+        const margin = 20; // Margin from edges
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        
+        // Get stored position from localStorage
+        const storedPosition = localStorage.getItem('bolt-badge-position');
+        if (storedPosition) {
+          const { top, right, bottom, left } = JSON.parse(storedPosition);
+          if (top !== undefined) container.style.top = top + 'px';
+          if (right !== undefined) container.style.right = right + 'px';
+          if (bottom !== undefined) container.style.bottom = bottom + 'px';
+          if (left !== undefined) container.style.left = left + 'px';
+        }
+        
+        function startDrag(e) {
+          isDragging = true;
+          container.classList.add('dragging');
+          
+          const rect = container.getBoundingClientRect();
+          startX = (e.type === 'mousedown' ? e.clientX : e.touches[0].clientX);
+          startY = (e.type === 'mousedown' ? e.clientY : e.touches[0].clientY);
+          startLeft = rect.left;
+          startTop = rect.top;
+          
+          // Reset positioning to absolute coordinates
+          container.style.left = startLeft + 'px';
+          container.style.top = startTop + 'px';
+          container.style.right = 'auto';
+          container.style.bottom = 'auto';
+          
+          e.preventDefault();
+        }
+        
+        function drag(e) {
+          if (!isDragging) return;
+          
+          const currentX = (e.type === 'mousemove' ? e.clientX : e.touches[0].clientX);
+          const currentY = (e.type === 'mousemove' ? e.clientY : e.touches[0].clientY);
+          
+          const deltaX = currentX - startX;
+          const deltaY = currentY - startY;
+          
+          let newLeft = startLeft + deltaX;
+          let newTop = startTop + deltaY;
+          
+          // Constrain to viewport with margins
+          const maxLeft = window.innerWidth - container.offsetWidth - margin;
+          const maxTop = window.innerHeight - container.offsetHeight - margin;
+          
+          newLeft = Math.max(margin, Math.min(newLeft, maxLeft));
+          newTop = Math.max(margin, Math.min(newTop, maxTop));
+          
+          container.style.left = newLeft + 'px';
+          container.style.top = newTop + 'px';
+          
+          e.preventDefault();
+        }
+        
+        function endDrag(e) {
+          if (!isDragging) return;
+          
+          isDragging = false;
+          container.classList.remove('dragging');
+          container.classList.add('anchoring');
+          
+          // Calculate which edge is closest
+          const rect = container.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          
+          const distanceToLeft = centerX;
+          const distanceToRight = window.innerWidth - centerX;
+          const distanceToTop = centerY;
+          const distanceToBottom = window.innerHeight - centerY;
+          
+          const minDistance = Math.min(distanceToLeft, distanceToRight, distanceToTop, distanceToBottom);
+          
+          // Anchor to the closest edge
+          let newPosition = {};
+          
+          if (minDistance === distanceToLeft) {
+            // Anchor to left
+            container.style.left = margin + 'px';
+            container.style.right = 'auto';
+            newPosition.left = margin;
+          } else if (minDistance === distanceToRight) {
+            // Anchor to right
+            container.style.right = margin + 'px';
+            container.style.left = 'auto';
+            newPosition.right = margin;
+          }
+          
+          if (minDistance === distanceToTop) {
+            // Anchor to top
+            container.style.top = margin + 'px';
+            container.style.bottom = 'auto';
+            newPosition.top = margin;
+          } else if (minDistance === distanceToBottom) {
+            // Anchor to bottom
+            container.style.bottom = margin + 'px';
+            container.style.top = 'auto';
+            newPosition.bottom = margin;
+          }
+          
+          // For corner positioning, keep both coordinates
+          if (minDistance !== distanceToTop && minDistance !== distanceToBottom) {
+            if (centerY < window.innerHeight / 2) {
+              container.style.top = margin + 'px';
+              container.style.bottom = 'auto';
+              newPosition.top = margin;
+            } else {
+              container.style.bottom = margin + 'px';
+              container.style.top = 'auto';
+              newPosition.bottom = margin;
+            }
+          }
+          
+          if (minDistance !== distanceToLeft && minDistance !== distanceToRight) {
+            if (centerX < window.innerWidth / 2) {
+              container.style.left = margin + 'px';
+              container.style.right = 'auto';
+              newPosition.left = margin;
+            } else {
+              container.style.right = margin + 'px';
+              container.style.left = 'auto';
+              newPosition.right = margin;
+            }
+          }
+          
+          // Store position in localStorage
+          localStorage.setItem('bolt-badge-position', JSON.stringify(newPosition));
+          
+          // Remove anchoring class after animation
+          setTimeout(() => {
+            container.classList.remove('anchoring');
+          }, 500);
+          
+          e.preventDefault();
+        }
+        
+        // Mouse events
+        container.addEventListener('mousedown', startDrag);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', endDrag);
+        
+        // Touch events for mobile
+        container.addEventListener('touchstart', startDrag, { passive: false });
+        document.addEventListener('touchmove', drag, { passive: false });
+        document.addEventListener('touchend', endDrag, { passive: false });
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+          // Reposition if badge is outside viewport
+          const rect = container.getBoundingClientRect();
+          if (rect.right > window.innerWidth || rect.bottom > window.innerHeight) {
+            container.style.right = margin + 'px';
+            container.style.top = margin + 'px';
+            container.style.left = 'auto';
+            container.style.bottom = 'auto';
+            
+            localStorage.setItem('bolt-badge-position', JSON.stringify({
+              right: margin,
+              top: margin
+            }));
+          }
+        });
+        
+        // Prevent link navigation when dragging
+        container.querySelector('a').addEventListener('click', function(e) {
+          if (container.classList.contains('dragging')) {
+            e.preventDefault();
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
