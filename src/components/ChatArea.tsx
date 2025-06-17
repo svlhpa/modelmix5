@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -11,7 +11,7 @@ import { globalApiService } from '../services/globalApiService';
 
 interface ChatAreaProps {
   messages: any[];
-  onSendMessage: (message: string, images?: string[]) => Promise<APIResponse[]>;
+  onSendMessage: (message: string, images?: string[], useInternetSearch?: boolean) => Promise<APIResponse[]>;
   onSelectResponse: (response: APIResponse, userMessage: string, images?: string[]) => void;
   isLoading: boolean;
   onToggleSidebar: () => void;
@@ -35,11 +35,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const { user, getCurrentTier, getUsageInfo } = useAuth();
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [useInternetSearch, setUseInternetSearch] = useState(false);
   
   // CRITICAL: Separate state for AI generation session
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
+  const [currentUseInternetSearch, setCurrentUseInternetSearch] = useState(false);
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -150,6 +152,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setCurrentResponses([]);
     setCurrentUserMessage('');
     setCurrentUserImages([]);
+    setCurrentUseInternetSearch(false);
     if (abortController) {
       abortController.abort();
       setAbortController(null);
@@ -214,7 +217,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           }
         },
         controller.signal,
-        currentTier
+        currentTier,
+        currentUseInternetSearch
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -254,14 +258,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
     const message = input.trim();
     const messageImages = [...images];
+    const messageUseInternetSearch = useInternetSearch;
     
     // Clear input immediately
     setInput('');
     setImages([]);
+    setUseInternetSearch(false);
     
     // Store current generation context
     setCurrentUserMessage(message);
     setCurrentUserImages(messageImages);
+    setCurrentUseInternetSearch(messageUseInternetSearch);
     setWaitingForSelection(false);
     setIsGenerating(true);
     
@@ -310,7 +317,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           }
         },
         controller.signal,
-        currentTier
+        currentTier,
+        messageUseInternetSearch
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -345,27 +353,27 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   if (!user) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-gray-50">
+      <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
         {/* Header with mobile menu for non-authenticated users */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
           <button
             onClick={onToggleMobileSidebar}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden"
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden flex-shrink-0"
           >
             <Menu size={20} />
           </button>
           
           <button
             onClick={onToggleSidebar}
-            className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
           >
             <Menu size={20} />
           </button>
           
-          <Logo variant="text" size="md" className="ml-2" />
+          <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
         </div>
 
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 p-4">
           <div className="text-center max-w-md">
             <Logo size="lg" className="mb-6 justify-center" />
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
@@ -609,6 +617,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         ))}
                       </div>
                     )}
+                    {currentUseInternetSearch && (
+                      <div className="mb-2 flex items-center space-x-2 text-emerald-200">
+                        <Globe size={16} />
+                        <span className="text-sm">Internet search enabled</span>
+                      </div>
+                    )}
                     <div className="leading-relaxed break-words">{currentUserMessage}</div>
                   </div>
                 </div>
@@ -634,8 +648,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
                         <span className="font-medium min-w-0">
-                          <span className="hidden sm:inline">AI models are mixing responses... (responses appear as they complete)</span>
-                          <span className="sm:hidden">AI models mixing...</span>
+                          <span className="hidden sm:inline">
+                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)
+                          </span>
+                          <span className="sm:hidden">
+                            AI models mixing{currentUseInternetSearch && ' + web'}...
+                          </span>
                           {isProUser && enabledCount > 3 && (
                             <span className="ml-2 text-yellow-600">
                               <Crown size={14} className="inline" /> <span className="hidden sm:inline">Pro Power</span>
@@ -725,6 +743,30 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               ))}
             </div>
           )}
+          
+          {/* Internet Search Toggle */}
+          <div className="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setUseInternetSearch(!useInternetSearch)}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
+                useInternetSearch
+                  ? 'bg-blue-50 border-blue-300 text-blue-700'
+                  : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Globe size={16} />
+              <span className="text-sm font-medium">
+                {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
+              </span>
+            </button>
+            
+            {useInternetSearch && (
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                AI will search the web for current information
+              </span>
+            )}
+          </div>
           
           <div className="flex space-x-3 min-w-0">
             <div className="flex-1 relative min-w-0">
@@ -851,7 +893,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           
           {isGenerating && enabledCount > 0 && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
-              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''} - click Stop to cancel generation
+              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation
               {isProUser && enabledCount > 3 && (
                 <span className="ml-2 text-yellow-600">
                   <Crown size={12} className="inline" /> Pro Power
@@ -863,10 +905,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
               {hasAnyGlobalKeyAccess && !isProUser 
-                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context`
+                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context • Toggle internet search for real-time info`
                 : isProUser
-                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context`
-                  : `📎 Upload images or paste screenshots for visual context • ${usage}/${limit} conversations used this month`
+                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context • Toggle internet search for real-time info`
+                  : `📎 Upload images or paste screenshots for visual context • Toggle internet search for real-time info • ${usage}/${limit} conversations used this month`
               }
             </p>
           )}

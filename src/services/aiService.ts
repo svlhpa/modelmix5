@@ -8,7 +8,8 @@ class AIService {
     openai: '',
     openrouter: '',
     gemini: '',
-    deepseek: ''
+    deepseek: '',
+    serper: ''
   };
 
   private modelSettings: ModelSettings = {
@@ -76,6 +77,65 @@ class AIService {
     }
 
     return { key: null, isGlobal: false };
+  }
+
+  private async callSerper(query: string, signal?: AbortSignal): Promise<string> {
+    const apiKey = this.settings.serper;
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error('Serper API key not configured. Please add your Serper API key in settings.');
+    }
+
+    try {
+      const response = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          q: query,
+          num: 5, // Limit to 5 results for better performance
+        }),
+        signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Serper API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Format search results
+      let searchResults = 'Recent search results:\n\n';
+      
+      if (data.organic && data.organic.length > 0) {
+        data.organic.forEach((result: any, index: number) => {
+          searchResults += `${index + 1}. ${result.title}\n`;
+          if (result.snippet) {
+            searchResults += `   ${result.snippet}\n`;
+          }
+          if (result.link) {
+            searchResults += `   Source: ${result.link}\n`;
+          }
+          searchResults += '\n';
+        });
+      }
+
+      if (data.answerBox) {
+        searchResults += `Quick Answer: ${data.answerBox.answer || data.answerBox.snippet}\n\n`;
+      }
+
+      if (data.knowledgeGraph) {
+        searchResults += `Knowledge Graph: ${data.knowledgeGraph.description}\n\n`;
+      }
+
+      return searchResults.trim();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+      throw new Error(`Failed to search the internet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async callOpenAI(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
@@ -235,29 +295,57 @@ class AIService {
     images: string[] = [],
     onResponseUpdate?: (responses: APIResponse[]) => void,
     signal?: AbortSignal,
-    userTier?: string
+    userTier?: string,
+    useInternetSearch: boolean = false
   ): Promise<APIResponse[]> {
+    let enhancedMessage = currentMessage;
+    let enhancedHistory = [...conversationHistory];
+
+    // Perform internet search if requested
+    if (useInternetSearch) {
+      try {
+        const searchResults = await this.callSerper(currentMessage, signal);
+        
+        // Add search results as context to the message
+        enhancedMessage = `${currentMessage}\n\n[Internet Search Results]:\n${searchResults}\n\nPlease use the above search results to provide an accurate and up-to-date response.`;
+        
+        // Update the last message in history with enhanced content
+        if (enhancedHistory.length > 0 && enhancedHistory[enhancedHistory.length - 1].role === 'user') {
+          enhancedHistory[enhancedHistory.length - 1] = {
+            ...enhancedHistory[enhancedHistory.length - 1],
+            content: enhancedMessage
+          };
+        } else {
+          enhancedHistory.push({ role: 'user', content: enhancedMessage });
+        }
+      } catch (error) {
+        console.error('Internet search failed:', error);
+        // Continue without search results if search fails
+        enhancedMessage = `${currentMessage}\n\n[Note: Internet search was requested but failed. Providing response based on training data only.]`;
+      }
+    }
+
     const providers: Array<{ name: string, call: () => Promise<string> }> = [];
 
     // Add traditional providers
     if (this.modelSettings.openai) {
       providers.push({
         name: 'OpenAI GPT-4o',
-        call: () => this.callOpenAI(conversationHistory, images, signal, userTier)
+        call: () => this.callOpenAI(enhancedHistory, images, signal, userTier)
       });
     }
 
     if (this.modelSettings.gemini) {
       providers.push({
         name: 'Google Gemini 1.5 Pro',
-        call: () => this.callGemini(conversationHistory, images, signal, userTier)
+        call: () => this.callGemini(enhancedHistory, images, signal, userTier)
       });
     }
 
     if (this.modelSettings.deepseek) {
       providers.push({
         name: 'DeepSeek Chat',
-        call: () => this.callDeepSeek(conversationHistory, images, signal, userTier)
+        call: () => this.callDeepSeek(enhancedHistory, images, signal, userTier)
       });
     }
 
@@ -274,7 +362,7 @@ class AIService {
           providers.push({
             name: model.name,
             call: async () => {
-              const result = await openRouterService.callModel(modelId, conversationHistory, openRouterKey, images, signal);
+              const result = await openRouterService.callModel(modelId, enhancedHistory, openRouterKey, images, signal);
               
               // Increment global usage if using global key
               if (isOpenRouterGlobal) {

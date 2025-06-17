@@ -27,7 +27,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     openai: false,
     openrouter: false,
     gemini: false,
-    deepseek: false
+    deepseek: false,
+    serper: false
   });
   const [activeTab, setActiveTab] = useState<'api' | 'models'>('api');
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
@@ -144,6 +145,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       description: 'DeepSeek Chat model for reasoning tasks',
       docsUrl: 'https://platform.deepseek.com/api_keys',
       category: 'Primary Models'
+    },
+    {
+      key: 'serper' as keyof APISettings,
+      name: 'Serper',
+      placeholder: 'Your Serper API Key',
+      description: 'Enables AI models to search the internet for real-time information',
+      docsUrl: 'https://serper.dev/api',
+      category: 'Internet Search'
     }
   ];
 
@@ -297,15 +306,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div>
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className="font-medium text-gray-900">{provider.name}</h4>
-                          {hasGlobalAccess && (
+                          {hasGlobalAccess && provider.key !== 'serper' && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               <Gift size={10} className="mr-1" />
                               Free Trial
                             </span>
                           )}
+                          {provider.key === 'serper' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              🌐 Internet Search
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">{provider.description}</p>
-                        {hasGlobalAccess && (
+                        {hasGlobalAccess && provider.key !== 'serper' && (
                           <p className="text-xs text-green-600 mt-1">
                             ✅ Available through free trial - no API key needed
                           </p>
@@ -327,7 +341,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type={showKeys[provider.key] ? 'text' : 'password'}
                         value={settings[provider.key]}
                         onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
-                        placeholder={hasGlobalAccess ? `${provider.placeholder} (optional - free trial active)` : provider.placeholder}
+                        placeholder={hasGlobalAccess && provider.key !== 'serper' ? `${provider.placeholder} (optional - free trial active)` : provider.placeholder}
                         className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       />
                       <button
@@ -355,11 +369,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="text-white text-xs font-bold">💡</span>
                 </div>
                 <div>
-                  <h4 className="font-medium text-green-800 mb-1">Free Trial vs Personal API Keys</h4>
+                  <h4 className="font-medium text-green-800 mb-1">API Key Information</h4>
                   <ul className="text-sm text-green-700 space-y-1">
                     <li>• <strong>Free Trial:</strong> Use our global API keys with monthly limits</li>
                     <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
                     <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
+                    <li>• <strong>Serper:</strong> Enables internet search for real-time information (requires personal API key)</li>
                     <li>• Personal API keys always take priority over free trial access</li>
                   </ul>
                 </div>

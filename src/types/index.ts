@@ -20,6 +20,7 @@ export interface APISettings {
   openrouter: string;
   gemini: string;
   deepseek: string;
+  serper: string;
 }
 
 export interface OpenRouterModelSettings {

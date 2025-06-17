@@ -83,7 +83,7 @@ export const useChat = () => {
   }, [user]);
 
   // CRITICAL: Simplified sendMessage - only returns responses, doesn't modify session
-  const sendMessage = useCallback(async (content: string, images: string[] = []): Promise<APIResponse[]> => {
+  const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false): Promise<APIResponse[]> => {
     if (!user) {
       const newSessionId = await createNewSession();
       if (!newSessionId) return [];
@@ -133,7 +133,8 @@ export const useChat = () => {
         images, 
         undefined, // onResponseUpdate callback handled in ChatArea
         undefined, // signal handled in ChatArea
-        userTier
+        userTier,
+        useInternetSearch
       );
       
       return responses;
