@@ -1,15 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  role: 'user' | 'superadmin';
-  created_at: string;
-  updated_at: string;
-}
+import { UserProfile, UserTier } from '../types';
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -62,6 +54,12 @@ export const useAuth = () => {
     }
   };
 
+  const refreshProfile = async () => {
+    if (user) {
+      await loadUserProfile(user.id);
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setUserProfile(null);
@@ -71,11 +69,32 @@ export const useAuth = () => {
     return userProfile?.role === 'superadmin';
   };
 
+  const getCurrentTier = (): UserTier => {
+    return userProfile?.current_tier || 'tier1';
+  };
+
+  const getUsageInfo = () => {
+    if (!userProfile) return { usage: 0, limit: 50 };
+    
+    const limits = {
+      tier1: 50,
+      tier2: 1000
+    };
+    
+    return {
+      usage: userProfile.monthly_conversations,
+      limit: limits[userProfile.current_tier] || 50
+    };
+  };
+
   return {
     user,
     userProfile,
     loading,
     signOut,
     isSuperAdmin,
+    getCurrentTier,
+    getUsageInfo,
+    refreshProfile,
   };
 };

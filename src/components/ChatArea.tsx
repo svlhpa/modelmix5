@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
 import { APIResponse, ConversationTurn, ModelSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
 
 interface ChatAreaProps {
@@ -16,6 +17,7 @@ interface ChatAreaProps {
   onToggleMobileSidebar: () => void;
   onSaveConversationTurn: (turn: ConversationTurn) => void;
   modelSettings: ModelSettings;
+  onTierUpgrade: () => void;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -26,9 +28,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onToggleSidebar,
   onToggleMobileSidebar,
   onSaveConversationTurn,
-  modelSettings
+  modelSettings,
+  onTierUpgrade
 }) => {
-  const { user } = useAuth();
+  const { user, getCurrentTier, getUsageInfo } = useAuth();
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
@@ -37,8 +40,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const currentTier = getCurrentTier();
+  const { usage, limit } = getUsageInfo();
+
+  useEffect(() => {
+    if (user) {
+      checkUsageLimit();
+    }
+  }, [user, messages.length]);
+
+  const checkUsageLimit = async () => {
+    const result = await tierService.checkUsageLimit();
+    setUsageCheck(result);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,6 +110,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       .filter(Boolean).length;
     const openRouterCount = Object.values(modelSettings.openrouter_models).filter(Boolean).length;
     return traditionalCount + openRouterCount;
+  };
+
+  const getTierLimits = () => {
+    return tierService.getTierLimits(currentTier);
+  };
+
+  const getMaxAllowedModels = () => {
+    return getTierLimits().maxModelsPerComparison;
   };
 
   const handleStopGeneration = () => {
@@ -195,9 +221,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
 
+    // Check usage limits
+    if (!usageCheck.canUse) {
+      onTierUpgrade();
+      return;
+    }
+
     const enabledCount = getEnabledModelsCount();
+    const maxAllowed = getMaxAllowedModels();
+    
     if (enabledCount === 0) {
       alert('Please enable at least one AI model in settings before sending a message.');
+      return;
+    }
+
+    if (enabledCount > maxAllowed) {
+      alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
       return;
     }
 
@@ -263,7 +302,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  const handleSelectResponse = (selectedResponse: APIResponse) => {
+  const handleSelectResponse = async (selectedResponse: APIResponse) => {
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
     setCurrentResponses([]);
     setCurrentUserMessage('');
@@ -271,6 +310,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setWaitingForSelection(false);
     setIsGenerating(false);
     setAbortController(null);
+
+    // Increment usage counter
+    await tierService.incrementUsage();
+    await checkUsageLimit(); // Refresh usage info
   };
 
   // Check if all current responses have errors
@@ -333,8 +376,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   }
 
   const showWelcome = messages.length === 0 && currentResponses.length === 0;
-  const canSendMessage = !isLoading && !waitingForSelection && !isGenerating;
+  const canSendMessage = !isLoading && !waitingForSelection && !isGenerating && usageCheck.canUse;
   const enabledCount = getEnabledModelsCount();
+  const maxAllowed = getMaxAllowedModels();
+  const tierLimits = getTierLimits();
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50">
@@ -357,9 +402,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         <Logo variant="text" size="md" className="ml-2" />
         <div className="ml-auto flex items-center space-x-4 text-sm text-gray-500">
+          {/* Tier indicator */}
+          <div className="flex items-center space-x-2">
+            {currentTier === 'tier2' ? (
+              <Crown size={16} className="text-yellow-500" />
+            ) : (
+              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+            )}
+            <span>{tierLimits.name} Plan</span>
+          </div>
+          
+          {/* Usage indicator */}
+          <div className="flex items-center space-x-1">
+            <div className={`w-2 h-2 rounded-full ${usageCheck.canUse ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span>{usage}/{limit} conversations</span>
+          </div>
+          
           {enabledCount > 0 && (
             <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
               <span>{enabledCount} model{enabledCount !== 1 ? 's' : ''} enabled</span>
             </div>
           )}
@@ -384,13 +445,61 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
               </p>
               
-              {enabledCount === 0 ? (
+              {!usageCheck.canUse ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-center space-x-2 text-amber-700 mb-3">
+                    <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">!</span>
+                    </div>
+                    <span className="font-medium">Monthly limit reached!</span>
+                  </div>
+                  <p className="text-sm text-amber-600 mb-3">
+                    You've used all {limit} conversations for this month. Upgrade to Pro for more conversations.
+                  </p>
+                  <button
+                    onClick={onTierUpgrade}
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                  >
+                    <Crown size={16} />
+                    <span>Upgrade to Pro</span>
+                  </button>
+                </div>
+              ) : enabledCount === 0 ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-center space-x-2 text-amber-700">
                     <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
                       <span className="text-white text-xs font-bold">!</span>
                     </div>
                     <span className="font-medium">No AI models enabled! Please configure models in settings.</span>
+                  </div>
+                </div>
+              ) : enabledCount > maxAllowed ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-center space-x-2 text-amber-700 mb-3">
+                    <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">!</span>
+                    </div>
+                    <span className="font-medium">Too many models selected!</span>
+                  </div>
+                  <p className="text-sm text-amber-600 mb-3">
+                    Your {tierLimits.name} plan allows up to {maxAllowed} models per comparison. You have {enabledCount} enabled.
+                  </p>
+                  <div className="flex justify-center space-x-2">
+                    <button
+                      onClick={() => {/* Open settings */}}
+                      className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Adjust Settings
+                    </button>
+                    {currentTier === 'tier1' && (
+                      <button
+                        onClick={onTierUpgrade}
+                        className="inline-flex items-center space-x-1 px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors"
+                      >
+                        <Crown size={14} />
+                        <span>Upgrade</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -549,24 +658,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={handlePaste}
                 placeholder={
-                  enabledCount === 0
-                    ? "Please enable AI models in settings first..."
-                    : isGenerating
-                      ? "AI models are mixing responses..."
-                      : waitingForSelection 
-                        ? "Select a response above to continue..." 
-                        : messages.length === 0
-                          ? `Ask anything or upload images to mix ${enabledCount} AI responses...`
-                          : "Continue the conversation..."
+                  !usageCheck.canUse
+                    ? "Monthly limit reached - upgrade to continue..."
+                    : enabledCount === 0
+                      ? "Please enable AI models in settings first..."
+                      : enabledCount > maxAllowed
+                        ? `Too many models selected (max ${maxAllowed} for ${tierLimits.name} plan)...`
+                        : isGenerating
+                          ? "AI models are mixing responses..."
+                          : waitingForSelection 
+                            ? "Select a response above to continue..." 
+                            : messages.length === 0
+                              ? `Ask anything or upload images to mix ${enabledCount} AI responses...`
+                              : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-                disabled={!canSendMessage || enabledCount === 0}
+                disabled={!canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-100 transition-colors"
-                disabled={!canSendMessage || enabledCount === 0}
+                disabled={!canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
               >
                 <Paperclip size={18} className="text-gray-400" />
               </button>
@@ -597,7 +710,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             ) : (
               <button
                 type="submit"
-                disabled={!input.trim() || !canSendMessage || enabledCount === 0}
+                disabled={!input.trim() || !canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
                 className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
               >
                 <Send size={18} />
@@ -608,13 +721,45 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             )}
           </div>
           
-          {enabledCount === 0 && (
+          {!usageCheck.canUse && (
+            <div className="text-center mt-2">
+              <p className="text-xs text-red-600 mb-2">
+                ⚠️ Monthly limit reached ({usage}/{limit} conversations used)
+              </p>
+              <button
+                onClick={onTierUpgrade}
+                className="inline-flex items-center space-x-1 text-xs bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                <Crown size={12} />
+                <span>Upgrade to Pro for 1,000 conversations/month</span>
+              </button>
+            </div>
+          )}
+          
+          {enabledCount === 0 && usageCheck.canUse && (
             <p className="text-xs text-red-600 mt-2 text-center">
               ⚠️ No AI models enabled - please configure models in settings
             </p>
           )}
+
+          {enabledCount > maxAllowed && usageCheck.canUse && (
+            <div className="text-center mt-2">
+              <p className="text-xs text-amber-600 mb-2">
+                ⚠️ {enabledCount} models selected, but {tierLimits.name} plan allows max {maxAllowed}
+              </p>
+              {currentTier === 'tier1' && (
+                <button
+                  onClick={onTierUpgrade}
+                  className="inline-flex items-center space-x-1 text-xs bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors"
+                >
+                  <Crown size={12} />
+                  <span>Upgrade to Pro for up to 10 models</span>
+                </button>
+              )}
+            </div>
+          )}
           
-          {waitingForSelection && !isGenerating && enabledCount > 0 && !allResponsesHaveErrors && (
+          {waitingForSelection && !isGenerating && enabledCount > 0 && !allResponsesHaveErrors && usageCheck.canUse && (
             <p className="text-xs text-amber-600 mt-2 text-center">
               💡 Click on your preferred response above to add it to the conversation context
             </p>
@@ -626,15 +771,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </p>
           )}
           
-          {isGenerating && enabledCount > 0 && (
+          {isGenerating && enabledCount > 0 && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
               🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''} - click Stop to cancel generation
             </p>
           )}
           
-          {enabledCount > 0 && !isGenerating && !waitingForSelection && (
+          {enabledCount > 0 && enabledCount <= maxAllowed && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
-              📎 Upload images or paste screenshots for visual context • Conversations are automatically saved
+              📎 Upload images or paste screenshots for visual context • {usage}/{limit} conversations used this month
             </p>
           )}
         </form>

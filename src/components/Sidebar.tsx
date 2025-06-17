@@ -1,7 +1,8 @@
 import React from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { UsageIndicator } from './UsageIndicator';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -14,6 +15,7 @@ interface SidebarProps {
   onOpenAnalytics: () => void;
   onOpenAuth: () => void;
   onOpenAdmin?: () => void;
+  onOpenTierUpgrade: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -29,11 +31,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAnalytics,
   onOpenAuth,
   onOpenAdmin,
+  onOpenTierUpgrade,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
 }) => {
-  const { user, userProfile, signOut, isSuperAdmin } = useAuth();
+  const { user, userProfile, signOut, isSuperAdmin, getCurrentTier, getUsageInfo } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
@@ -50,6 +53,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getSessionMessageCount = (session: ChatSession) => {
     return Math.ceil(session.messages.length / 2); // Divide by 2 since each turn has user + AI message
   };
+
+  const currentTier = getCurrentTier();
+  const { usage, limit } = getUsageInfo();
 
   // Mobile overlay
   if (isMobileOpen) {
@@ -91,6 +97,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {user ? (
               <>
+                {/* Usage Indicator */}
+                <div className="p-4 border-b border-gray-700">
+                  <UsageIndicator
+                    usage={usage}
+                    limit={limit}
+                    tier={currentTier}
+                    onUpgradeClick={() => {
+                      onOpenTierUpgrade();
+                      onToggleMobile();
+                    }}
+                  />
+                </div>
+
                 <div className="p-4 border-b border-gray-700">
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -197,6 +216,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <div className="flex items-center space-x-2">
                         {isSuperAdmin() ? (
                           <Shield size={16} className="text-red-400" />
+                        ) : currentTier === 'tier2' ? (
+                          <Crown size={16} className="text-yellow-400" />
                         ) : (
                           <User size={16} />
                         )}
@@ -205,6 +226,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {isSuperAdmin() && (
                         <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
                           ADMIN
+                        </span>
+                      )}
+                      {currentTier === 'tier2' && !isSuperAdmin() && (
+                        <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full">
+                          PRO
                         </span>
                       )}
                     </div>
@@ -281,6 +307,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Shield size={20} className="text-red-400" />
               </button>
             )}
+
+            {/* Tier Upgrade Button */}
+            {currentTier === 'tier1' && (
+              <button
+                onClick={onOpenTierUpgrade}
+                className="p-2 rounded-lg hover:bg-gray-800 transition-colors bg-yellow-900/20 border border-yellow-700/30"
+                title="Upgrade to Pro"
+              >
+                <Crown size={20} className="text-yellow-400" />
+              </button>
+            )}
             
             <div className="flex-1"></div>
             <button
@@ -323,6 +360,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {user ? (
         <>
+          {/* Usage Indicator */}
+          <div className="p-4 border-b border-gray-700">
+            <UsageIndicator
+              usage={usage}
+              limit={limit}
+              tier={currentTier}
+              onUpgradeClick={onOpenTierUpgrade}
+            />
+          </div>
+
           <div className="p-4 border-b border-gray-700">
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -411,12 +458,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-medium text-red-400">Admin Dashboard</span>
               </button>
             )}
+
+            {/* Tier Upgrade Button */}
+            {currentTier === 'tier1' && (
+              <button
+                onClick={onOpenTierUpgrade}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-yellow-900/20 border border-yellow-700/30"
+              >
+                <Crown size={18} className="text-yellow-400" />
+                <span className="font-medium text-yellow-400">Upgrade to Pro</span>
+              </button>
+            )}
             
             <div className="pt-2 border-t border-gray-700">
               <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
                 <div className="flex items-center space-x-2">
                   {isSuperAdmin() ? (
                     <Shield size={16} className="text-red-400" />
+                  ) : currentTier === 'tier2' ? (
+                    <Crown size={16} className="text-yellow-400" />
                   ) : (
                     <User size={16} />
                   )}
@@ -425,6 +485,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {isSuperAdmin() && (
                   <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
                     ADMIN
+                  </span>
+                )}
+                {currentTier === 'tier2' && !isSuperAdmin() && (
+                  <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full">
+                    PRO
                   </span>
                 )}
               </div>

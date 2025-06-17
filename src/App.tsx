@@ -5,13 +5,15 @@ import { SettingsModal } from './components/SettingsModal';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { aiService } from './services/aiService';
+import { tierService } from './services/tierService';
 import { APISettings, ModelSettings } from './types';
 
 function App() {
-  const { user, isSuperAdmin, loading: authLoading } = useAuth();
+  const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile } = useAuth();
   const {
     sessions,
     currentSession,
@@ -29,6 +31,7 @@ function App() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showTierUpgrade, setShowTierUpgrade] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -66,12 +69,20 @@ function App() {
     }
   };
 
-  const handleNewChat = () => {
-    if (user) {
-      createNewSession();
-    } else {
+  const handleNewChat = async () => {
+    if (!user) {
       setShowAuth(true);
+      return;
     }
+
+    // Check usage limits
+    const { canUse } = await tierService.checkUsageLimit();
+    if (!canUse) {
+      setShowTierUpgrade(true);
+      return;
+    }
+
+    createNewSession();
   };
 
   const handleSaveSettings = async (settings: APISettings, models: ModelSettings) => {
@@ -124,13 +135,52 @@ function App() {
     }
   };
 
-  if (authLoading) {
+  const handleTierUpgradeClose = () => {
+    setShowTierUpgrade(false);
+    refreshProfile(); // Refresh profile to get updated tier info
+  };
+
+  if (!user) {
     return (
-      <div className="flex h-screen bg-gray-100 items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onNewChat={handleNewChat}
+          onSelectSession={setCurrentSessionId}
+          onDeleteSession={deleteSession}
+          onOpenSettings={handleOpenSettings}
+          onOpenAnalytics={handleOpenAnalytics}
+          onOpenAuth={() => setShowAuth(true)}
+          onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
+          onOpenTierUpgrade={() => setShowTierUpgrade(true)}
+          isCollapsed={sidebarCollapsed}
+          isMobileOpen={mobileSidebarOpen}
+          onToggleMobile={toggleMobileSidebar}
+        />
+        
+        <ChatArea
+          messages={currentSession?.messages || []}
+          onSendMessage={sendMessage}
+          onSelectResponse={selectResponse}
+          isLoading={isLoading}
+          onToggleSidebar={toggleSidebar}
+          onToggleMobileSidebar={toggleMobileSidebar}
+          onSaveConversationTurn={saveConversationTurn}
+          modelSettings={modelSettings}
+          onTierUpgrade={() => setShowTierUpgrade(true)}
+        />
+
+        <AuthModal
+          isOpen={showAuth}
+          onClose={() => setShowAuth(false)}
+        />
+
+        <TierUpgradeModal
+          isOpen={showTierUpgrade}
+          onClose={handleTierUpgradeClose}
+          currentTier={getCurrentTier()}
+        />
       </div>
     );
   }
@@ -147,6 +197,7 @@ function App() {
         onOpenAnalytics={handleOpenAnalytics}
         onOpenAuth={() => setShowAuth(true)}
         onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
+        onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -161,6 +212,7 @@ function App() {
         onToggleMobileSidebar={toggleMobileSidebar}
         onSaveConversationTurn={saveConversationTurn}
         modelSettings={modelSettings}
+        onTierUpgrade={() => setShowTierUpgrade(true)}
       />
 
       <SettingsModal
@@ -187,6 +239,12 @@ function App() {
           onClose={() => setShowAdmin(false)}
         />
       )}
+
+      <TierUpgradeModal
+        isOpen={showTierUpgrade}
+        onClose={handleTierUpgradeClose}
+        currentTier={getCurrentTier()}
+      />
     </div>
   );
 }
