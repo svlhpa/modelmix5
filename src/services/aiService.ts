@@ -1,6 +1,8 @@
 import { APIResponse, APISettings, ModelSettings } from '../types';
 import { databaseService } from './databaseService';
+import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
+import { useAuth } from '../hooks/useAuth';
 
 class AIService {
   private settings: APISettings = {
@@ -56,8 +58,30 @@ class AIService {
     return this.openRouterModels;
   }
 
-  private async callOpenAI(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal): Promise<string> {
-    if (!this.settings.openai) {
+  // Get API key with fallback to global keys
+  private async getApiKey(provider: string, userTier: string): Promise<string | null> {
+    // First try user's personal API key
+    const userKey = this.settings[provider as keyof APISettings];
+    if (userKey) {
+      return userKey;
+    }
+
+    // Fallback to global API key for user's tier
+    const globalKey = await globalApiService.getGlobalApiKey(provider, userTier as any);
+    if (globalKey) {
+      // Check if global key is within usage limits
+      const canUse = await globalApiService.checkGlobalUsageLimit(provider);
+      if (canUse) {
+        return globalKey;
+      }
+    }
+
+    return null;
+  }
+
+  private async callOpenAI(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+    const apiKey = await this.getApiKey('openai', userTier || 'tier1');
+    if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
 
@@ -82,7 +106,7 @@ class AIService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.settings.openai}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: 'gpt-4o',
@@ -99,11 +123,18 @@ class AIService {
     }
 
     const data = await response.json();
+    
+    // Increment global usage if using global key
+    if (!this.settings.openai) {
+      await globalApiService.incrementGlobalUsage('openai');
+    }
+    
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  private async callGemini(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal): Promise<string> {
-    if (!this.settings.gemini) {
+  private async callGemini(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+    const apiKey = await this.getApiKey('gemini', userTier || 'tier1');
+    if (!apiKey) {
       throw new Error('Gemini API key not configured');
     }
 
@@ -132,7 +163,7 @@ class AIService {
       };
     });
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.settings.gemini}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -153,11 +184,18 @@ class AIService {
     }
 
     const data = await response.json();
+    
+    // Increment global usage if using global key
+    if (!this.settings.gemini) {
+      await globalApiService.incrementGlobalUsage('gemini');
+    }
+    
     return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
   }
 
-  private async callDeepSeek(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal): Promise<string> {
-    if (!this.settings.deepseek) {
+  private async callDeepSeek(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+    const apiKey = await this.getApiKey('deepseek', userTier || 'tier1');
+    if (!apiKey) {
       throw new Error('DeepSeek API key not configured');
     }
 
@@ -165,7 +203,7 @@ class AIService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.settings.deepseek}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
@@ -182,6 +220,12 @@ class AIService {
     }
 
     const data = await response.json();
+    
+    // Increment global usage if using global key
+    if (!this.settings.deepseek) {
+      await globalApiService.incrementGlobalUsage('deepseek');
+    }
+    
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
@@ -190,34 +234,36 @@ class AIService {
     conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [], 
     images: string[] = [],
     onResponseUpdate?: (responses: APIResponse[]) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    userTier?: string
   ): Promise<APIResponse[]> {
     const providers: Array<{ name: string, call: () => Promise<string> }> = [];
 
     // Add traditional providers
-    if (this.modelSettings.openai && this.settings.openai) {
+    if (this.modelSettings.openai) {
       providers.push({
         name: 'OpenAI GPT-4o',
-        call: () => this.callOpenAI(conversationHistory, images, signal)
+        call: () => this.callOpenAI(conversationHistory, images, signal, userTier)
       });
     }
 
-    if (this.modelSettings.gemini && this.settings.gemini) {
+    if (this.modelSettings.gemini) {
       providers.push({
         name: 'Google Gemini 1.5 Pro',
-        call: () => this.callGemini(conversationHistory, images, signal)
+        call: () => this.callGemini(conversationHistory, images, signal, userTier)
       });
     }
 
-    if (this.modelSettings.deepseek && this.settings.deepseek) {
+    if (this.modelSettings.deepseek) {
       providers.push({
         name: 'DeepSeek Chat',
-        call: () => this.callDeepSeek(conversationHistory, images, signal)
+        call: () => this.callDeepSeek(conversationHistory, images, signal, userTier)
       });
     }
 
     // Add selected OpenRouter models
-    if (this.settings.openrouter) {
+    const openRouterKey = await this.getApiKey('openrouter', userTier || 'tier1');
+    if (openRouterKey) {
       const enabledOpenRouterModels = Object.entries(this.modelSettings.openrouter_models)
         .filter(([_, enabled]) => enabled)
         .map(([modelId]) => modelId);
@@ -227,7 +273,7 @@ class AIService {
         if (model) {
           providers.push({
             name: model.name,
-            call: () => openRouterService.callModel(modelId, conversationHistory, this.settings.openrouter, images, signal)
+            call: () => openRouterService.callModel(modelId, conversationHistory, openRouterKey, images, signal)
           });
         }
       }

@@ -3,9 +3,11 @@ import {
   X, Users, MessageSquare, BarChart3, Activity, Shield, 
   Trash2, Crown, User, Calendar, TrendingUp, AlertTriangle,
   Search, Filter, RefreshCw, Trophy, Target, Zap, Brain,
-  PieChart, LineChart, Award, Star, RotateCcw, Edit3, Save
+  PieChart, LineChart, Award, Star, RotateCcw, Edit3, Save,
+  Key, Plus, Eye, EyeOff, Toggle, Settings
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
+import { globalApiService } from '../services/globalApiService';
 import { tierService } from '../services/tierService';
 import { UserTier } from '../types';
 
@@ -46,20 +48,43 @@ interface GlobalProviderStats {
   last_used: string;
 }
 
+interface GlobalApiKey {
+  id: string;
+  provider: string;
+  api_key: string;
+  tier_access: string[];
+  is_active: boolean;
+  usage_limit: number | null;
+  current_usage: number;
+  last_reset_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isOpen,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'analytics' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'analytics' | 'api-keys' | 'logs'>('overview');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [globalProviderStats, setGlobalProviderStats] = useState<GlobalProviderStats[]>([]);
   const [modelComparison, setModelComparison] = useState<any>(null);
+  const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'superadmin'>('all');
   const [tierFilter, setTierFilter] = useState<'all' | 'tier1' | 'tier2'>('all');
   const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
+  const [showAddApiKey, setShowAddApiKey] = useState(false);
+  const [newApiKey, setNewApiKey] = useState({
+    provider: '',
+    api_key: '',
+    tier_access: [] as string[],
+    is_active: true,
+    usage_limit: null as number | null
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +107,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         );
       }
 
+      if (activeTab === 'api-keys') {
+        promises.push(globalApiService.getAllGlobalApiKeys());
+      }
+
       const results = await Promise.all(promises);
       
       setUsers(results[0]);
@@ -90,6 +119,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (activeTab === 'analytics' && results.length > 2) {
         setGlobalProviderStats(results[2] as GlobalProviderStats[]);
         setModelComparison(results[3]);
+      }
+
+      if (activeTab === 'api-keys' && results.length > 2) {
+        setGlobalApiKeys(results[2] as GlobalApiKey[]);
       }
     } catch (error) {
       console.error('Failed to load admin data:', error);
@@ -137,6 +170,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         console.error('Failed to delete user:', error);
       }
     }
+  };
+
+  // Global API Key handlers
+  const handleAddApiKey = async () => {
+    try {
+      await globalApiService.createGlobalApiKey(newApiKey);
+      setNewApiKey({
+        provider: '',
+        api_key: '',
+        tier_access: [],
+        is_active: true,
+        usage_limit: null
+      });
+      setShowAddApiKey(false);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to add API key:', error);
+    }
+  };
+
+  const handleToggleApiKey = async (id: string, isActive: boolean) => {
+    try {
+      await globalApiService.toggleGlobalApiKey(id, isActive);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to toggle API key:', error);
+    }
+  };
+
+  const handleDeleteApiKey = async (id: string) => {
+    if (confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+      try {
+        await globalApiService.deleteGlobalApiKey(id);
+        await loadData();
+      } catch (error) {
+        console.error('Failed to delete API key:', error);
+      }
+    }
+  };
+
+  const handleResetApiUsage = async (id: string) => {
+    if (confirm('Are you sure you want to reset the usage counter for this API key?')) {
+      try {
+        await globalApiService.resetGlobalUsage(id);
+        await loadData();
+      } catch (error) {
+        console.error('Failed to reset API usage:', error);
+      }
+    }
+  };
+
+  const toggleShowApiKey = (keyId: string) => {
+    setShowApiKeys(prev => ({ ...prev, [keyId]: !prev[keyId] }));
   };
 
   const getProviderIcon = (provider: string) => {
@@ -243,7 +329,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">SuperAdmin Dashboard</h2>
-              <p className="text-sm text-gray-500">Manage users, tiers, and monitor system activity</p>
+              <p className="text-sm text-gray-500">Manage users, tiers, API keys, and monitor system activity</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -269,6 +355,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'users', label: 'Users & Tiers', icon: Users },
+            { id: 'api-keys', label: 'Global API Keys', icon: Key },
             { id: 'analytics', label: 'AI Analytics', icon: Brain },
             { id: 'logs', label: 'Activity Logs', icon: Activity }
           ].map((tab) => (
@@ -407,7 +494,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <h4 className="font-medium text-amber-800 mb-1">SuperAdmin Access</h4>
                   <p className="text-sm text-amber-700">
-                    You have full administrative access to all user data, conversations, tier management, and system settings. 
+                    You have full administrative access to all user data, conversations, tier management, global API keys, and system settings. 
                     All actions are logged for security and audit purposes.
                   </p>
                 </div>
@@ -589,6 +676,254 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p>No users found matching your criteria</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Global API Keys Tab */}
+        {activeTab === 'api-keys' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Global API Key Management</h3>
+                <p className="text-sm text-gray-500">Configure API keys that are shared across users based on their tier</p>
+              </div>
+              <button
+                onClick={() => setShowAddApiKey(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={16} />
+                <span>Add API Key</span>
+              </button>
+            </div>
+
+            {/* Add API Key Form */}
+            {showAddApiKey && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+                <h4 className="text-lg font-medium text-gray-900 mb-4">Add New Global API Key</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                    <select
+                      value={newApiKey.provider}
+                      onChange={(e) => setNewApiKey({ ...newApiKey, provider: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Provider</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="deepseek">DeepSeek</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                    <input
+                      type="password"
+                      value={newApiKey.api_key}
+                      onChange={(e) => setNewApiKey({ ...newApiKey, api_key: e.target.value })}
+                      placeholder="Enter API key..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tier Access</label>
+                    <div className="space-y-2">
+                      {['tier1', 'tier2'].map(tier => (
+                        <label key={tier} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={newApiKey.tier_access.includes(tier)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewApiKey({ ...newApiKey, tier_access: [...newApiKey.tier_access, tier] });
+                              } else {
+                                setNewApiKey({ ...newApiKey, tier_access: newApiKey.tier_access.filter(t => t !== tier) });
+                              }
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">
+                            {globalApiService.getTierDisplayName(tier)} Tier
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Monthly Usage Limit (optional)</label>
+                    <input
+                      type="number"
+                      value={newApiKey.usage_limit || ''}
+                      onChange={(e) => setNewApiKey({ ...newApiKey, usage_limit: e.target.value ? parseInt(e.target.value) : null })}
+                      placeholder="Leave empty for unlimited"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowAddApiKey(false);
+                      setNewApiKey({
+                        provider: '',
+                        api_key: '',
+                        tier_access: [],
+                        is_active: true,
+                        usage_limit: null
+                      });
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddApiKey}
+                    disabled={!newApiKey.provider || !newApiKey.api_key || newApiKey.tier_access.length === 0}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Add API Key
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* API Keys List */}
+            <div className="space-y-4">
+              {globalApiKeys.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-lg">
+                  <Key size={48} className="text-gray-300 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">No Global API Keys</h4>
+                  <p className="text-gray-500 mb-4">Add global API keys to provide centralized access to AI models</p>
+                  <button
+                    onClick={() => setShowAddApiKey(true)}
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus size={16} />
+                    <span>Add Your First API Key</span>
+                  </button>
+                </div>
+              ) : (
+                globalApiKeys.map((apiKey) => {
+                  const usagePercentage = globalApiService.getUsagePercentage(apiKey.current_usage, apiKey.usage_limit);
+                  
+                  return (
+                    <div key={apiKey.id} className="bg-white border border-gray-200 rounded-lg p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-2xl">{globalApiService.getProviderIcon(apiKey.provider)}</span>
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">
+                              {globalApiService.getProviderDisplayName(apiKey.provider)}
+                            </h4>
+                            <div className="flex items-center space-x-2">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                apiKey.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {apiKey.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                Access: {apiKey.tier_access.map(tier => globalApiService.getTierDisplayName(tier)).join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleShowApiKey(apiKey.id)}
+                            className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                            title={showApiKeys[apiKey.id] ? 'Hide API Key' : 'Show API Key'}
+                          >
+                            {showApiKeys[apiKey.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                          <button
+                            onClick={() => handleToggleApiKey(apiKey.id, !apiKey.is_active)}
+                            className={`p-2 rounded transition-colors ${
+                              apiKey.is_active 
+                                ? 'text-red-600 hover:bg-red-50' 
+                                : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title={apiKey.is_active ? 'Deactivate' : 'Activate'}
+                          >
+                            <Settings size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleResetApiUsage(apiKey.id)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Reset Usage"
+                          >
+                            <RotateCcw size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteApiKey(apiKey.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Delete API Key"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* API Key Display */}
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type={showApiKeys[apiKey.id] ? 'text' : 'password'}
+                            value={apiKey.api_key}
+                            readOnly
+                            className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Usage Information */}
+                      {apiKey.usage_limit && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Monthly Usage</span>
+                            <span className={globalApiService.getUsageColor(usagePercentage)}>
+                              {apiKey.current_usage} / {apiKey.usage_limit}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all ${globalApiService.getUsageBarColor(usagePercentage)}`}
+                              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="mt-4 text-xs text-gray-500">
+                        Created: {new Date(apiKey.created_at).toLocaleDateString()} • 
+                        Last Reset: {new Date(apiKey.last_reset_date).toLocaleDateString()}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start space-x-2">
+                <Key className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+                <div>
+                  <h4 className="font-medium text-blue-800 mb-1">Global API Key Benefits</h4>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>• Centralized API key management for all users</li>
+                    <li>• Tier-based access control (Free vs Pro users)</li>
+                    <li>• Usage monitoring and limits per provider</li>
+                    <li>• Fallback to user's personal API keys if global keys are unavailable</li>
+                    <li>• Cost control and usage analytics across the platform</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
