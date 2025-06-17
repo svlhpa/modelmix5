@@ -40,8 +40,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     setSettings(currentSettings);
-    setModelSettings(currentModelSettings);
-  }, [currentSettings, currentModelSettings]);
+    
+    // For free tier users, ensure traditional models start unchecked
+    if (currentTier === 'tier1') {
+      setModelSettings({
+        ...currentModelSettings,
+        openai: false,
+        gemini: false,
+        deepseek: false
+      });
+    } else {
+      setModelSettings(currentModelSettings);
+    }
+  }, [currentSettings, currentModelSettings, currentTier]);
 
   useEffect(() => {
     if (isOpen && activeTab === 'models') {
@@ -360,6 +371,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Traditional Models */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Traditional API Models</h3>
+              {currentTier === 'tier1' && (
+                <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-700">
+                    💡 <strong>Free Tier:</strong> Models are disabled by default. Enable the ones you want to use through free trial or your own API keys.
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {traditionalModels.map((model) => {
                   const isEnabled = modelSettings[model.key];
