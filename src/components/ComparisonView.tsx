@@ -167,15 +167,15 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   if (responses.length === 0) return null;
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 min-w-0">
       <div className="flex items-center justify-between mb-4 px-4 md:px-0">
-        <div className="flex items-center space-x-2">
-          <Sparkles size={16} className="text-emerald-600" />
-          <h3 className="font-medium text-gray-900 text-sm md:text-base">
+        <div className="flex items-center space-x-2 min-w-0">
+          <Sparkles size={16} className="text-emerald-600 flex-shrink-0" />
+          <h3 className="font-medium text-gray-900 text-sm md:text-base min-w-0">
             AI Responses ({responses.length} models)
           </h3>
           {showSelection && (
-            <span className="text-xs text-gray-500 bg-emerald-50 px-2 py-1 rounded-full hidden sm:inline">
+            <span className="text-xs text-gray-500 bg-emerald-50 px-2 py-1 rounded-full hidden sm:inline flex-shrink-0">
               Click to select best response
             </span>
           )}
@@ -183,7 +183,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
         
         {/* Navigation controls - only show on mobile when there are multiple responses */}
         {responses.length > 1 && (
-          <div className="flex items-center space-x-2 md:hidden">
+          <div className="flex items-center space-x-2 md:hidden flex-shrink-0">
             <button
               onClick={scrollLeft}
               disabled={currentIndex === 0}
@@ -206,7 +206,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
       </div>
       
       {/* Horizontal scrolling container - optimized for mobile */}
-      <div className="relative">
+      <div className="relative min-w-0">
         <div 
           ref={scrollContainerRef}
           className="overflow-x-auto pb-4 scrollbar-hide"
@@ -234,10 +234,10 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
               >
                 {/* Header */}
                 <div className="flex items-center justify-between p-3 md:p-4 border-b border-white/50">
-                  <div className="flex items-center space-x-2 md:space-x-3">
-                    <span className="text-lg md:text-xl">{getProviderIcon(response.provider)}</span>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 text-xs md:text-sm">{response.provider}</h3>
+                  <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
+                    <span className="text-lg md:text-xl flex-shrink-0">{getProviderIcon(response.provider)}</span>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-gray-900 text-xs md:text-sm truncate">{response.provider}</h3>
                       <div className="flex items-center space-x-1">
                         {response.loading && (
                           <>
@@ -266,7 +266,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-1 flex-shrink-0">
                     {!response.loading && !response.error && response.content && (
                       <button
                         onClick={(e) => {
@@ -297,7 +297,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                       </div>
                       <div className="text-center">
                         <p className="font-medium text-red-700 mb-2 text-sm">Error occurred</p>
-                        <p className="text-xs text-red-600 mb-3">{response.error}</p>
+                        <p className="text-xs text-red-600 mb-3 break-words">{response.error}</p>
                         {response.error.includes('API key') && (
                           <p className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-lg">
                             💡 Please check your API key in settings
@@ -310,7 +310,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   {!response.loading && !response.error && response.content && (
                     <div className="prose prose-sm max-w-none">
                       <div 
-                        className="text-gray-800 text-xs md:text-sm leading-relaxed"
+                        className="text-gray-800 text-xs md:text-sm leading-relaxed break-words"
                         dangerouslySetInnerHTML={{ 
                           __html: parseMarkdown(response.content) 
                         }}

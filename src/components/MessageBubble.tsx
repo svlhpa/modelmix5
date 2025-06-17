@@ -38,7 +38,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
-      <div className={`max-w-3xl ${isUser ? 'order-2' : 'order-1'}`}>
+      <div className={`max-w-3xl min-w-0 ${isUser ? 'order-2' : 'order-1'}`}>
         <div
           className={`px-4 py-3 rounded-2xl ${
             isUser
@@ -67,7 +67,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           )}
           
           <div 
-            className="leading-relaxed"
+            className="leading-relaxed break-words"
             dangerouslySetInnerHTML={{ 
               __html: parseMarkdown(message.content) 
             }}

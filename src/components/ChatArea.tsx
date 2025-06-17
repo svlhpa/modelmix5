@@ -406,12 +406,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const isProUser = currentTier === 'tier2';
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
+    <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
         {/* Mobile menu button - always visible */}
         <button
           onClick={onToggleMobileSidebar}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden"
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden flex-shrink-0"
         >
           <Menu size={20} />
         </button>
@@ -419,15 +419,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         {/* Desktop sidebar toggle */}
         <button
           onClick={onToggleSidebar}
-          className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
         >
           <Menu size={20} />
         </button>
         
-        <Logo variant="text" size="md" className="ml-2" />
-        <div className="ml-auto flex items-center space-x-4 text-sm text-gray-500">
+        <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
+        <div className="ml-auto flex items-center space-x-2 sm:space-x-4 text-sm text-gray-500 min-w-0">
           {/* Tier indicator */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
             {isProUser ? (
               <Crown size={16} className="text-yellow-500" />
             ) : hasAnyGlobalKeyAccess ? (
@@ -435,41 +435,42 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             ) : (
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
             )}
-            <span>
+            <span className="hidden sm:inline">
               {isProUser ? 'Pro Plan' : hasAnyGlobalKeyAccess ? 'Free Trial' : 'Free Plan'}
+            </span>
+            <span className="sm:hidden text-xs">
+              {isProUser ? 'Pro' : hasAnyGlobalKeyAccess ? 'Trial' : 'Free'}
             </span>
           </div>
           
           {/* Usage indicator */}
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1 flex-shrink-0">
             <div className={`w-2 h-2 rounded-full ${usageCheck.canUse ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span>
+            <span className="text-xs">
               {isProUser ? (
                 <div className="flex items-center space-x-1">
-                  <Infinity size={14} />
-                  <span>unlimited</span>
+                  <Infinity size={12} />
+                  <span className="hidden sm:inline">unlimited</span>
                 </div>
               ) : (
-                `${usage}/${limit} conversations`
+                <span>{usage}/{limit}</span>
               )}
             </span>
           </div>
           
           {enabledCount > 0 && (
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 flex-shrink-0">
               <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>
-                {enabledCount} model{enabledCount !== 1 ? 's' : ''} enabled
+              <span className="text-xs">
+                {enabledCount} model{enabledCount !== 1 ? 's' : ''}
                 {isProUser && enabledCount > 3 && (
-                  <span className="ml-1 text-yellow-600">
-                    <Crown size={12} className="inline" />
-                  </span>
+                  <Crown size={10} className="inline ml-1 text-yellow-600" />
                 )}
               </span>
             </div>
           )}
           {messages.length > 0 && (
-            <div className="flex items-center space-x-2">
+            <div className="hidden sm:flex items-center space-x-2">
               <MessageSquare size={16} />
               <span>{Math.ceil(messages.length / 2)} conversation{Math.ceil(messages.length / 2) !== 1 ? 's' : ''}</span>
             </div>
@@ -477,9 +478,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-w-0">
         {showWelcome ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full p-4">
             <div className="text-center max-w-2xl">
               <Logo size="lg" className="mb-6 justify-center" />
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
@@ -585,7 +586,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           </div>
         ) : (
-          <div className="p-4 max-w-7xl mx-auto">
+          <div className="p-4 max-w-7xl mx-auto min-w-0">
             {/* Display conversation messages */}
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
@@ -594,7 +595,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             {/* CRITICAL: Only show current user message if we're in generation mode */}
             {currentUserMessage && (isGenerating || waitingForSelection) && (
               <div className="flex justify-end mb-6">
-                <div className="max-w-3xl">
+                <div className="max-w-3xl min-w-0">
                   <div className="px-4 py-3 rounded-2xl bg-emerald-600 text-white">
                     {currentUserImages && currentUserImages.length > 0 && (
                       <div className="mb-3 flex flex-wrap gap-2">
@@ -608,7 +609,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         ))}
                       </div>
                     )}
-                    <div className="leading-relaxed">{currentUserMessage}</div>
+                    <div className="leading-relaxed break-words">{currentUserMessage}</div>
                   </div>
                 </div>
               </div>
@@ -616,7 +617,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             
             {/* CRITICAL: Show current comparison with REAL-TIME loading animations */}
             {currentResponses.length > 0 && (
-              <div className="mb-8">
+              <div className="mb-8 min-w-0">
                 <ComparisonView 
                   responses={currentResponses} 
                   onSelectResponse={handleSelectResponse}
@@ -626,24 +627,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 {isGenerating && (
                   <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3 text-emerald-700">
-                        <div className="flex space-x-1">
+                      <div className="flex items-center space-x-3 text-emerald-700 min-w-0">
+                        <div className="flex space-x-1 flex-shrink-0">
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
-                        <span className="font-medium">
-                          AI models are mixing responses... (responses appear as they complete)
+                        <span className="font-medium min-w-0">
+                          <span className="hidden sm:inline">AI models are mixing responses... (responses appear as they complete)</span>
+                          <span className="sm:hidden">AI models mixing...</span>
                           {isProUser && enabledCount > 3 && (
                             <span className="ml-2 text-yellow-600">
-                              <Crown size={14} className="inline" /> Pro Power
+                              <Crown size={14} className="inline" /> <span className="hidden sm:inline">Pro Power</span>
                             </span>
                           )}
                         </span>
                       </div>
                       <button
                         onClick={handleStopGeneration}
-                        className="flex items-center space-x-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        className="flex items-center space-x-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex-shrink-0"
                       >
                         <StopCircle size={16} />
                         <span className="hidden sm:inline">Stop Generation</span>
@@ -656,7 +658,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 {waitingForSelection && !isGenerating && !allResponsesHaveErrors && (
                   <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-center space-x-2 text-amber-700">
-                      <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></div>
+                      <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse flex-shrink-0"></div>
                       <span className="font-medium">Select the best response to continue the conversation</span>
                     </div>
                   </div>
@@ -666,11 +668,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 {allResponsesHaveErrors && (
                   <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 text-red-700">
-                        <div className="w-3 h-3 bg-red-400 rounded-full"></div>
+                      <div className="flex items-center space-x-2 text-red-700 min-w-0">
+                        <div className="w-3 h-3 bg-red-400 rounded-full flex-shrink-0"></div>
                         <span className="font-medium">All AI models failed to generate responses</span>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-shrink-0">
                         <button
                           onClick={handleRetryGeneration}
                           className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
@@ -683,7 +685,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                           className="flex items-center space-x-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                         >
                           <SkipForward size={14} />
-                          <span>Skip & Continue</span>
+                          <span>Skip</span>
                         </button>
                       </div>
                     </div>
@@ -700,7 +702,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         )}
       </div>
 
-      <div className="bg-white border-t border-gray-200 p-4">
+      <div className="bg-white border-t border-gray-200 p-4 min-w-0">
         <form onSubmit={handleSubmit} className="max-w-7xl mx-auto">
           {/* Image previews */}
           {images.length > 0 && (
@@ -724,8 +726,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          <div className="flex space-x-3">
-            <div className="flex-1 relative">
+          <div className="flex space-x-3 min-w-0">
+            <div className="flex-1 relative min-w-0">
               <input
                 type="text"
                 value={input}
@@ -750,7 +752,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                   : `Ask anything or upload images to mix ${enabledCount} AI responses...`
                               : "Continue the conversation..."
                 }
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
                 disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
               />
               <button
@@ -768,7 +770,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <button
                 type="button"
                 onClick={handleResetGeneration}
-                className="px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2"
+                className="px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2 flex-shrink-0"
                 title="Reset and start over"
               >
                 <RotateCcw size={18} />
@@ -780,7 +782,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <button
                 type="button"
                 onClick={handleStopGeneration}
-                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2 flex-shrink-0"
               >
                 <StopCircle size={18} />
                 <span className="hidden sm:inline">Stop</span>
@@ -789,7 +791,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <button
                 type="submit"
                 disabled={!input.trim() || !canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
-                className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 flex-shrink-0"
               >
                 <Send size={18} />
                 <span className="hidden sm:inline">
