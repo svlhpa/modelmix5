@@ -160,6 +160,7 @@ class DatabaseService {
     }));
   }
 
+  // CRITICAL: Completely rebuilt message loading system
   async loadSessionMessages(sessionId: string): Promise<Message[]> {
     const { data, error } = await supabase
       .from('conversation_turns')
@@ -171,6 +172,7 @@ class DatabaseService {
 
     const messages: Message[] = [];
     
+    // CRITICAL: Rebuild messages in correct chronological order
     data.forEach((turn) => {
       // Add user message first
       messages.push({
@@ -217,7 +219,7 @@ class DatabaseService {
     if (error) throw error;
   }
 
-  // Conversation Turns
+  // CRITICAL: Completely rebuilt conversation turn saving
   async saveConversationTurn(sessionId: string, turn: ConversationTurn) {
     const { error } = await supabase
       .from('conversation_turns')

@@ -35,12 +35,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const { user, getCurrentTier, getUsageInfo } = useAuth();
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  
+  // State for current AI generation session
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -140,67 +143,35 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     return maxModels === -1 ? Infinity : maxModels; // Pro tier has unlimited models
   };
 
-  const getAvailableModelsCount = async () => {
-    // Load current API settings to check what's available
-    const apiSettings = await aiService.loadSettings();
-    let availableCount = 0;
-
-    // Check traditional models
-    if (modelSettings.openai && (apiSettings.openai || globalKeysAvailable.openai)) availableCount++;
-    if (modelSettings.gemini && (apiSettings.gemini || globalKeysAvailable.gemini)) availableCount++;
-    if (modelSettings.deepseek && (apiSettings.deepseek || globalKeysAvailable.deepseek)) availableCount++;
-
-    // Check OpenRouter models
-    if (apiSettings.openrouter || globalKeysAvailable.openrouter) {
-      const enabledOpenRouterCount = Object.values(modelSettings.openrouter_models).filter(Boolean).length;
-      availableCount += enabledOpenRouterCount;
+  // Reset generation state
+  const resetGenerationState = () => {
+    setIsGenerating(false);
+    setWaitingForSelection(false);
+    setCurrentResponses([]);
+    setCurrentUserMessage('');
+    setCurrentUserImages([]);
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
     }
-
-    return availableCount;
   };
 
   const handleStopGeneration = () => {
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-    }
-    
-    setIsGenerating(false);
-    setWaitingForSelection(false);
-    setCurrentResponses([]);
-    setCurrentUserMessage('');
-    setCurrentUserImages([]);
+    resetGenerationState();
   };
 
   const handleResetGeneration = () => {
-    setIsGenerating(false);
-    setWaitingForSelection(false);
-    setCurrentResponses([]);
-    setCurrentUserMessage('');
-    setCurrentUserImages([]);
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-    }
+    resetGenerationState();
   };
 
   const handleSkipSelection = () => {
-    // Skip the current generation and allow user to continue
-    setCurrentResponses([]);
-    setCurrentUserMessage('');
-    setCurrentUserImages([]);
-    setWaitingForSelection(false);
-    setIsGenerating(false);
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-    }
+    resetGenerationState();
   };
 
   const handleRetryGeneration = async () => {
     if (!currentUserMessage) return;
     
-    // Reset state
+    // Reset state and start fresh generation
     setIsGenerating(true);
     setWaitingForSelection(false);
     
@@ -210,7 +181,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setCurrentResponses([]);
     
-    // Build conversation context from current messages
+    // Build conversation context from current messages + the user message we're retrying
     const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
     messages.forEach(msg => {
       contextMessages.push({ 
@@ -247,7 +218,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // Generation was intentionally stopped
         console.log('Generation stopped by user');
       } else {
         console.error('Error getting responses:', error);
@@ -257,6 +227,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  // Main form submission handler - completely rebuilt
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
@@ -284,8 +255,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     const message = input.trim();
     const messageImages = [...images];
     
+    // Clear input immediately
     setInput('');
     setImages([]);
+    
+    // Store current generation context
     setCurrentUserMessage(message);
     setCurrentUserImages(messageImages);
     setWaitingForSelection(false);
@@ -296,45 +270,45 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setAbortController(controller);
     
     setCurrentResponses([]);
-    
-    // Build conversation context from current messages
-    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
-    messages.forEach(msg => {
-      contextMessages.push({ 
-        role: msg.role, 
-        content: msg.content 
-      });
-    });
-    contextMessages.push({ role: 'user', content: message });
 
-    // Get responses with real-time updates
     try {
-      await aiService.getResponses(
-        message, 
-        contextMessages, 
-        messageImages,
-        (updatedResponses) => {
-          // Check if generation was aborted
-          if (controller.signal.aborted) {
-            return;
-          }
-          
-          setCurrentResponses([...updatedResponses]);
-          
-          // Check if all responses are complete
-          const allComplete = updatedResponses.every(r => !r.loading);
-          if (allComplete) {
-            setIsGenerating(false);
-            setWaitingForSelection(true);
-            setAbortController(null);
-          }
-        },
-        controller.signal,
-        currentTier
-      );
+      // Send message through the hook - this will update the session state
+      const responses = await onSendMessage(message, messageImages);
+      
+      // If we got responses immediately, set them up for selection
+      if (responses && responses.length > 0) {
+        setCurrentResponses(responses);
+        setIsGenerating(false);
+        setWaitingForSelection(true);
+        setAbortController(null);
+      } else {
+        // Start real-time response generation
+        await aiService.getResponses(
+          message, 
+          [], // Context is handled in the hook
+          messageImages,
+          (updatedResponses) => {
+            // Check if generation was aborted
+            if (controller.signal.aborted) {
+              return;
+            }
+            
+            setCurrentResponses([...updatedResponses]);
+            
+            // Check if all responses are complete
+            const allComplete = updatedResponses.every(r => !r.loading);
+            if (allComplete) {
+              setIsGenerating(false);
+              setWaitingForSelection(true);
+              setAbortController(null);
+            }
+          },
+          controller.signal,
+          currentTier
+        );
+      }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // Generation was intentionally stopped
         console.log('Generation stopped by user');
       } else {
         console.error('Error getting responses:', error);
@@ -344,14 +318,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  // Response selection handler - rebuilt for proper state management
   const handleSelectResponse = async (selectedResponse: APIResponse) => {
+    // Call the hook's selectResponse function
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
-    setCurrentResponses([]);
-    setCurrentUserMessage('');
-    setCurrentUserImages([]);
-    setWaitingForSelection(false);
-    setIsGenerating(false);
-    setAbortController(null);
+    
+    // Reset generation state
+    resetGenerationState();
 
     // Increment usage counter (Pro users don't increment)
     await tierService.incrementUsage();

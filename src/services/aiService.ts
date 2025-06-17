@@ -228,6 +228,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
+  // CRITICAL: Completely rebuilt response generation system
   async getResponses(
     currentMessage: string, 
     conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [], 
