@@ -48,6 +48,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
+  const [internetSearchAvailable, setInternetSearchAvailable] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,19 +68,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const checkGlobalKeysAvailability = async () => {
-    const providers = ['openai', 'gemini', 'deepseek', 'openrouter'];
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'serper'];
     const availability: Record<string, boolean> = {};
     
     for (const provider of providers) {
       try {
         const globalKey = await globalApiService.getGlobalApiKey(provider, currentTier);
-        availability[provider] = !!globalKey;
+        availability[provider] = !!globalKey && globalKey !== 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN';
       } catch (error) {
         availability[provider] = false;
       }
     }
     
     setGlobalKeysAvailable(availability);
+    setInternetSearchAvailable(availability.serper);
   };
 
   const scrollToBottom = () => {
@@ -496,6 +498,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </h2>
               <p className="text-gray-600 mb-6">
                 Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
+                {internetSearchAvailable && (
+                  <span className="block mt-2 text-blue-600 font-medium">
+                    🌐 Internet search is available! Toggle it on to get real-time information.
+                  </span>
+                )}
               </p>
               
               {!usageCheck.canUse ? (
@@ -576,6 +583,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         ? 'Unlimited conversations and models with Pro plan!'
                         : 'Including traditional models and OpenRouter\'s extensive collection'
                     }
+                    {internetSearchAvailable && (
+                      <span className="block mt-1 text-blue-600">
+                        🌐 Internet search available for real-time information!
+                      </span>
+                    )}
                   </p>
                   {hasAnyGlobalKeyAccess && !isProUser && (
                     <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
@@ -745,28 +757,30 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           )}
           
           {/* Internet Search Toggle */}
-          <div className="mb-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setUseInternetSearch(!useInternetSearch)}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
-                useInternetSearch
-                  ? 'bg-blue-50 border-blue-300 text-blue-700'
-                  : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Globe size={16} />
-              <span className="text-sm font-medium">
-                {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
-              </span>
-            </button>
-            
-            {useInternetSearch && (
-              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                AI will search the web for current information
-              </span>
-            )}
-          </div>
+          {internetSearchAvailable && (
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setUseInternetSearch(!useInternetSearch)}
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
+                  useInternetSearch
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Globe size={16} />
+                <span className="text-sm font-medium">
+                  {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
+                </span>
+              </button>
+              
+              {useInternetSearch && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                  AI will search the web for current information
+                </span>
+              )}
+            </div>
+          )}
           
           <div className="flex space-x-3 min-w-0">
             <div className="flex-1 relative min-w-0">
@@ -905,10 +919,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
               {hasAnyGlobalKeyAccess && !isProUser 
-                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context • Toggle internet search for real-time info`
+                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
                 : isProUser
-                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context • Toggle internet search for real-time info`
-                  : `📎 Upload images or paste screenshots for visual context • Toggle internet search for real-time info • ${usage}/${limit} conversations used this month`
+                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
+                  : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''} • ${usage}/${limit} conversations used this month`
               }
             </p>
           )}

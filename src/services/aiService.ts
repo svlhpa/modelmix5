@@ -91,7 +91,7 @@ class AIService {
       isGlobal = false;
     }
 
-    if (!apiKey || apiKey.trim() === '') {
+    if (!apiKey || apiKey.trim() === '' || apiKey === 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN') {
       throw new Error('Internet search is not available. Please contact support or configure your own Serper API key.');
     }
 
@@ -120,29 +120,32 @@ class AIService {
         await globalApiService.incrementGlobalUsage('serper');
       }
       
-      // Format search results
-      let searchResults = 'Recent search results:\n\n';
+      // Format search results in a clear, structured way
+      let searchResults = '=== CURRENT INTERNET SEARCH RESULTS ===\n\n';
       
+      if (data.answerBox) {
+        searchResults += `QUICK ANSWER: ${data.answerBox.answer || data.answerBox.snippet}\n\n`;
+      }
+
+      if (data.knowledgeGraph) {
+        searchResults += `KNOWLEDGE GRAPH: ${data.knowledgeGraph.description}\n\n`;
+      }
+
       if (data.organic && data.organic.length > 0) {
+        searchResults += 'TOP SEARCH RESULTS:\n';
         data.organic.forEach((result: any, index: number) => {
-          searchResults += `${index + 1}. ${result.title}\n`;
+          searchResults += `\n${index + 1}. ${result.title}\n`;
           if (result.snippet) {
-            searchResults += `   ${result.snippet}\n`;
+            searchResults += `   Summary: ${result.snippet}\n`;
           }
           if (result.link) {
             searchResults += `   Source: ${result.link}\n`;
           }
-          searchResults += '\n';
         });
       }
 
-      if (data.answerBox) {
-        searchResults += `Quick Answer: ${data.answerBox.answer || data.answerBox.snippet}\n\n`;
-      }
-
-      if (data.knowledgeGraph) {
-        searchResults += `Knowledge Graph: ${data.knowledgeGraph.description}\n\n`;
-      }
+      searchResults += '\n=== END OF SEARCH RESULTS ===\n\n';
+      searchResults += 'IMPORTANT: Use the above current information from the internet to provide an accurate, up-to-date response. Reference specific details from these search results in your answer.';
 
       return searchResults.trim();
     } catch (error) {
@@ -313,30 +316,39 @@ class AIService {
     userTier?: string,
     useInternetSearch: boolean = false
   ): Promise<APIResponse[]> {
-    let enhancedMessage = currentMessage;
     let enhancedHistory = [...conversationHistory];
+    let searchResults = '';
 
     // Perform internet search if requested
     if (useInternetSearch) {
       try {
-        const searchResults = await this.callSerper(currentMessage, signal);
+        searchResults = await this.callSerper(currentMessage, signal);
         
-        // Add search results as context to the message
-        enhancedMessage = `${currentMessage}\n\n[Internet Search Results]:\n${searchResults}\n\nPlease use the above search results to provide an accurate and up-to-date response.`;
-        
-        // Update the last message in history with enhanced content
-        if (enhancedHistory.length > 0 && enhancedHistory[enhancedHistory.length - 1].role === 'user') {
-          enhancedHistory[enhancedHistory.length - 1] = {
-            ...enhancedHistory[enhancedHistory.length - 1],
-            content: enhancedMessage
+        // Create a new enhanced message that includes search results
+        const lastUserMessageIndex = enhancedHistory.length - 1;
+        if (lastUserMessageIndex >= 0 && enhancedHistory[lastUserMessageIndex].role === 'user') {
+          // Update the last user message to include search results
+          enhancedHistory[lastUserMessageIndex] = {
+            ...enhancedHistory[lastUserMessageIndex],
+            content: `${enhancedHistory[lastUserMessageIndex].content}\n\n${searchResults}`
           };
         } else {
-          enhancedHistory.push({ role: 'user', content: enhancedMessage });
+          // Add a new message with search results
+          enhancedHistory.push({ 
+            role: 'user', 
+            content: `${currentMessage}\n\n${searchResults}` 
+          });
         }
       } catch (error) {
         console.error('Internet search failed:', error);
-        // Continue without search results if search fails
-        enhancedMessage = `${currentMessage}\n\n[Note: Internet search was requested but failed. Providing response based on training data only.]`;
+        // Add a note about search failure but continue
+        const lastUserMessageIndex = enhancedHistory.length - 1;
+        if (lastUserMessageIndex >= 0 && enhancedHistory[lastUserMessageIndex].role === 'user') {
+          enhancedHistory[lastUserMessageIndex] = {
+            ...enhancedHistory[lastUserMessageIndex],
+            content: `${enhancedHistory[lastUserMessageIndex].content}\n\n[Note: Internet search was requested but failed. Please provide the best response based on your training data.]`
+          };
+        }
       }
     }
 
