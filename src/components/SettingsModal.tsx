@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift } from 'lucide-react';
+import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 import { globalApiService } from '../services/globalApiService';
@@ -36,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
+  const [globalSerperAvailable, setGlobalSerperAvailable] = useState(false);
 
   const currentTier = getCurrentTier();
 
@@ -63,7 +64,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, activeTab]);
 
   const checkGlobalKeysAvailability = async () => {
-    const providers = ['openai', 'gemini', 'deepseek', 'openrouter'];
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'serper'];
     const availability: Record<string, boolean> = {};
     
     for (const provider of providers) {
@@ -76,6 +77,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
     
     setGlobalKeysAvailable(availability);
+    setGlobalSerperAvailable(availability.serper);
   };
 
   const loadOpenRouterModels = async () => {
@@ -288,8 +290,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <li>• ✅ Free access to multiple AI models</li>
                       <li>• ✅ 50 conversations per month</li>
                       <li>• ✅ Compare up to 3 models simultaneously</li>
+                      {globalSerperAvailable && <li>• 🌐 Internet search enabled for all users</li>}
                       <li>• 🔧 Configure your own API keys for unlimited usage</li>
                     </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Internet Search Notice */}
+            {globalSerperAvailable && (
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <Globe className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <h4 className="font-medium text-blue-800 mb-1">🌐 Internet Search Available!</h4>
+                    <p className="text-sm text-blue-700">
+                      Internet search is enabled for all users through our global Serper API. 
+                      Toggle the "Use Internet Search" button in the chat to get real-time information.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -299,6 +318,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {apiProviders.map((provider) => {
                 const hasPersonalKey = hasPersonalApiKey(provider.key);
                 const hasGlobalAccess = hasGlobalKeyAccess(provider.key);
+                const isSerper = provider.key === 'serper';
                 
                 return (
                   <div key={provider.key} className="border border-gray-200 rounded-lg p-4">
@@ -306,22 +326,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div>
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className="font-medium text-gray-900">{provider.name}</h4>
-                          {hasGlobalAccess && provider.key !== 'serper' && (
+                          {hasGlobalAccess && !isSerper && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               <Gift size={10} className="mr-1" />
                               Free Trial
                             </span>
                           )}
-                          {provider.key === 'serper' && (
+                          {isSerper && globalSerperAvailable && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              🌐 Internet Search
+                              <Globe size={10} className="mr-1" />
+                              Available Globally
                             </span>
                           )}
                         </div>
                         <p className="text-sm text-gray-500">{provider.description}</p>
-                        {hasGlobalAccess && provider.key !== 'serper' && (
+                        {hasGlobalAccess && !isSerper && (
                           <p className="text-xs text-green-600 mt-1">
                             ✅ Available through free trial - no API key needed
+                          </p>
+                        )}
+                        {isSerper && globalSerperAvailable && (
+                          <p className="text-xs text-blue-600 mt-1">
+                            🌐 Internet search is available for all users
                           </p>
                         )}
                       </div>
@@ -341,7 +367,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type={showKeys[provider.key] ? 'text' : 'password'}
                         value={settings[provider.key]}
                         onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
-                        placeholder={hasGlobalAccess && provider.key !== 'serper' ? `${provider.placeholder} (optional - free trial active)` : provider.placeholder}
+                        placeholder={
+                          isSerper && globalSerperAvailable 
+                            ? `${provider.placeholder} (optional - available globally)`
+                            : hasGlobalAccess && !isSerper 
+                              ? `${provider.placeholder} (optional - free trial active)` 
+                              : provider.placeholder
+                        }
                         className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       />
                       <button
@@ -374,7 +406,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <li>• <strong>Free Trial:</strong> Use our global API keys with monthly limits</li>
                     <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
                     <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
-                    <li>• <strong>Serper:</strong> Enables internet search for real-time information (requires personal API key)</li>
+                    <li>• <strong>Internet Search:</strong> {globalSerperAvailable ? 'Available globally for all users' : 'Requires personal Serper API key'}</li>
                     <li>• Personal API keys always take priority over free trial access</li>
                   </ul>
                 </div>
@@ -637,6 +669,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ? 'Free trial uses secure global API keys. Personal API keys are stored securely in your account and never shared.'
                   : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
                 }
+                {globalSerperAvailable && ' Internet search is powered by our global Serper API for all users.'}
               </p>
             </div>
           </div>

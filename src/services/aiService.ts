@@ -80,9 +80,19 @@ class AIService {
   }
 
   private async callSerper(query: string, signal?: AbortSignal): Promise<string> {
-    const apiKey = this.settings.serper;
+    // Try to get global Serper API key first
+    const globalKey = await globalApiService.getGlobalApiKey('serper', 'tier1');
+    let apiKey = globalKey;
+    let isGlobal = true;
+
+    // If no global key, try user's personal key
+    if (!apiKey) {
+      apiKey = this.settings.serper;
+      isGlobal = false;
+    }
+
     if (!apiKey || apiKey.trim() === '') {
-      throw new Error('Serper API key not configured. Please add your Serper API key in settings.');
+      throw new Error('Internet search is not available. Please contact support or configure your own Serper API key.');
     }
 
     try {
@@ -100,10 +110,15 @@ class AIService {
       });
 
       if (!response.ok) {
-        throw new Error(`Serper API error: ${response.status}`);
+        throw new Error(`Internet search failed: ${response.status}`);
       }
 
       const data = await response.json();
+      
+      // Increment global usage if using global key
+      if (isGlobal && globalKey) {
+        await globalApiService.incrementGlobalUsage('serper');
+      }
       
       // Format search results
       let searchResults = 'Recent search results:\n\n';
