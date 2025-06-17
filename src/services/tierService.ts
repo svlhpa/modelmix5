@@ -13,6 +13,7 @@ class TierService {
         'Up to 50 conversations per month',
         'Compare up to 3 AI models',
         'Basic analytics',
+        'Free trial access to select models',
         'Standard support'
       ],
       price: 0
@@ -20,15 +21,17 @@ class TierService {
     tier2: {
       tier: 'tier2',
       name: 'Pro',
-      monthlyConversations: 1000,
-      maxModelsPerComparison: 10,
+      monthlyConversations: -1, // -1 indicates unlimited
+      maxModelsPerComparison: -1, // -1 indicates unlimited
       features: [
-        'Up to 1,000 conversations per month',
-        'Compare up to 10 AI models',
+        'Unlimited conversations per month',
+        'Compare unlimited AI models',
         'Advanced analytics',
         'Priority support',
         'Export conversations',
-        'Custom model configurations'
+        'Custom model configurations',
+        'Access to all premium models',
+        'Faster response times'
       ],
       price: 999 // $9.99 in cents
     }
@@ -99,7 +102,16 @@ class TierService {
     const currentTier = await this.getCurrentTier();
     const limits = this.getTierLimits(currentTier);
     
-    // Check if we need to reset monthly counter
+    // Pro users have unlimited conversations
+    if (currentTier === 'tier2') {
+      return {
+        canUse: true,
+        usage: profile.monthly_conversations,
+        limit: -1 // Unlimited
+      };
+    }
+    
+    // Check if we need to reset monthly counter for free tier
     const lastReset = new Date(profile.last_reset_date);
     const now = new Date();
     const isNewMonth = lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear();
@@ -131,6 +143,12 @@ class TierService {
   async incrementUsage(): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    // Check if user is Pro - if so, don't increment (unlimited)
+    const currentTier = await this.getCurrentTier();
+    if (currentTier === 'tier2') {
+      return; // Pro users have unlimited usage
+    }
 
     const { error } = await supabase.rpc('increment_usage', {
       user_id: user.id
@@ -198,6 +216,7 @@ class TierService {
   }
 
   getUsagePercentage(usage: number, limit: number): number {
+    if (limit === -1) return 0; // Unlimited usage shows 0%
     return Math.min((usage / limit) * 100, 100);
   }
 
@@ -213,6 +232,30 @@ class TierService {
     if (percentage >= 75) return 'bg-orange-500';
     if (percentage >= 50) return 'bg-yellow-500';
     return 'bg-green-500';
+  }
+
+  // Helper method to check if a tier has unlimited feature
+  isUnlimited(tier: UserTier, feature: 'conversations' | 'models'): boolean {
+    const limits = this.getTierLimits(tier);
+    if (feature === 'conversations') {
+      return limits.monthlyConversations === -1;
+    }
+    if (feature === 'models') {
+      return limits.maxModelsPerComparison === -1;
+    }
+    return false;
+  }
+
+  // Get display text for limits
+  getDisplayLimit(tier: UserTier, feature: 'conversations' | 'models'): string {
+    const limits = this.getTierLimits(tier);
+    if (feature === 'conversations') {
+      return limits.monthlyConversations === -1 ? 'Unlimited' : limits.monthlyConversations.toString();
+    }
+    if (feature === 'models') {
+      return limits.maxModelsPerComparison === -1 ? 'Unlimited' : limits.maxModelsPerComparison.toString();
+    }
+    return '0';
   }
 }
 

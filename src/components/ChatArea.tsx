@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -136,7 +136,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const getMaxAllowedModels = () => {
-    return getTierLimits().maxModelsPerComparison;
+    const maxModels = getTierLimits().maxModelsPerComparison;
+    return maxModels === -1 ? Infinity : maxModels; // Pro tier has unlimited models
   };
 
   const getAvailableModelsCount = async () => {
@@ -260,7 +261,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
 
-    // Check usage limits
+    // Check usage limits (Pro users have unlimited)
     if (!usageCheck.canUse) {
       onTierUpgrade();
       return;
@@ -274,7 +275,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       return;
     }
 
-    if (enabledCount > maxAllowed) {
+    // Pro users can use unlimited models
+    if (currentTier !== 'tier2' && enabledCount > maxAllowed) {
       alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
       return;
     }
@@ -351,7 +353,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setIsGenerating(false);
     setAbortController(null);
 
-    // Increment usage counter
+    // Increment usage counter (Pro users don't increment)
     await tierService.incrementUsage();
     await checkUsageLimit(); // Refresh usage info
   };
@@ -422,6 +424,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const enabledCount = getEnabledModelsCount();
   const maxAllowed = getMaxAllowedModels();
   const tierLimits = getTierLimits();
+  const isProUser = currentTier === 'tier2';
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50">
@@ -446,7 +449,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         <div className="ml-auto flex items-center space-x-4 text-sm text-gray-500">
           {/* Tier indicator */}
           <div className="flex items-center space-x-2">
-            {currentTier === 'tier2' ? (
+            {isProUser ? (
               <Crown size={16} className="text-yellow-500" />
             ) : hasAnyGlobalKeyAccess ? (
               <Gift size={16} className="text-green-500" />
@@ -454,20 +457,36 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
             )}
             <span>
-              {currentTier === 'tier2' ? 'Pro Plan' : hasAnyGlobalKeyAccess ? 'Free Trial' : 'Free Plan'}
+              {isProUser ? 'Pro Plan' : hasAnyGlobalKeyAccess ? 'Free Trial' : 'Free Plan'}
             </span>
           </div>
           
           {/* Usage indicator */}
           <div className="flex items-center space-x-1">
             <div className={`w-2 h-2 rounded-full ${usageCheck.canUse ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span>{usage}/{limit} conversations</span>
+            <span>
+              {isProUser ? (
+                <div className="flex items-center space-x-1">
+                  <Infinity size={14} />
+                  <span>unlimited</span>
+                </div>
+              ) : (
+                `${usage}/${limit} conversations`
+              )}
+            </span>
           </div>
           
           {enabledCount > 0 && (
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>{enabledCount} model{enabledCount !== 1 ? 's' : ''} enabled</span>
+              <span>
+                {enabledCount} model{enabledCount !== 1 ? 's' : ''} enabled
+                {isProUser && enabledCount > 3 && (
+                  <span className="ml-1 text-yellow-600">
+                    <Crown size={12} className="inline" />
+                  </span>
+                )}
+              </span>
             </div>
           )}
           {messages.length > 0 && (
@@ -500,7 +519,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <span className="font-medium">Monthly limit reached!</span>
                   </div>
                   <p className="text-sm text-amber-600 mb-3">
-                    You've used all {limit} conversations for this month. Upgrade to Pro for more conversations.
+                    You've used all {limit} conversations for this month. Upgrade to Pro for unlimited conversations.
                   </p>
                   <button
                     onClick={onTierUpgrade}
@@ -519,7 +538,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <span className="font-medium">No AI models enabled! Please configure models in settings.</span>
                   </div>
                 </div>
-              ) : enabledCount > maxAllowed ? (
+              ) : !isProUser && enabledCount > maxAllowed ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-center space-x-2 text-amber-700 mb-3">
                     <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
@@ -537,15 +556,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     >
                       Adjust Settings
                     </button>
-                    {currentTier === 'tier1' && (
-                      <button
-                        onClick={onTierUpgrade}
-                        className="inline-flex items-center space-x-1 px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors"
-                      >
-                        <Crown size={14} />
-                        <span>Upgrade</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={onTierUpgrade}
+                      className="inline-flex items-center space-x-1 px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors"
+                    >
+                      <Crown size={14} />
+                      <span>Upgrade for Unlimited</span>
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -554,18 +571,34 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center">
                       <span className="text-white text-xs font-bold">✓</span>
                     </div>
-                    <span className="font-medium">{enabledCount} AI models ready for comparison!</span>
+                    <span className="font-medium">
+                      {enabledCount} AI model{enabledCount !== 1 ? 's' : ''} ready for comparison!
+                      {isProUser && enabledCount > 3 && (
+                        <span className="ml-2 inline-flex items-center space-x-1 text-yellow-700">
+                          <Crown size={14} />
+                          <span className="text-xs">Pro Power</span>
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <p className="text-sm text-green-600">
-                    {hasAnyGlobalKeyAccess && currentTier === 'tier1' 
+                    {hasAnyGlobalKeyAccess && !isProUser 
                       ? 'Using free trial access - no API keys needed!'
-                      : 'Including traditional models and OpenRouter\'s extensive collection'
+                      : isProUser
+                        ? 'Unlimited conversations and models with Pro plan!'
+                        : 'Including traditional models and OpenRouter\'s extensive collection'
                     }
                   </p>
-                  {hasAnyGlobalKeyAccess && currentTier === 'tier1' && (
+                  {hasAnyGlobalKeyAccess && !isProUser && (
                     <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
                       <Gift size={12} />
                       <span>Free trial powered by global API keys</span>
+                    </div>
+                  )}
+                  {isProUser && (
+                    <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-yellow-600">
+                      <Crown size={12} />
+                      <span>Pro plan: unlimited everything!</span>
                     </div>
                   )}
                 </div>
@@ -620,7 +653,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
-                        <span className="font-medium">AI models are mixing responses... (responses appear as they complete)</span>
+                        <span className="font-medium">
+                          AI models are mixing responses... (responses appear as they complete)
+                          {isProUser && enabledCount > 3 && (
+                            <span className="ml-2 text-yellow-600">
+                              <Crown size={14} className="inline" /> Pro Power
+                            </span>
+                          )}
+                        </span>
                       </div>
                       <button
                         onClick={handleStopGeneration}
@@ -717,26 +757,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     ? "Monthly limit reached - upgrade to continue..."
                     : enabledCount === 0
                       ? "Please enable AI models in settings first..."
-                      : enabledCount > maxAllowed
+                      : !isProUser && enabledCount > maxAllowed
                         ? `Too many models selected (max ${maxAllowed} for ${tierLimits.name} plan)...`
                         : isGenerating
                           ? "AI models are mixing responses..."
                           : waitingForSelection 
                             ? "Select a response above to continue..." 
                             : messages.length === 0
-                              ? hasAnyGlobalKeyAccess && currentTier === 'tier1'
+                              ? hasAnyGlobalKeyAccess && !isProUser
                                 ? `Ask anything - free trial with ${enabledCount} AI models active!`
-                                : `Ask anything or upload images to mix ${enabledCount} AI responses...`
+                                : isProUser
+                                  ? `Ask anything - Pro plan with ${enabledCount} AI models ready!`
+                                  : `Ask anything or upload images to mix ${enabledCount} AI responses...`
                               : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-                disabled={!canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
+                disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-100 transition-colors"
-                disabled={!canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
+                disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
               >
                 <Paperclip size={18} className="text-gray-400" />
               </button>
@@ -767,7 +809,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             ) : (
               <button
                 type="submit"
-                disabled={!input.trim() || !canSendMessage || enabledCount === 0 || enabledCount > maxAllowed}
+                disabled={!input.trim() || !canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
                 className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
               >
                 <Send size={18} />
@@ -781,14 +823,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {!usageCheck.canUse && (
             <div className="text-center mt-2">
               <p className="text-xs text-red-600 mb-2">
-                ⚠️ Monthly limit reached ({usage}/{limit} conversations used)
+                ⚠️ Monthly limit reached ({usage}/{limit === -1 ? '∞' : limit} conversations used)
               </p>
               <button
                 onClick={onTierUpgrade}
                 className="inline-flex items-center space-x-1 text-xs bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors"
               >
                 <Crown size={12} />
-                <span>Upgrade to Pro for 1,000 conversations/month</span>
+                <span>Upgrade to Pro for unlimited conversations</span>
               </button>
             </div>
           )}
@@ -799,20 +841,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </p>
           )}
 
-          {enabledCount > maxAllowed && usageCheck.canUse && (
+          {!isProUser && enabledCount > maxAllowed && usageCheck.canUse && (
             <div className="text-center mt-2">
               <p className="text-xs text-amber-600 mb-2">
                 ⚠️ {enabledCount} models selected, but {tierLimits.name} plan allows max {maxAllowed}
               </p>
-              {currentTier === 'tier1' && (
-                <button
-                  onClick={onTierUpgrade}
-                  className="inline-flex items-center space-x-1 text-xs bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors"
-                >
-                  <Crown size={12} />
-                  <span>Upgrade to Pro for up to 10 models</span>
-                </button>
-              )}
+              <button
+                onClick={onTierUpgrade}
+                className="inline-flex items-center space-x-1 text-xs bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                <Crown size={12} />
+                <span>Upgrade to Pro for unlimited models</span>
+              </button>
             </div>
           )}
           
@@ -831,14 +871,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {isGenerating && enabledCount > 0 && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
               🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''} - click Stop to cancel generation
+              {isProUser && enabledCount > 3 && (
+                <span className="ml-2 text-yellow-600">
+                  <Crown size={12} className="inline" /> Pro Power
+                </span>
+              )}
             </p>
           )}
           
-          {enabledCount > 0 && enabledCount <= maxAllowed && !isGenerating && !waitingForSelection && usageCheck.canUse && (
+          {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
-              {hasAnyGlobalKeyAccess && currentTier === 'tier1' 
+              {hasAnyGlobalKeyAccess && !isProUser 
                 ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context`
-                : `📎 Upload images or paste screenshots for visual context • ${usage}/${limit} conversations used this month`
+                : isProUser
+                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context`
+                  : `📎 Upload images or paste screenshots for visual context • ${usage}/${limit} conversations used this month`
               }
             </p>
           )}

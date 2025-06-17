@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Check, Zap, Star, CreditCard, Loader2 } from 'lucide-react';
+import { X, Crown, Check, Zap, Star, CreditCard, Loader2, Infinity } from 'lucide-react';
 import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -71,6 +71,18 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     }
   };
 
+  const formatLimit = (value: number, type: 'conversations' | 'models') => {
+    if (value === -1) {
+      return (
+        <div className="flex items-center space-x-1">
+          <Infinity size={16} />
+          <span>Unlimited</span>
+        </div>
+      );
+    }
+    return value.toString();
+  };
+
   const isCurrentTier = (tier: UserTier) => tier === currentTier;
   const isUpgrade = (tier: UserTier) => {
     const tierOrder = { tier1: 1, tier2: 2 };
@@ -89,7 +101,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Choose Your Plan</h2>
-              <p className="text-sm text-gray-500">Unlock more AI models and conversations</p>
+              <p className="text-sm text-gray-500">Unlock unlimited AI models and conversations</p>
             </div>
           </div>
           <button
@@ -159,12 +171,14 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Monthly Conversations</span>
                   <span className="font-medium text-gray-900">
-                    {tier.monthlyConversations === 1000 ? '1,000' : tier.monthlyConversations}
+                    {formatLimit(tier.monthlyConversations, 'conversations')}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">AI Models per Comparison</span>
-                  <span className="font-medium text-gray-900">{tier.maxModelsPerComparison}</span>
+                  <span className="font-medium text-gray-900">
+                    {formatLimit(tier.maxModelsPerComparison, 'models')}
+                  </span>
                 </div>
               </div>
 
@@ -203,12 +217,14 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
           <div className="flex items-start space-x-2">
             <Zap className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
             <div>
-              <h4 className="font-medium text-blue-800 mb-1">Why Upgrade?</h4>
+              <h4 className="font-medium text-blue-800 mb-1">Why Upgrade to Pro?</h4>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Compare more AI models simultaneously for better insights</li>
-                <li>• Higher conversation limits for power users</li>
-                <li>• Advanced analytics to track AI performance</li>
-                <li>• Priority support and new features first</li>
+                <li>• <strong>Unlimited Conversations:</strong> No monthly limits - chat as much as you want</li>
+                <li>• <strong>Unlimited AI Models:</strong> Compare responses from as many models as you like</li>
+                <li>• <strong>Advanced Analytics:</strong> Deep insights into AI performance patterns</li>
+                <li>• <strong>Priority Support:</strong> Get help faster when you need it</li>
+                <li>• <strong>Export Features:</strong> Download your conversations and data</li>
+                <li>• <strong>Early Access:</strong> Be first to try new features and models</li>
               </ul>
             </div>
           </div>
@@ -217,6 +233,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
             All plans include secure data storage, conversation history, and access to our growing library of AI models.
+            Pro plan removes all limits and unlocks premium features.
           </p>
         </div>
       </div>
