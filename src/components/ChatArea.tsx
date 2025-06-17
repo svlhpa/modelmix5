@@ -36,7 +36,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
   
-  // State for current AI generation session
+  // CRITICAL: Separate state for AI generation session
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
@@ -227,7 +227,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  // Main form submission handler - completely rebuilt
+  // CRITICAL: Completely rebuilt form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
@@ -272,41 +272,46 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setCurrentResponses([]);
 
     try {
-      // Send message through the hook - this will update the session state
-      const responses = await onSendMessage(message, messageImages);
+      // CRITICAL: Don't call onSendMessage here - it adds the user message to the session
+      // Instead, directly generate AI responses and let the user select one
+      // The user message will be added when they select a response
       
-      // If we got responses immediately, set them up for selection
-      if (responses && responses.length > 0) {
-        setCurrentResponses(responses);
-        setIsGenerating(false);
-        setWaitingForSelection(true);
-        setAbortController(null);
-      } else {
-        // Start real-time response generation
-        await aiService.getResponses(
-          message, 
-          [], // Context is handled in the hook
-          messageImages,
-          (updatedResponses) => {
-            // Check if generation was aborted
-            if (controller.signal.aborted) {
-              return;
-            }
-            
-            setCurrentResponses([...updatedResponses]);
-            
-            // Check if all responses are complete
-            const allComplete = updatedResponses.every(r => !r.loading);
-            if (allComplete) {
-              setIsGenerating(false);
-              setWaitingForSelection(true);
-              setAbortController(null);
-            }
-          },
-          controller.signal,
-          currentTier
-        );
-      }
+      // Build conversation context from existing messages only
+      const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
+      messages.forEach(msg => {
+        contextMessages.push({ 
+          role: msg.role, 
+          content: msg.content 
+        });
+      });
+      // Add the current message to context for AI generation
+      contextMessages.push({ role: 'user', content: message });
+
+      // Start real-time response generation with loading animations
+      await aiService.getResponses(
+        message, 
+        contextMessages,
+        messageImages,
+        (updatedResponses) => {
+          // Check if generation was aborted
+          if (controller.signal.aborted) {
+            return;
+          }
+          
+          // CRITICAL: Update responses as they come in (real-time loading)
+          setCurrentResponses([...updatedResponses]);
+          
+          // Check if all responses are complete
+          const allComplete = updatedResponses.every(r => !r.loading);
+          if (allComplete) {
+            setIsGenerating(false);
+            setWaitingForSelection(true);
+            setAbortController(null);
+          }
+        },
+        controller.signal,
+        currentTier
+      );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Generation stopped by user');
@@ -318,9 +323,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  // Response selection handler - rebuilt for proper state management
+  // CRITICAL: Response selection handler - this is where we add messages to the session
   const handleSelectResponse = async (selectedResponse: APIResponse) => {
-    // Call the hook's selectResponse function
+    // CRITICAL: Now we add both the user message AND the selected response to the session
+    // This prevents the duplicate issue
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
     
     // Reset generation state
@@ -585,7 +591,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <MessageBubble key={message.id} message={message} />
             ))}
             
-            {/* Show current user message if we're waiting for responses */}
+            {/* CRITICAL: Only show current user message if we're in generation mode */}
             {currentUserMessage && (isGenerating || waitingForSelection) && (
               <div className="flex justify-end mb-6">
                 <div className="max-w-3xl">
@@ -608,7 +614,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </div>
             )}
             
-            {/* Show current comparison if responses are available */}
+            {/* CRITICAL: Show current comparison with REAL-TIME loading animations */}
             {currentResponses.length > 0 && (
               <div className="mb-8">
                 <ComparisonView 
