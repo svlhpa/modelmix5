@@ -25,6 +25,24 @@ interface UserStats {
   activeUsersLast30Days: number;
 }
 
+interface GlobalProviderStats {
+  provider: string;
+  total_responses: number;
+  total_selections: number;
+  selection_rate: number;
+  error_rate: number;
+  unique_users: number;
+  avg_response_time?: number;
+  last_used: string;
+}
+
+interface ModelUsageTrend {
+  date: string;
+  provider: string;
+  responses: number;
+  selections: number;
+}
+
 class AdminService {
   // User Management
   async getAllUsers(): Promise<UserProfile[]> {
@@ -81,6 +99,115 @@ class AdminService {
     };
   }
 
+  // Global Provider Analytics
+  async getGlobalProviderStats(): Promise<GlobalProviderStats[]> {
+    const { data, error } = await supabase
+      .from('provider_analytics')
+      .select('*')
+      .order('total_responses', { ascending: false });
+
+    if (error) throw error;
+
+    // Aggregate stats across all users
+    const aggregated = data.reduce((acc, stat) => {
+      const existing = acc.find(item => item.provider === stat.provider);
+      if (existing) {
+        existing.total_responses += stat.total_responses;
+        existing.total_selections += stat.total_selections;
+        existing.error_count += stat.error_count;
+        existing.unique_users += 1;
+        // Update last_used to the most recent
+        if (new Date(stat.last_used) > new Date(existing.last_used)) {
+          existing.last_used = stat.last_used;
+        }
+      } else {
+        acc.push({
+          provider: stat.provider,
+          total_responses: stat.total_responses,
+          total_selections: stat.total_selections,
+          error_count: stat.error_count,
+          unique_users: 1,
+          last_used: stat.last_used,
+        });
+      }
+      return acc;
+    }, [] as any[]);
+
+    // Calculate rates and sort by total responses
+    return aggregated
+      .map(stat => ({
+        provider: stat.provider,
+        total_responses: stat.total_responses,
+        total_selections: stat.total_selections,
+        selection_rate: stat.total_responses > 0 ? (stat.total_selections / stat.total_responses) * 100 : 0,
+        error_rate: stat.total_responses > 0 ? (stat.error_count / stat.total_responses) * 100 : 0,
+        unique_users: stat.unique_users,
+        last_used: stat.last_used,
+      }))
+      .sort((a, b) => b.total_responses - a.total_responses);
+  }
+
+  async getModelUsageTrends(days: number = 30): Promise<ModelUsageTrend[]> {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data, error } = await supabase
+      .from('provider_analytics')
+      .select('provider, total_responses, total_selections, updated_at')
+      .gte('updated_at', startDate)
+      .order('updated_at', { ascending: true });
+
+    if (error) throw error;
+
+    // Group by date and provider
+    const trends = data.reduce((acc, stat) => {
+      const date = new Date(stat.updated_at).toISOString().split('T')[0];
+      const key = `${date}-${stat.provider}`;
+      
+      if (!acc[key]) {
+        acc[key] = {
+          date,
+          provider: stat.provider,
+          responses: 0,
+          selections: 0,
+        };
+      }
+      
+      acc[key].responses += stat.total_responses;
+      acc[key].selections += stat.total_selections;
+      
+      return acc;
+    }, {} as Record<string, ModelUsageTrend>);
+
+    return Object.values(trends);
+  }
+
+  async getTopPerformingModels(limit: number = 10): Promise<GlobalProviderStats[]> {
+    const stats = await this.getGlobalProviderStats();
+    return stats
+      .filter(stat => stat.total_responses >= 10) // Only include models with significant usage
+      .sort((a, b) => b.selection_rate - a.selection_rate)
+      .slice(0, limit);
+  }
+
+  async getModelComparisonData() {
+    const stats = await this.getGlobalProviderStats();
+    
+    return {
+      totalModels: stats.length,
+      totalResponses: stats.reduce((sum, stat) => sum + stat.total_responses, 0),
+      totalSelections: stats.reduce((sum, stat) => sum + stat.total_selections, 0),
+      averageSelectionRate: stats.length > 0 
+        ? stats.reduce((sum, stat) => sum + stat.selection_rate, 0) / stats.length 
+        : 0,
+      mostPopularModel: stats.length > 0 ? stats[0] : null,
+      bestPerformingModel: stats.length > 0 
+        ? stats.reduce((best, current) => 
+            current.selection_rate > best.selection_rate ? current : best
+          ) 
+        : null,
+    };
+  }
+
   // Activity Logging
   async logActivity(action: string, targetUserId?: string, details?: any): Promise<void> {
     const { error } = await supabase.rpc('log_admin_activity', {
@@ -105,41 +232,6 @@ class AdminService {
 
     if (error) throw error;
     return data;
-  }
-
-  // Provider Analytics (Global View)
-  async getGlobalProviderStats() {
-    const { data, error } = await supabase
-      .from('provider_analytics')
-      .select('*')
-      .order('total_responses', { ascending: false });
-
-    if (error) throw error;
-
-    // Aggregate stats across all users
-    const aggregated = data.reduce((acc, stat) => {
-      const existing = acc.find(item => item.provider === stat.provider);
-      if (existing) {
-        existing.total_responses += stat.total_responses;
-        existing.total_selections += stat.total_selections;
-        existing.error_count += stat.error_count;
-      } else {
-        acc.push({
-          provider: stat.provider,
-          total_responses: stat.total_responses,
-          total_selections: stat.total_selections,
-          error_count: stat.error_count,
-        });
-      }
-      return acc;
-    }, [] as any[]);
-
-    // Calculate selection rates
-    return aggregated.map(stat => ({
-      ...stat,
-      selection_rate: stat.total_responses > 0 ? (stat.total_selections / stat.total_responses) * 100 : 0,
-      error_rate: stat.total_responses > 0 ? (stat.error_count / stat.total_responses) * 100 : 0,
-    }));
   }
 }
 

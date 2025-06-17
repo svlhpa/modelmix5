@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Users, MessageSquare, BarChart3, Activity, Shield, 
   Trash2, Crown, User, Calendar, TrendingUp, AlertTriangle,
-  Search, Filter, RefreshCw
+  Search, Filter, RefreshCw, Trophy, Target, Zap, Brain,
+  PieChart, LineChart, Award, Star
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 
@@ -27,6 +28,16 @@ interface UserStats {
   activeUsersLast30Days: number;
 }
 
+interface GlobalProviderStats {
+  provider: string;
+  total_responses: number;
+  total_selections: number;
+  selection_rate: number;
+  error_rate: number;
+  unique_users: number;
+  last_used: string;
+}
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isOpen,
   onClose
@@ -34,6 +45,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'analytics' | 'logs'>('overview');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [globalProviderStats, setGlobalProviderStats] = useState<GlobalProviderStats[]>([]);
+  const [modelComparison, setModelComparison] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'superadmin'>('all');
@@ -47,13 +60,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersData, statsData] = await Promise.all([
+      const promises = [
         adminService.getAllUsers(),
         adminService.getSystemStats()
-      ]);
+      ];
+
+      if (activeTab === 'analytics') {
+        promises.push(
+          adminService.getGlobalProviderStats(),
+          adminService.getModelComparisonData()
+        );
+      }
+
+      const results = await Promise.all(promises);
       
-      setUsers(usersData);
-      setStats(statsData);
+      setUsers(results[0]);
+      setStats(results[1]);
+      
+      if (activeTab === 'analytics' && results.length > 2) {
+        setGlobalProviderStats(results[2] as GlobalProviderStats[]);
+        setModelComparison(results[3]);
+      }
     } catch (error) {
       console.error('Failed to load admin data:', error);
     } finally {
@@ -78,6 +105,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } catch (error) {
         console.error('Failed to delete user:', error);
       }
+    }
+  };
+
+  const getProviderIcon = (provider: string) => {
+    switch (provider.toLowerCase()) {
+      case 'openai':
+      case 'openai gpt-4o':
+        return '🤖';
+      case 'open router':
+      case 'openrouter':
+        return '🔀';
+      case 'google gemini 1.5 pro':
+      case 'gemini':
+        return '💎';
+      case 'deepseek':
+      case 'deepseek chat':
+        return '🔍';
+      case 'deepseek r1':
+        return '🧠';
+      case 'claude':
+      case 'anthropic':
+        return '🔮';
+      case 'llama':
+      case 'meta':
+        return '🦙';
+      default:
+        return '🤖';
+    }
+  };
+
+  const getProviderColor = (provider: string, index: number) => {
+    const colors = [
+      'from-emerald-50 to-emerald-100 border-emerald-200',
+      'from-blue-50 to-blue-100 border-blue-200',
+      'from-purple-50 to-purple-100 border-purple-200',
+      'from-orange-50 to-orange-100 border-orange-200',
+      'from-pink-50 to-pink-100 border-pink-200',
+      'from-indigo-50 to-indigo-100 border-indigo-200',
+      'from-yellow-50 to-yellow-100 border-yellow-200',
+      'from-red-50 to-red-100 border-red-200',
+    ];
+    return colors[index % colors.length];
+  };
+
+  const getRankIcon = (index: number) => {
+    switch (index) {
+      case 0:
+        return <Trophy className="text-yellow-500" size={20} />;
+      case 1:
+        return <Award className="text-gray-400" size={20} />;
+      case 2:
+        return <Star className="text-amber-600" size={20} />;
+      default:
+        return <div className="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-bold">{index + 1}</div>;
     }
   };
 
@@ -126,7 +207,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'users', label: 'Users', icon: Users },
-            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+            { id: 'analytics', label: 'AI Analytics', icon: Brain },
             { id: 'logs', label: 'Activity Logs', icon: Activity }
           ].map((tab) => (
             <button
@@ -311,12 +392,198 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* Analytics Tab */}
+        {/* AI Analytics Tab */}
         {activeTab === 'analytics' && (
-          <div className="text-center py-12">
-            <BarChart3 size={48} className="text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Global Analytics</h3>
-            <p className="text-gray-500">System-wide analytics coming soon...</p>
+          <div className="space-y-6">
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading AI analytics...</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                {modelComparison && (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 p-4 rounded-lg border border-emerald-200">
+                      <div className="flex items-center space-x-3">
+                        <Brain className="text-emerald-600" size={24} />
+                        <div>
+                          <p className="text-sm text-emerald-600 font-medium">Active AI Models</p>
+                          <p className="text-2xl font-bold text-emerald-900">{modelComparison.totalModels}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-center space-x-3">
+                        <Target className="text-blue-600" size={24} />
+                        <div>
+                          <p className="text-sm text-blue-600 font-medium">Total Responses</p>
+                          <p className="text-2xl font-bold text-blue-900">{modelComparison.totalResponses.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                      <div className="flex items-center space-x-3">
+                        <Zap className="text-purple-600" size={24} />
+                        <div>
+                          <p className="text-sm text-purple-600 font-medium">Avg Selection Rate</p>
+                          <p className="text-2xl font-bold text-purple-900">{modelComparison.averageSelectionRate.toFixed(1)}%</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+                      <div className="flex items-center space-x-3">
+                        <Trophy className="text-orange-600" size={24} />
+                        <div>
+                          <p className="text-sm text-orange-600 font-medium">Top Performer</p>
+                          <p className="text-lg font-bold text-orange-900 truncate">
+                            {modelComparison.bestPerformingModel?.provider || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Global AI Model Rankings */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                    <Trophy className="text-yellow-500" size={20} />
+                    <span>Global AI Model Performance Rankings</span>
+                  </h3>
+                  
+                  {globalProviderStats.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg">
+                      <Brain size={48} className="text-gray-300 mx-auto mb-4" />
+                      <h4 className="text-lg font-medium text-gray-900 mb-2">No Analytics Data Yet</h4>
+                      <p className="text-gray-500">AI model analytics will appear here once users start conversations</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {globalProviderStats.map((stat, index) => (
+                        <div
+                          key={stat.provider}
+                          className={`p-4 rounded-xl border-2 transition-all bg-gradient-to-r ${getProviderColor(stat.provider, index)} ${
+                            index === 0 ? 'ring-2 ring-yellow-300 shadow-lg' : 'shadow-sm'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4">
+                              {getRankIcon(index)}
+                              <div className="flex items-center space-x-3">
+                                <span className="text-2xl">{getProviderIcon(stat.provider)}</span>
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 text-sm md:text-base">{stat.provider}</h4>
+                                  <p className="text-xs text-gray-600">
+                                    {stat.total_responses.toLocaleString()} responses • {stat.unique_users} users
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-6">
+                              <div className="text-center">
+                                <p className="text-xl md:text-2xl font-bold text-gray-900">{stat.selection_rate.toFixed(1)}%</p>
+                                <p className="text-xs text-gray-500">Selection Rate</p>
+                              </div>
+                              
+                              <div className="text-center">
+                                <p className="text-lg font-semibold text-gray-700">{stat.total_selections.toLocaleString()}</p>
+                                <p className="text-xs text-gray-500">Selections</p>
+                              </div>
+                              
+                              {stat.error_rate > 0 && (
+                                <div className="text-center">
+                                  <div className="flex items-center space-x-1">
+                                    <AlertTriangle size={14} className="text-red-500" />
+                                    <p className="text-sm font-medium text-red-600">{stat.error_rate.toFixed(1)}%</p>
+                                  </div>
+                                  <p className="text-xs text-gray-500">Error Rate</p>
+                                </div>
+                              )}
+                              
+                              <div className="text-center">
+                                <p className="text-sm text-gray-600">{new Date(stat.last_used).toLocaleDateString()}</p>
+                                <p className="text-xs text-gray-500">Last Used</p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Progress Bar */}
+                          <div className="mt-3">
+                            <div className="w-full bg-white/50 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-500 ${
+                                  index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' :
+                                  index === 1 ? 'bg-gradient-to-r from-gray-400 to-gray-600' :
+                                  index === 2 ? 'bg-gradient-to-r from-amber-400 to-amber-600' :
+                                  'bg-gradient-to-r from-blue-400 to-blue-600'
+                                }`}
+                                style={{ width: `${Math.max(stat.selection_rate, 2)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Additional Analytics Insights */}
+                {globalProviderStats.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h4 className="font-medium text-blue-800 mb-3 flex items-center space-x-2">
+                        <PieChart size={16} />
+                        <span>Usage Distribution</span>
+                      </h4>
+                      <div className="space-y-2">
+                        {globalProviderStats.slice(0, 5).map((stat, index) => {
+                          const percentage = (stat.total_responses / globalProviderStats.reduce((sum, s) => sum + s.total_responses, 0)) * 100;
+                          return (
+                            <div key={stat.provider} className="flex items-center justify-between">
+                              <span className="text-sm text-blue-700 truncate">{stat.provider}</span>
+                              <span className="text-sm font-medium text-blue-900">{percentage.toFixed(1)}%</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <h4 className="font-medium text-green-800 mb-3 flex items-center space-x-2">
+                        <LineChart size={16} />
+                        <span>Performance Insights</span>
+                      </h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Models with 50%+ selection rate:</span>
+                          <span className="font-medium text-green-900">
+                            {globalProviderStats.filter(s => s.selection_rate >= 50).length}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Most reliable (lowest errors):</span>
+                          <span className="font-medium text-green-900 truncate">
+                            {globalProviderStats.sort((a, b) => a.error_rate - b.error_rate)[0]?.provider || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Most popular (by usage):</span>
+                          <span className="font-medium text-green-900 truncate">
+                            {globalProviderStats[0]?.provider || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
