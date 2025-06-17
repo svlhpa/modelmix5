@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign } from 'lucide-react';
+import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
+import { globalApiService } from '../services/globalApiService';
+import { useAuth } from '../hooks/useAuth';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentSettings,
   currentModelSettings
 }) => {
+  const { getCurrentTier } = useAuth();
   const [settings, setSettings] = useState<APISettings>(currentSettings);
   const [modelSettings, setModelSettings] = useState<ModelSettings>(currentModelSettings);
   const [showKeys, setShowKeys] = useState({
@@ -31,6 +34,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [loadingModels, setLoadingModels] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
+
+  const currentTier = getCurrentTier();
 
   useEffect(() => {
     setSettings(currentSettings);
@@ -40,8 +46,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen && activeTab === 'models') {
       loadOpenRouterModels();
+      checkGlobalKeysAvailability();
     }
   }, [isOpen, activeTab]);
+
+  const checkGlobalKeysAvailability = async () => {
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter'];
+    const availability: Record<string, boolean> = {};
+    
+    for (const provider of providers) {
+      try {
+        const globalKey = await globalApiService.getGlobalApiKey(provider, currentTier);
+        availability[provider] = !!globalKey;
+      } catch (error) {
+        availability[provider] = false;
+      }
+    }
+    
+    setGlobalKeysAvailable(availability);
+  };
 
   const loadOpenRouterModels = async () => {
     setLoadingModels(true);
@@ -167,6 +190,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     return model.pricing.prompt === "0";
   };
 
+  const hasPersonalApiKey = (provider: string) => {
+    return settings[provider as keyof APISettings]?.trim() !== '';
+  };
+
+  const hasGlobalKeyAccess = (provider: string) => {
+    return globalKeysAvailable[provider] && !hasPersonalApiKey(provider);
+  };
+
+  const canUseModel = (provider: string) => {
+    return hasPersonalApiKey(provider) || hasGlobalKeyAccess(provider);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -218,43 +253,89 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {activeTab === 'api' ? (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {apiProviders.map((provider) => (
-                <div key={provider.key} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-medium text-gray-900">{provider.name}</h4>
-                      <p className="text-sm text-gray-500">{provider.description}</p>
-                    </div>
-                    <a
-                      href={provider.docsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 text-sm"
-                    >
-                      <span>Get Key</span>
-                      <ExternalLink size={14} />
-                    </a>
-                  </div>
-                  
-                  <div className="relative">
-                    <input
-                      type={showKeys[provider.key] ? 'text' : 'password'}
-                      value={settings[provider.key]}
-                      onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
-                      placeholder={provider.placeholder}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey(provider.key)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys[provider.key] ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
+            {/* Free Trial Notice */}
+            {currentTier === 'tier1' && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <Gift className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <h4 className="font-medium text-green-800 mb-1">🎉 Free Trial Active!</h4>
+                    <p className="text-sm text-green-700 mb-2">
+                      You're using our free trial with access to AI models through our global API keys. 
+                      No configuration needed!
+                    </p>
+                    <ul className="text-sm text-green-600 space-y-1">
+                      <li>• ✅ Free access to multiple AI models</li>
+                      <li>• ✅ 50 conversations per month</li>
+                      <li>• ✅ Compare up to 3 models simultaneously</li>
+                      <li>• 🔧 Configure your own API keys for unlimited usage</li>
+                    </ul>
                   </div>
                 </div>
-              ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {apiProviders.map((provider) => {
+                const hasPersonalKey = hasPersonalApiKey(provider.key);
+                const hasGlobalAccess = hasGlobalKeyAccess(provider.key);
+                
+                return (
+                  <div key={provider.key} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="font-medium text-gray-900">{provider.name}</h4>
+                          {hasGlobalAccess && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <Gift size={10} className="mr-1" />
+                              Free Trial
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500">{provider.description}</p>
+                        {hasGlobalAccess && (
+                          <p className="text-xs text-green-600 mt-1">
+                            ✅ Available through free trial - no API key needed
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={provider.docsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 text-sm"
+                      >
+                        <span>Get Key</span>
+                        <ExternalLink size={14} />
+                      </a>
+                    </div>
+                    
+                    <div className="relative">
+                      <input
+                        type={showKeys[provider.key] ? 'text' : 'password'}
+                        value={settings[provider.key]}
+                        onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
+                        placeholder={hasGlobalAccess ? `${provider.placeholder} (optional - free trial active)` : provider.placeholder}
+                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowKey(provider.key)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showKeys[provider.key] ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    
+                    {hasPersonalKey && (
+                      <p className="text-xs text-blue-600 mt-2">
+                        🔑 Using your personal API key for unlimited access
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -263,12 +344,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="text-white text-xs font-bold">💡</span>
                 </div>
                 <div>
-                  <h4 className="font-medium text-green-800 mb-1">OpenRouter gives you access to 400+ AI models!</h4>
+                  <h4 className="font-medium text-green-800 mb-1">Free Trial vs Personal API Keys</h4>
                   <ul className="text-sm text-green-700 space-y-1">
-                    <li>• <strong>Free models:</strong> DeepSeek R1, Llama, Gemma, Qwen, and more</li>
-                    <li>• <strong>Premium models:</strong> Claude 3.5 Sonnet, GPT-4, Gemini Pro</li>
-                    <li>• <strong>Specialized models:</strong> Coding, reasoning, creative writing</li>
-                    <li>• Use one API key to access hundreds of different AI models</li>
+                    <li>• <strong>Free Trial:</strong> Use our global API keys with monthly limits</li>
+                    <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
+                    <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
+                    <li>• Personal API keys always take priority over free trial access</li>
                   </ul>
                 </div>
               </div>
@@ -282,7 +363,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {traditionalModels.map((model) => {
                   const isEnabled = modelSettings[model.key];
-                  const hasApiKey = settings[model.key as keyof APISettings]?.trim() !== '';
+                  const hasPersonalKey = hasPersonalApiKey(model.key);
+                  const hasGlobalAccess = hasGlobalKeyAccess(model.key);
+                  const canUse = canUseModel(model.key);
                   
                   return (
                     <div
@@ -291,8 +374,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         isEnabled 
                           ? 'border-green-300 bg-green-50' 
                           : 'border-gray-200 bg-gray-50'
-                      } ${!hasApiKey ? 'opacity-50' : 'hover:shadow-md'}`}
-                      onClick={() => hasApiKey && toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek')}
+                      } ${!canUse ? 'opacity-50' : 'hover:shadow-md'}`}
+                      onClick={() => canUse && toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek')}
                     >
                       <div className="flex items-start space-x-3">
                         <div className="flex items-center space-x-2">
@@ -300,10 +383,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (hasApiKey) toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek');
+                              if (canUse) toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek');
                             }}
                             className="p-1"
-                            disabled={!hasApiKey}
+                            disabled={!canUse}
                           >
                             {isEnabled ? (
                               <CheckSquare size={20} className="text-green-600" />
@@ -313,11 +396,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </button>
                         </div>
                         <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{model.name}</h4>
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="font-medium text-gray-900">{model.name}</h4>
+                            {hasGlobalAccess && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <Gift size={10} className="mr-1" />
+                                Free
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-gray-600">{model.description}</p>
-                          {!hasApiKey && (
+                          {!canUse && (
                             <p className="text-xs text-red-600 mt-1">
-                              ⚠️ API key required
+                              ⚠️ API key required or not available in free trial
+                            </p>
+                          )}
+                          {hasPersonalKey && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              🔑 Using personal API key
+                            </p>
+                          )}
+                          {hasGlobalAccess && (
+                            <p className="text-xs text-green-600 mt-1">
+                              ✅ Available through free trial
                             </p>
                           )}
                         </div>
@@ -334,12 +435,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <h3 className="text-lg font-medium text-gray-900">
                   OpenRouter Models ({getEnabledOpenRouterCount()} selected)
                 </h3>
-                {!settings.openrouter && (
-                  <p className="text-sm text-amber-600">⚠️ OpenRouter API key required</p>
+                {!hasPersonalApiKey('openrouter') && !hasGlobalKeyAccess('openrouter') && (
+                  <p className="text-sm text-amber-600">⚠️ OpenRouter API key required or not available in free trial</p>
+                )}
+                {hasGlobalKeyAccess('openrouter') && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <Gift size={12} className="mr-1" />
+                    Free Trial Available
+                  </span>
                 )}
               </div>
 
-              {settings.openrouter ? (
+              {(hasPersonalApiKey('openrouter') || hasGlobalKeyAccess('openrouter')) ? (
                 <>
                   {/* Search and Filter */}
                   <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -466,7 +573,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <p className="text-amber-700">
-                    Configure your OpenRouter API key in the API Keys tab to access 400+ AI models.
+                    Configure your OpenRouter API key in the API Keys tab to access 400+ AI models, or upgrade to Pro for free trial access.
                   </p>
                 </div>
               )}
@@ -491,10 +598,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-white text-xs font-bold">🔒</span>
             </div>
             <div>
-              <h4 className="font-medium text-blue-800 mb-1">Security Notice</h4>
+              <h4 className="font-medium text-blue-800 mb-1">Security & Privacy</h4>
               <p className="text-sm text-blue-700">
-                API keys are stored securely in your account and never shared. 
-                Keep your keys secure and don't share them with others.
+                {currentTier === 'tier1' 
+                  ? 'Free trial uses secure global API keys. Personal API keys are stored securely in your account and never shared.'
+                  : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
+                }
               </p>
             </div>
           </div>

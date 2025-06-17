@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -7,6 +7,7 @@ import { APIResponse, ConversationTurn, ModelSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
+import { globalApiService } from '../services/globalApiService';
 
 interface ChatAreaProps {
   messages: any[];
@@ -41,6 +42,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
+  const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,12 +52,29 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   useEffect(() => {
     if (user) {
       checkUsageLimit();
+      checkGlobalKeysAvailability();
     }
   }, [user, messages.length]);
 
   const checkUsageLimit = async () => {
     const result = await tierService.checkUsageLimit();
     setUsageCheck(result);
+  };
+
+  const checkGlobalKeysAvailability = async () => {
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter'];
+    const availability: Record<string, boolean> = {};
+    
+    for (const provider of providers) {
+      try {
+        const globalKey = await globalApiService.getGlobalApiKey(provider, currentTier);
+        availability[provider] = !!globalKey;
+      } catch (error) {
+        availability[provider] = false;
+      }
+    }
+    
+    setGlobalKeysAvailable(availability);
   };
 
   const scrollToBottom = () => {
@@ -118,6 +137,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const getMaxAllowedModels = () => {
     return getTierLimits().maxModelsPerComparison;
+  };
+
+  const getAvailableModelsCount = async () => {
+    // Load current API settings to check what's available
+    const apiSettings = await aiService.loadSettings();
+    let availableCount = 0;
+
+    // Check traditional models
+    if (modelSettings.openai && (apiSettings.openai || globalKeysAvailable.openai)) availableCount++;
+    if (modelSettings.gemini && (apiSettings.gemini || globalKeysAvailable.gemini)) availableCount++;
+    if (modelSettings.deepseek && (apiSettings.deepseek || globalKeysAvailable.deepseek)) availableCount++;
+
+    // Check OpenRouter models
+    if (apiSettings.openrouter || globalKeysAvailable.openrouter) {
+      const enabledOpenRouterCount = Object.values(modelSettings.openrouter_models).filter(Boolean).length;
+      availableCount += enabledOpenRouterCount;
+    }
+
+    return availableCount;
   };
 
   const handleStopGeneration = () => {
@@ -203,7 +241,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             setAbortController(null);
           }
         },
-        controller.signal
+        controller.signal,
+        currentTier
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -288,7 +327,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             setAbortController(null);
           }
         },
-        controller.signal
+        controller.signal,
+        currentTier
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -319,6 +359,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   // Check if all current responses have errors
   const allResponsesHaveErrors = currentResponses.length > 0 && 
     currentResponses.every(r => !r.loading && r.error);
+
+  const hasAnyGlobalKeyAccess = Object.values(globalKeysAvailable).some(Boolean);
 
   if (!user) {
     return (
@@ -406,10 +448,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           <div className="flex items-center space-x-2">
             {currentTier === 'tier2' ? (
               <Crown size={16} className="text-yellow-500" />
+            ) : hasAnyGlobalKeyAccess ? (
+              <Gift size={16} className="text-green-500" />
             ) : (
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
             )}
-            <span>{tierLimits.name} Plan</span>
+            <span>
+              {currentTier === 'tier2' ? 'Pro Plan' : hasAnyGlobalKeyAccess ? 'Free Trial' : 'Free Plan'}
+            </span>
           </div>
           
           {/* Usage indicator */}
@@ -511,8 +557,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <span className="font-medium">{enabledCount} AI models ready for comparison!</span>
                   </div>
                   <p className="text-sm text-green-600">
-                    Including traditional models and OpenRouter's extensive collection
+                    {hasAnyGlobalKeyAccess && currentTier === 'tier1' 
+                      ? 'Using free trial access - no API keys needed!'
+                      : 'Including traditional models and OpenRouter\'s extensive collection'
+                    }
                   </p>
+                  {hasAnyGlobalKeyAccess && currentTier === 'tier1' && (
+                    <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
+                      <Gift size={12} />
+                      <span>Free trial powered by global API keys</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -669,7 +724,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                           : waitingForSelection 
                             ? "Select a response above to continue..." 
                             : messages.length === 0
-                              ? `Ask anything or upload images to mix ${enabledCount} AI responses...`
+                              ? hasAnyGlobalKeyAccess && currentTier === 'tier1'
+                                ? `Ask anything - free trial with ${enabledCount} AI models active!`
+                                : `Ask anything or upload images to mix ${enabledCount} AI responses...`
                               : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
@@ -779,7 +836,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           
           {enabledCount > 0 && enabledCount <= maxAllowed && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
-              📎 Upload images or paste screenshots for visual context • {usage}/{limit} conversations used this month
+              {hasAnyGlobalKeyAccess && currentTier === 'tier1' 
+                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context`
+                : `📎 Upload images or paste screenshots for visual context • ${usage}/${limit} conversations used this month`
+              }
             </p>
           )}
         </form>
