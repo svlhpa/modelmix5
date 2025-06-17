@@ -4,13 +4,14 @@ import { ChatArea } from './components/ChatArea';
 import { SettingsModal } from './components/SettingsModal';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AuthModal } from './components/AuthModal';
+import { AdminDashboard } from './components/AdminDashboard';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { aiService } from './services/aiService';
 import { APISettings, ModelSettings } from './types';
 
 function App() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, isSuperAdmin, loading: authLoading } = useAuth();
   const {
     sessions,
     currentSession,
@@ -27,6 +28,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -114,6 +116,14 @@ function App() {
     }
   };
 
+  const handleOpenAdmin = () => {
+    if (user && isSuperAdmin()) {
+      setShowAdmin(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="flex h-screen bg-gray-100 items-center justify-center">
@@ -136,6 +146,7 @@ function App() {
         onOpenSettings={handleOpenSettings}
         onOpenAnalytics={handleOpenAnalytics}
         onOpenAuth={() => setShowAuth(true)}
+        onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -169,6 +180,13 @@ function App() {
         isOpen={showAuth}
         onClose={() => setShowAuth(false)}
       />
+
+      {isSuperAdmin() && (
+        <AdminDashboard
+          isOpen={showAdmin}
+          onClose={() => setShowAdmin(false)}
+        />
+      )}
     </div>
   );
 }

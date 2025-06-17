@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -13,6 +13,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onOpenAnalytics: () => void;
   onOpenAuth: () => void;
+  onOpenAdmin?: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -27,11 +28,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   onOpenAnalytics,
   onOpenAuth,
+  onOpenAdmin,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
 }) => {
-  const { user, signOut } = useAuth();
+  const { user, userProfile, signOut, isSuperAdmin } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
@@ -175,10 +177,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <Settings size={18} />
                     <span className="font-medium">Settings</span>
                   </button>
+                  
+                  {/* SuperAdmin Dashboard Button */}
+                  {isSuperAdmin() && onOpenAdmin && (
+                    <button
+                      onClick={() => {
+                        onOpenAdmin();
+                        onToggleMobile();
+                      }}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+                    >
+                      <Shield size={18} className="text-red-400" />
+                      <span className="font-medium text-red-400">Admin Dashboard</span>
+                    </button>
+                  )}
+                  
                   <div className="pt-2 border-t border-gray-700">
                     <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
-                      <User size={16} />
-                      <span className="truncate">{user.email}</span>
+                      <div className="flex items-center space-x-2">
+                        {isSuperAdmin() ? (
+                          <Shield size={16} className="text-red-400" />
+                        ) : (
+                          <User size={16} />
+                        )}
+                        <span className="truncate">{user.email}</span>
+                      </div>
+                      {isSuperAdmin() && (
+                        <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
+                          ADMIN
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={handleSignOut}
@@ -242,6 +270,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <Settings size={20} />
             </button>
+            
+            {/* SuperAdmin Dashboard Button */}
+            {isSuperAdmin() && onOpenAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="p-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+                title="Admin Dashboard"
+              >
+                <Shield size={20} className="text-red-400" />
+              </button>
+            )}
+            
             <div className="flex-1"></div>
             <button
               onClick={handleSignOut}
@@ -360,10 +400,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Settings size={18} />
               <span className="font-medium">Settings</span>
             </button>
+            
+            {/* SuperAdmin Dashboard Button */}
+            {isSuperAdmin() && onOpenAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+              >
+                <Shield size={18} className="text-red-400" />
+                <span className="font-medium text-red-400">Admin Dashboard</span>
+              </button>
+            )}
+            
             <div className="pt-2 border-t border-gray-700">
               <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
-                <User size={16} />
-                <span className="truncate">{user.email}</span>
+                <div className="flex items-center space-x-2">
+                  {isSuperAdmin() ? (
+                    <Shield size={16} className="text-red-400" />
+                  ) : (
+                    <User size={16} />
+                  )}
+                  <span className="truncate">{user.email}</span>
+                </div>
+                {isSuperAdmin() && (
+                  <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
+                    ADMIN
+                  </span>
+                )}
               </div>
               <button
                 onClick={handleSignOut}
