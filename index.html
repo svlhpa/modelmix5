@@ -6,21 +6,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ModelMix - Multi-AI Comparison Platform</title>
     <meta name="description" content="Mix and compare AI responses from multiple models including OpenAI, Claude, Gemini, DeepSeek and more. Get the best insights by blending different AI perspectives." />
+    <style>
+      @keyframes rotate {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      
+      .bolt-badge {
+        animation: rotate 8s linear infinite;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Bolt.new rotating badge -->
     <a
-  href="https://bolt.new"
-  target="_blank"
-  rel="noopener noreferrer"
-  style="position: absolute; top: 0; right: 0; width: 15%;"
->
-  <img
-    src="/public/white_circle_360x360.png"
-    alt="bolt.new badge"
-    style="width: 50%; height: auto;"
-  >
-</a>
+      href="https://bolt.new"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="position: fixed; top: 20px; right: 20px; z-index: 9999; width: 80px; height: 80px;"
+      title="Made with bolt.new"
+    >
+      <img
+        src="/public/white_circle_360x360.png"
+        alt="bolt.new badge"
+        class="bolt-badge"
+        style="width: 100%; height: 100%; object-fit: contain;"
+      >
+    </a>
   </body>
 </html>
