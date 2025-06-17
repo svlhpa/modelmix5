@@ -76,14 +76,20 @@ export const useAuth = () => {
   const getUsageInfo = () => {
     if (!userProfile) return { usage: 0, limit: 50 };
     
-    const limits = {
-      tier1: 50,
-      tier2: 1000
-    };
+    const currentTier = getCurrentTier();
     
+    // Pro tier has unlimited conversations
+    if (currentTier === 'tier2') {
+      return {
+        usage: userProfile.monthly_conversations,
+        limit: -1 // -1 indicates unlimited
+      };
+    }
+    
+    // Free tier has 50 conversation limit
     return {
       usage: userProfile.monthly_conversations,
-      limit: limits[userProfile.current_tier] || 50
+      limit: 50
     };
   };
 

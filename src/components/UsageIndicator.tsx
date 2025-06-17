@@ -21,7 +21,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({
   const percentage = tierService.getUsagePercentage(usage, limit);
   const isNearLimit = percentage >= 80;
   const isAtLimit = percentage >= 100;
-  const isUnlimited = limit === -1;
+  const isUnlimited = limit === -1 || tier === 'tier2'; // Pro tier is always unlimited
 
   const getTierIcon = () => {
     switch (tier) {
@@ -56,7 +56,6 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({
           <span className={isUnlimited ? 'text-green-600' : tierService.getUsageColor(percentage)}>
             {isUnlimited ? (
               <div className="flex items-center space-x-1">
-                <span>{usage}</span>
                 <Infinity size={12} />
                 <span>unlimited</span>
               </div>
