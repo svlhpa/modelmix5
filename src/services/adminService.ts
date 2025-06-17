@@ -1,12 +1,20 @@
 import { supabase } from '../lib/supabase';
+import { UserTier, UserSubscription } from '../types';
 
 interface UserProfile {
   id: string;
   email: string;
   full_name: string | null;
   role: 'user' | 'superadmin';
+  current_tier: UserTier;
+  monthly_conversations: number;
+  last_reset_date: string;
   created_at: string;
   updated_at: string;
+}
+
+interface UserWithSubscription extends UserProfile {
+  subscription?: UserSubscription;
 }
 
 interface AdminActivityLog {
@@ -23,6 +31,8 @@ interface UserStats {
   totalSessions: number;
   totalConversations: number;
   activeUsersLast30Days: number;
+  tier1Users: number;
+  tier2Users: number;
 }
 
 interface GlobalProviderStats {
@@ -45,14 +55,21 @@ interface ModelUsageTrend {
 
 class AdminService {
   // User Management
-  async getAllUsers(): Promise<UserProfile[]> {
+  async getAllUsers(): Promise<UserWithSubscription[]> {
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('*')
+      .select(`
+        *,
+        subscription:user_subscriptions(*)
+      `)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    
+    return data.map(user => ({
+      ...user,
+      subscription: user.subscription?.[0] || null
+    }));
   }
 
   async updateUserRole(userId: string, role: 'user' | 'superadmin'): Promise<void> {
@@ -65,6 +82,54 @@ class AdminService {
 
     // Log admin activity
     await this.logActivity('update_user_role', userId, { new_role: role });
+  }
+
+  async updateUserTier(userId: string, tier: UserTier): Promise<void> {
+    // Update user profile
+    const { error: profileError } = await supabase
+      .from('user_profiles')
+      .update({ 
+        current_tier: tier,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (profileError) throw profileError;
+
+    // Update or create subscription
+    const { error: subscriptionError } = await supabase
+      .from('user_subscriptions')
+      .upsert({
+        user_id: userId,
+        tier,
+        status: 'active',
+        started_at: new Date().toISOString(),
+        expires_at: null,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (subscriptionError) throw subscriptionError;
+
+    // Log admin activity
+    await this.logActivity('update_user_tier', userId, { new_tier: tier });
+  }
+
+  async resetUserUsage(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ 
+        monthly_conversations: 0,
+        last_reset_date: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    // Log admin activity
+    await this.logActivity('reset_user_usage', userId);
   }
 
   async deleteUser(userId: string): Promise<void> {
@@ -91,11 +156,21 @@ class AdminService {
         .gte('updated_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
     ]);
 
+    // Get tier distribution
+    const { data: tierData } = await supabase
+      .from('user_profiles')
+      .select('current_tier');
+
+    const tier1Users = tierData?.filter(u => u.current_tier === 'tier1').length || 0;
+    const tier2Users = tierData?.filter(u => u.current_tier === 'tier2').length || 0;
+
     return {
       totalUsers: usersResult.count || 0,
       totalSessions: sessionsResult.count || 0,
       totalConversations: conversationsResult.count || 0,
       activeUsersLast30Days: activeUsersResult.count || 0,
+      tier1Users,
+      tier2Users,
     };
   }
 

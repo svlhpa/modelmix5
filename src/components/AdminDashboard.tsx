@@ -3,9 +3,11 @@ import {
   X, Users, MessageSquare, BarChart3, Activity, Shield, 
   Trash2, Crown, User, Calendar, TrendingUp, AlertTriangle,
   Search, Filter, RefreshCw, Trophy, Target, Zap, Brain,
-  PieChart, LineChart, Award, Star
+  PieChart, LineChart, Award, Star, RotateCcw, Edit3, Save
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
+import { tierService } from '../services/tierService';
+import { UserTier } from '../types';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -17,8 +19,12 @@ interface UserProfile {
   email: string;
   full_name: string | null;
   role: 'user' | 'superadmin';
+  current_tier: UserTier;
+  monthly_conversations: number;
+  last_reset_date: string;
   created_at: string;
   updated_at: string;
+  subscription?: any;
 }
 
 interface UserStats {
@@ -26,6 +32,8 @@ interface UserStats {
   totalSessions: number;
   totalConversations: number;
   activeUsersLast30Days: number;
+  tier1Users: number;
+  tier2Users: number;
 }
 
 interface GlobalProviderStats {
@@ -50,6 +58,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'superadmin'>('all');
+  const [tierFilter, setTierFilter] = useState<'all' | 'tier1' | 'tier2'>('all');
+  const [editingUser, setEditingUser] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -94,6 +104,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await loadData(); // Refresh data
     } catch (error) {
       console.error('Failed to update user role:', error);
+    }
+  };
+
+  const handleUpdateUserTier = async (userId: string, newTier: UserTier) => {
+    try {
+      await adminService.updateUserTier(userId, newTier);
+      await loadData(); // Refresh data
+      setEditingUser(null);
+    } catch (error) {
+      console.error('Failed to update user tier:', error);
+    }
+  };
+
+  const handleResetUserUsage = async (userId: string) => {
+    if (confirm('Are you sure you want to reset this user\'s monthly usage counter?')) {
+      try {
+        await adminService.resetUserUsage(userId);
+        await loadData(); // Refresh data
+      } catch (error) {
+        console.error('Failed to reset user usage:', error);
+      }
     }
   };
 
@@ -162,11 +193,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const getTierIcon = (tier: UserTier) => {
+    switch (tier) {
+      case 'tier1':
+        return <Zap size={16} className="text-gray-600" />;
+      case 'tier2':
+        return <Crown size={16} className="text-yellow-600" />;
+      default:
+        return <Zap size={16} className="text-gray-600" />;
+    }
+  };
+
+  const getTierColor = (tier: UserTier) => {
+    switch (tier) {
+      case 'tier1':
+        return 'bg-gray-100 text-gray-800';
+      case 'tier2':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getUsageColor = (usage: number, limit: number) => {
+    const percentage = (usage / limit) * 100;
+    if (percentage >= 90) return 'text-red-600';
+    if (percentage >= 75) return 'text-orange-600';
+    if (percentage >= 50) return 'text-yellow-600';
+    return 'text-green-600';
+  };
+
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    return matchesSearch && matchesRole;
+    const matchesTier = tierFilter === 'all' || user.current_tier === tierFilter;
+    return matchesSearch && matchesRole && matchesTier;
   });
 
   if (!isOpen) return null;
@@ -181,7 +243,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">SuperAdmin Dashboard</h2>
-              <p className="text-sm text-gray-500">Manage users and monitor system activity</p>
+              <p className="text-sm text-gray-500">Manage users, tiers, and monitor system activity</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -206,7 +268,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
-            { id: 'users', label: 'Users', icon: Users },
+            { id: 'users', label: 'Users & Tiers', icon: Users },
             { id: 'analytics', label: 'AI Analytics', icon: Brain },
             { id: 'logs', label: 'Activity Logs', icon: Activity }
           ].map((tab) => (
@@ -229,13 +291,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {stats && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
                   <div className="flex items-center space-x-3">
                     <Users className="text-blue-600" size={24} />
                     <div>
                       <p className="text-sm text-blue-600 font-medium">Total Users</p>
                       <p className="text-2xl font-bold text-blue-900">{stats.totalUsers}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg border border-gray-200">
+                  <div className="flex items-center space-x-3">
+                    <Zap className="text-gray-600" size={24} />
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">Free Users</p>
+                      <p className="text-2xl font-bold text-gray-900">{stats.tier1Users}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-4 rounded-lg border border-yellow-200">
+                  <div className="flex items-center space-x-3">
+                    <Crown className="text-yellow-600" size={24} />
+                    <div>
+                      <p className="text-sm text-yellow-600 font-medium">Pro Users</p>
+                      <p className="text-2xl font-bold text-yellow-900">{stats.tier2Users}</p>
                     </div>
                   </div>
                 </div>
@@ -264,8 +346,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex items-center space-x-3">
                     <Activity className="text-orange-600" size={24} />
                     <div>
-                      <p className="text-sm text-orange-600 font-medium">Active Users (30d)</p>
+                      <p className="text-sm text-orange-600 font-medium">Active (30d)</p>
                       <p className="text-2xl font-bold text-orange-900">{stats.activeUsersLast30Days}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tier Distribution Chart */}
+            {stats && (
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">User Tier Distribution</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Zap size={16} className="text-gray-600" />
+                        <span className="text-sm font-medium">Free Tier</span>
+                      </div>
+                      <span className="text-sm text-gray-600">{stats.tier1Users} users</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className="bg-gray-500 h-3 rounded-full transition-all duration-500"
+                        style={{ width: `${(stats.tier1Users / stats.totalUsers) * 100}%` }}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Crown size={16} className="text-yellow-600" />
+                        <span className="text-sm font-medium">Pro Tier</span>
+                      </div>
+                      <span className="text-sm text-gray-600">{stats.tier2Users} users</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className="bg-yellow-500 h-3 rounded-full transition-all duration-500"
+                        style={{ width: `${(stats.tier2Users / stats.totalUsers) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-900 mb-2">
+                        {stats.totalUsers > 0 ? ((stats.tier2Users / stats.totalUsers) * 100).toFixed(1) : 0}%
+                      </div>
+                      <div className="text-sm text-gray-600">Conversion Rate to Pro</div>
                     </div>
                   </div>
                 </div>
@@ -278,7 +407,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <h4 className="font-medium text-amber-800 mb-1">SuperAdmin Access</h4>
                   <p className="text-sm text-amber-700">
-                    You have full administrative access to all user data, conversations, and system settings. 
+                    You have full administrative access to all user data, conversations, tier management, and system settings. 
                     All actions are logged for security and audit purposes.
                   </p>
                 </div>
@@ -311,6 +440,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="user">Users</option>
                 <option value="superadmin">SuperAdmins</option>
               </select>
+              <select
+                value={tierFilter}
+                onChange={(e) => setTierFilter(e.target.value as any)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                <option value="all">All Tiers</option>
+                <option value="tier1">Free Tier</option>
+                <option value="tier2">Pro Tier</option>
+              </select>
             </div>
 
             {/* Users Table */}
@@ -321,44 +459,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center space-x-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              user.role === 'superadmin' ? 'bg-red-100' : 'bg-gray-100'
-                            }`}>
-                              {user.role === 'superadmin' ? (
-                                <Crown size={16} className="text-red-600" />
-                              ) : (
-                                <User size={16} className="text-gray-600" />
-                              )}
+                    {filteredUsers.map((user) => {
+                      const tierLimits = tierService.getTierLimits(user.current_tier);
+                      const usagePercentage = (user.monthly_conversations / tierLimits.monthlyConversations) * 100;
+                      
+                      return (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                user.role === 'superadmin' ? 'bg-red-100' : 'bg-gray-100'
+                              }`}>
+                                {user.role === 'superadmin' ? (
+                                  <Shield size={16} className="text-red-600" />
+                                ) : (
+                                  <User size={16} className="text-gray-600" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{user.full_name || 'No name'}</p>
+                                <p className="text-sm text-gray-500">{user.email}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{user.full_name || 'No name'}</p>
-                              <p className="text-sm text-gray-500">{user.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.role === 'superadmin' 
-                              ? 'bg-red-100 text-red-800' 
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {user.role === 'superadmin' ? 'SuperAdmin' : 'User'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-500">
-                          {new Date(user.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center space-x-2">
+                          </td>
+                          <td className="px-4 py-4">
                             <select
                               value={user.role}
                               onChange={(e) => handleUpdateUserRole(user.id, e.target.value as 'user' | 'superadmin')}
@@ -367,17 +498,86 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <option value="user">User</option>
                               <option value="superadmin">SuperAdmin</option>
                             </select>
-                            <button
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Delete User"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-4">
+                            {editingUser === user.id ? (
+                              <div className="flex items-center space-x-2">
+                                <select
+                                  defaultValue={user.current_tier}
+                                  onChange={(e) => handleUpdateUserTier(user.id, e.target.value as UserTier)}
+                                  className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                >
+                                  <option value="tier1">Free Tier</option>
+                                  <option value="tier2">Pro Tier</option>
+                                </select>
+                                <button
+                                  onClick={() => setEditingUser(null)}
+                                  className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getTierColor(user.current_tier)}`}>
+                                  {getTierIcon(user.current_tier)}
+                                  <span>{tierLimits.name}</span>
+                                </span>
+                                <button
+                                  onClick={() => setEditingUser(user.id)}
+                                  className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                  title="Edit Tier"
+                                >
+                                  <Edit3 size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className={getUsageColor(user.monthly_conversations, tierLimits.monthlyConversations)}>
+                                  {user.monthly_conversations} / {tierLimits.monthlyConversations}
+                                </span>
+                                <span className="text-gray-500">{usagePercentage.toFixed(0)}%</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    usagePercentage >= 90 ? 'bg-red-500' :
+                                    usagePercentage >= 75 ? 'bg-orange-500' :
+                                    usagePercentage >= 50 ? 'bg-yellow-500' : 'bg-green-500'
+                                  }`}
+                                  style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-gray-500">
+                            {new Date(user.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleResetUserUsage(user.id)}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Reset Usage"
+                              >
+                                <RotateCcw size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Delete User"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
