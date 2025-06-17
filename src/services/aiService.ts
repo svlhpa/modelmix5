@@ -12,9 +12,9 @@ class AIService {
   };
 
   private modelSettings: ModelSettings = {
-    openai: true,
-    gemini: true,
-    deepseek: true,
+    openai: false,
+    gemini: false,
+    deepseek: false,
     openrouter_models: {}
   };
 

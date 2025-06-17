@@ -81,10 +81,12 @@ class DatabaseService {
 
   async loadModelSettings(): Promise<ModelSettings> {
     const { data: { user } } = await supabase.auth.getUser();
+    
+    // Default settings for free tier users - don't preselect traditional models
     const defaultSettings: ModelSettings = {
-      openai: true,
-      gemini: true,
-      deepseek: true,
+      openai: false,
+      gemini: false,
+      deepseek: false,
       openrouter_models: {}
     };
 
@@ -107,9 +109,9 @@ class DatabaseService {
       
       // Ensure all required properties exist and have proper defaults
       return {
-        openai: parsedSettings.openai ?? true,
-        gemini: parsedSettings.gemini ?? true,
-        deepseek: parsedSettings.deepseek ?? true,
+        openai: parsedSettings.openai ?? false,
+        gemini: parsedSettings.gemini ?? false,
+        deepseek: parsedSettings.deepseek ?? false,
         openrouter_models: parsedSettings.openrouter_models ?? {}
       };
     } catch {
