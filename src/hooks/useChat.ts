@@ -6,7 +6,7 @@ import { analyticsService } from '../services/analyticsService';
 import { useAuth } from './useAuth';
 
 export const useChat = () => {
-  const { user } = useAuth();
+  const { user, getCurrentTier } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -141,8 +141,18 @@ export const useChat = () => {
       // Add current message to context
       contextMessages.push({ role: 'user', content });
 
+      // Get user's current tier for API key selection
+      const userTier = getCurrentTier();
+
       // Get responses - this will now return immediately and update via callback
-      const responses = await aiService.getResponses(content, contextMessages, images);
+      const responses = await aiService.getResponses(
+        content, 
+        contextMessages, 
+        images, 
+        undefined, // onResponseUpdate callback handled in ChatArea
+        undefined, // signal handled in ChatArea
+        userTier
+      );
       
       return responses;
     } catch (error) {
@@ -151,7 +161,7 @@ export const useChat = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentSessionId, createNewSession, user, currentSession, sessions]);
+  }, [currentSessionId, createNewSession, user, currentSession, sessions, getCurrentTier]);
 
   const selectResponse = useCallback(async (selectedResponse: APIResponse, userMessage: string, images: string[] = []) => {
     if (!currentSessionId) return;
