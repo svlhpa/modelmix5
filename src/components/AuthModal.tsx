@@ -99,11 +99,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   // Email confirmation screen
   if (showConfirmation) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-md w-full p-6">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-green-100 rounded-lg">
+              <div className="p-2 bg-green-100 rounded-lg transform animate-bounceIn">
                 <Mail size={20} className="text-green-600" />
               </div>
               <div>
@@ -113,37 +113,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </div>
             <button
               onClick={handleClose}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
             >
               <X size={20} className="text-gray-500" />
             </button>
           </div>
 
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 transform animate-pulse">
               <CheckCircle size={32} className="text-green-600" />
             </div>
             
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-gray-900 mb-2 animate-fadeInUp">
               Account Created Successfully!
             </h3>
             
-            <p className="text-gray-600 mb-4">
+            <p className="text-gray-600 mb-4 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
               We've sent a confirmation email to:
             </p>
             
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
               <p className="font-medium text-gray-900">{confirmationEmail}</p>
             </div>
             
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="text-sm text-gray-600 mb-6 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
               Please check your email and click the confirmation link to activate your account. 
               You may need to check your spam folder.
             </p>
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 animate-shakeX">
               <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
@@ -152,7 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <button
               onClick={handleResendConfirmation}
               disabled={loading}
-              className="w-full flex items-center justify-center space-x-2 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center space-x-2 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transform"
             >
               {loading ? (
                 <>
@@ -169,13 +169,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             
             <button
               onClick={handleClose}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform"
             >
               I'll Check My Email
             </button>
           </div>
 
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
             <p className="text-xs text-blue-700">
               💡 <strong>Tip:</strong> After confirming your email, you can sign in and start comparing AI responses from multiple models!
             </p>
@@ -187,11 +187,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   // Regular login/signup form
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-lg ${isLogin ? 'bg-blue-100' : 'bg-green-100'}`}>
+            <div className={`p-2 rounded-lg transform transition-all duration-300 ${isLogin ? 'bg-blue-100 animate-bounceIn' : 'bg-green-100 animate-bounceIn'}`}>
               {isLogin ? (
                 <LogIn size={20} className="text-blue-600" />
               ) : (
@@ -199,17 +199,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               )}
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-gray-900 transition-all duration-300">
                 {isLogin ? 'Welcome Back' : 'Create Account'}
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 transition-all duration-300">
                 {isLogin ? 'Sign in to your account' : 'Join the AI comparison platform'}
               </p>
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
           >
             <X size={20} className="text-gray-500" />
           </button>
@@ -217,17 +217,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
-            <div>
+            <div className="animate-slideDown">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Full Name
               </label>
-              <div className="relative">
-                <User size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <div className="relative group">
+                <User size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 transition-colors duration-200 group-focus-within:text-blue-500" />
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-gray-400"
                   placeholder="Enter your full name"
                   required={!isLogin}
                 />
@@ -235,34 +235,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          <div>
+          <div className="animate-fadeInUp">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Email Address
             </label>
-            <div className="relative">
-              <Mail size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <div className="relative group">
+              <Mail size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 transition-colors duration-200 group-focus-within:text-blue-500" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-gray-400"
                 placeholder="Enter your email"
                 required
               />
             </div>
           </div>
 
-          <div>
+          <div className="animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Password
             </label>
-            <div className="relative">
-              <Lock size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <div className="relative group">
+              <Lock size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 transition-colors duration-200 group-focus-within:text-blue-500" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-gray-400"
                 placeholder="Enter your password"
                 required
                 minLength={6}
@@ -270,7 +270,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-all duration-200 hover:scale-110"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -278,7 +278,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 animate-shakeX">
               <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
@@ -286,11 +286,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
+            className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 ${
               isLogin
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'bg-green-600 hover:bg-green-700 text-white'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
           >
             {loading ? (
               <div className="flex items-center justify-center space-x-2">
@@ -303,12 +303,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
           <p className="text-sm text-gray-600">
             {isLogin ? "Don't have an account?" : 'Already have an account?'}
             <button
               onClick={toggleMode}
-              className={`ml-1 font-medium ${
+              className={`ml-1 font-medium transition-all duration-200 hover:scale-105 transform inline-block ${
                 isLogin ? 'text-green-600 hover:text-green-700' : 'text-blue-600 hover:text-blue-700'
               }`}
             >
@@ -318,7 +318,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {!isLogin && (
-          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
             <p className="text-xs text-blue-700">
               💡 Your API keys and conversation data will be securely stored and only accessible to you.
             </p>

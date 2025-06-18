@@ -64,20 +64,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <>
         {/* Mobile backdrop */}
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden animate-fadeIn"
           onClick={onToggleMobile}
         />
         
         {/* Mobile sidebar */}
-        <div className="fixed left-0 top-0 h-full w-80 bg-gray-900 text-white z-50 lg:hidden transform transition-transform duration-300 ease-in-out">
+        <div className="fixed left-0 top-0 h-full w-80 bg-gray-900 text-white z-50 lg:hidden transform transition-transform duration-300 ease-in-out animate-slideInLeft">
           <div className="flex flex-col h-full">
             {/* Header with Logo and Close */}
             <div className="p-4 border-b border-gray-700">
               <div className="flex items-center justify-between mb-4">
-                <Logo size="sm" />
+                <Logo size="sm" className="animate-fadeInUp" />
                 <button
                   onClick={onToggleMobile}
-                  className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                  className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform"
                 >
                   <X size={20} />
                 </button>
@@ -88,7 +88,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onNewChat();
                     onToggleMobile();
                   }}
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                  style={{ animationDelay: '0.1s' }}
                 >
                   <Plus size={18} />
                   <span className="font-medium">New Chat</span>
@@ -99,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {user ? (
               <>
                 {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700">
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
                   <UsageIndicator
                     usage={usage}
                     limit={limit}
@@ -111,27 +112,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
 
-                <div className="p-4 border-b border-gray-700">
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
                       placeholder="Search chats..."
-                      className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
                     />
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-2">
                   <div className="space-y-1">
-                    {sessions.map((session) => (
+                    {sessions.map((session, index) => (
                       <div
                         key={session.id}
-                        className={`group flex flex-col px-3 py-3 rounded-lg cursor-pointer transition-colors ${
+                        className={`group flex flex-col px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 transform hover:scale-105 animate-fadeInUp ${
                           currentSessionId === session.id
                             ? 'bg-gray-700'
                             : 'hover:bg-gray-800'
                         }`}
+                        style={{ animationDelay: `${0.4 + index * 0.05}s` }}
                         onClick={() => {
                           onSelectSession(session.id);
                           onToggleMobile();
@@ -147,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               e.stopPropagation();
                               onDeleteSession(session.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 transition-all flex-shrink-0"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 transition-all duration-200 flex-shrink-0 hover:scale-110 transform"
                           >
                             <Trash2 size={12} className="text-gray-400" />
                           </button>
@@ -167,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ))}
                     
                     {sessions.length === 0 && (
-                      <div className="text-center py-8 text-gray-400">
+                      <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
                         <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                         <p className="text-sm">No conversations yet</p>
                         <p className="text-xs">Start a new chat to begin</p>
@@ -177,26 +179,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="p-4 border-t border-gray-700 space-y-2">
-                  <button
-                    onClick={() => {
-                      onOpenAnalytics();
-                      onToggleMobile();
-                    }}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-                  >
-                    <BarChart3 size={18} />
-                    <span className="font-medium">Analytics</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      onOpenSettings();
-                      onToggleMobile();
-                    }}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-                  >
-                    <Settings size={18} />
-                    <span className="font-medium">Settings</span>
-                  </button>
+                  {[
+                    { onClick: () => { onOpenAnalytics(); onToggleMobile(); }, icon: BarChart3, label: 'Analytics' },
+                    { onClick: () => { onOpenSettings(); onToggleMobile(); }, icon: Settings, label: 'Settings' }
+                  ].map((item, index) => (
+                    <button
+                      key={item.label}
+                      onClick={item.onClick}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                      style={{ animationDelay: `${0.5 + index * 0.1}s` }}
+                    >
+                      <item.icon size={18} />
+                      <span className="font-medium">{item.label}</span>
+                    </button>
+                  ))}
                   
                   {/* SuperAdmin Dashboard Button */}
                   {isSuperAdmin() && onOpenAdmin && (
@@ -205,14 +201,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onOpenAdmin();
                         onToggleMobile();
                       }}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-105 transform animate-fadeInUp"
+                      style={{ animationDelay: '0.7s' }}
                     >
                       <Shield size={18} className="text-red-400" />
                       <span className="font-medium text-red-400">Admin Dashboard</span>
                     </button>
                   )}
                   
-                  <div className="pt-2 border-t border-gray-700">
+                  <div className="pt-2 border-t border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.8s' }}>
                     <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
                       <div className="flex items-center space-x-2">
                         {isSuperAdmin() ? (
@@ -225,19 +222,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="truncate">{user.email}</span>
                       </div>
                       {isSuperAdmin() && (
-                        <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse">
                           ADMIN
                         </span>
                       )}
                       {isProUser && !isSuperAdmin() && (
-                        <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse">
                           PRO
                         </span>
                       )}
                     </div>
                     <button
                       onClick={handleSignOut}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors text-red-400 hover:text-red-300"
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 hover:scale-105 transform"
                     >
                       <LogOut size={18} />
                       <span className="font-medium">Sign Out</span>
@@ -247,7 +244,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center p-4">
-                <div className="text-center">
+                <div className="text-center animate-fadeInUp">
                   <User size={48} className="text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-white mb-2">Welcome!</h3>
                   <p className="text-gray-400 text-sm mb-4">Sign in to start comparing AI responses</p>
@@ -256,7 +253,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onOpenAuth();
                       onToggleMobile();
                     }}
-                    className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all duration-200 hover:scale-105 transform"
                   >
                     Sign In / Sign Up
                   </button>
@@ -272,37 +269,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Desktop collapsed sidebar
   if (isCollapsed) {
     return (
-      <div className="hidden lg:flex w-16 bg-gray-900 text-white flex-col items-center py-4 space-y-4">
-        <Logo variant="icon" size="sm" />
+      <div className="hidden lg:flex w-16 bg-gray-900 text-white flex-col items-center py-4 space-y-4 transition-all duration-300 ease-in-out">
+        <Logo variant="icon" size="sm" className="animate-fadeInUp" />
         {user ? (
           <>
-            <button
-              onClick={onNewChat}
-              className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-              title="New Chat"
-            >
-              <Plus size={20} />
-            </button>
-            <button
-              onClick={onOpenAnalytics}
-              className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
-              title="Analytics"
-            >
-              <BarChart3 size={20} />
-            </button>
-            <button
-              onClick={onOpenSettings}
-              className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
-              title="Settings"
-            >
-              <Settings size={20} />
-            </button>
+            {[
+              { onClick: onNewChat, icon: Plus, title: 'New Chat', bgClass: 'bg-gray-800 hover:bg-gray-700' },
+              { onClick: onOpenAnalytics, icon: BarChart3, title: 'Analytics', bgClass: 'hover:bg-gray-800' },
+              { onClick: onOpenSettings, icon: Settings, title: 'Settings', bgClass: 'hover:bg-gray-800' }
+            ].map((item, index) => (
+              <button
+                key={item.title}
+                onClick={item.onClick}
+                className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 transform animate-fadeInUp ${item.bgClass}`}
+                style={{ animationDelay: `${0.1 + index * 0.1}s` }}
+                title={item.title}
+              >
+                <item.icon size={20} />
+              </button>
+            ))}
             
             {/* SuperAdmin Dashboard Button */}
             {isSuperAdmin() && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
-                className="p-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+                className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-110 transform animate-fadeInUp"
+                style={{ animationDelay: '0.4s' }}
                 title="Admin Dashboard"
               >
                 <Shield size={20} className="text-red-400" />
@@ -313,7 +305,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isProUser && (
               <button
                 onClick={onOpenTierUpgrade}
-                className="p-2 rounded-lg hover:bg-gray-800 transition-colors bg-yellow-900/20 border border-yellow-700/30"
+                className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-110 transform animate-fadeInUp"
+                style={{ animationDelay: '0.5s' }}
                 title="Upgrade to Pro"
               >
                 <Crown size={20} className="text-yellow-400" />
@@ -323,7 +316,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex-1"></div>
             <button
               onClick={handleSignOut}
-              className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+              className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
+              style={{ animationDelay: '0.6s' }}
               title="Sign Out"
             >
               <LogOut size={20} />
@@ -332,7 +326,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           <button
             onClick={onOpenAuth}
-            className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 transition-colors"
+            className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
             title="Sign In"
           >
             <User size={20} />
@@ -344,14 +338,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Desktop expanded sidebar
   return (
-    <div className="hidden lg:flex w-64 bg-gray-900 text-white flex-col h-full">
+    <div className="hidden lg:flex w-64 bg-gray-900 text-white flex-col h-full transition-all duration-300 ease-in-out">
       {/* Header with Logo */}
       <div className="p-4 border-b border-gray-700">
-        <Logo size="sm" className="mb-4" />
+        <Logo size="sm" className="mb-4 animate-fadeInUp" />
         {user && (
           <button
             onClick={onNewChat}
-            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+            style={{ animationDelay: '0.1s' }}
           >
             <Plus size={18} />
             <span className="font-medium">New Chat</span>
@@ -362,7 +357,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {user ? (
         <>
           {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700">
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
             <UsageIndicator
               usage={usage}
               limit={limit}
@@ -371,27 +366,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
 
-          <div className="p-4 border-b border-gray-700">
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search chats..."
-                className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
               />
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
             <div className="space-y-1">
-              {sessions.map((session) => (
+              {sessions.map((session, index) => (
                 <div
                   key={session.id}
-                  className={`group flex flex-col px-3 py-3 rounded-lg cursor-pointer transition-colors ${
+                  className={`group flex flex-col px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 transform hover:scale-105 animate-fadeInUp ${
                     currentSessionId === session.id
                       ? 'bg-gray-700'
                       : 'hover:bg-gray-800'
                   }`}
+                  style={{ animationDelay: `${0.4 + index * 0.05}s` }}
                   onClick={() => onSelectSession(session.id)}
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -404,7 +400,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation();
                         onDeleteSession(session.id);
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 transition-all flex-shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 transition-all duration-200 flex-shrink-0 hover:scale-110 transform"
                     >
                       <Trash2 size={12} className="text-gray-400" />
                     </button>
@@ -424,7 +420,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ))}
               
               {sessions.length === 0 && (
-                <div className="text-center py-8 text-gray-400">
+                <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
                   <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No conversations yet</p>
                   <p className="text-xs">Start a new chat to begin</p>
@@ -434,26 +430,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="p-4 border-t border-gray-700 space-y-2">
-            <button
-              onClick={onOpenAnalytics}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <BarChart3 size={18} />
-              <span className="font-medium">Analytics</span>
-            </button>
-            <button
-              onClick={onOpenSettings}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <Settings size={18} />
-              <span className="font-medium">Settings</span>
-            </button>
+            {[
+              { onClick: onOpenAnalytics, icon: BarChart3, label: 'Analytics' },
+              { onClick: onOpenSettings, icon: Settings, label: 'Settings' }
+            ].map((item, index) => (
+              <button
+                key={item.label}
+                onClick={item.onClick}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                style={{ animationDelay: `${0.5 + index * 0.1}s` }}
+              >
+                <item.icon size={18} />
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
             
             {/* SuperAdmin Dashboard Button */}
             {isSuperAdmin() && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-red-900/20 border border-red-700/30"
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-105 transform animate-fadeInUp"
+                style={{ animationDelay: '0.7s' }}
               >
                 <Shield size={18} className="text-red-400" />
                 <span className="font-medium text-red-400">Admin Dashboard</span>
@@ -464,14 +461,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isProUser && (
               <button
                 onClick={onOpenTierUpgrade}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors bg-yellow-900/20 border border-yellow-700/30"
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-105 transform animate-fadeInUp"
+                style={{ animationDelay: '0.8s' }}
               >
                 <Crown size={18} className="text-yellow-400" />
                 <span className="font-medium text-yellow-400">Upgrade to Pro</span>
               </button>
             )}
             
-            <div className="pt-2 border-t border-gray-700">
+            <div className="pt-2 border-t border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.9s' }}>
               <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
                 <div className="flex items-center space-x-2">
                   {isSuperAdmin() ? (
@@ -484,19 +482,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="truncate">{user.email}</span>
                 </div>
                 {isSuperAdmin() && (
-                  <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full">
+                  <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse">
                     ADMIN
                   </span>
                 )}
                 {isProUser && !isSuperAdmin() && (
-                  <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full">
+                  <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse">
                     PRO
                   </span>
                 )}
               </div>
               <button
                 onClick={handleSignOut}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors text-red-400 hover:text-red-300"
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 hover:scale-105 transform"
               >
                 <LogOut size={18} />
                 <span className="font-medium">Sign Out</span>
@@ -506,13 +504,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="text-center">
+          <div className="text-center animate-fadeInUp">
             <User size={48} className="text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-white mb-2">Welcome!</h3>
             <p className="text-gray-400 text-sm mb-4">Sign in to start comparing AI responses</p>
             <button
               onClick={onOpenAuth}
-              className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all duration-200 hover:scale-105 transform"
             >
               Sign In / Sign Up
             </button>

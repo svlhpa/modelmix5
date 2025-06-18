@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Globe } from 'lucide-react';
 import { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -35,56 +35,67 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   };
 
   const isUser = message.role === 'user';
+  const hasInternetSearch = message.content.includes('=== CURRENT INTERNET SEARCH RESULTS ===');
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fadeInUp`}>
       <div className={`max-w-3xl min-w-0 ${isUser ? 'order-2' : 'order-1'}`}>
         <div
-          className={`px-4 py-3 rounded-2xl ${
+          className={`px-4 py-3 rounded-2xl transition-all duration-300 hover:shadow-md transform hover:scale-[1.02] ${
             isUser
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-900 border border-gray-200'
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-100 text-gray-900 border border-gray-200 hover:bg-gray-50'
           }`}
         >
           {message.provider && (
-            <div className="text-xs font-medium mb-2 opacity-70">
+            <div className="text-xs font-medium mb-2 opacity-70 animate-fadeInDown">
               {message.provider}
             </div>
           )}
           
           {/* Display images if present */}
           {message.images && message.images.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
+            <div className="mb-3 flex flex-wrap gap-2 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
               {message.images.map((image, index) => (
                 <img
                   key={index}
                   src={image}
                   alt={`Uploaded image ${index + 1}`}
-                  className="max-w-xs max-h-48 object-cover rounded-lg border border-white/20"
+                  className="max-w-xs max-h-48 object-cover rounded-lg border border-white/20 hover:scale-105 transition-transform duration-300 cursor-pointer"
+                  onClick={() => window.open(image, '_blank')}
                 />
               ))}
             </div>
           )}
+
+          {/* Internet search indicator */}
+          {hasInternetSearch && (
+            <div className="mb-2 flex items-center space-x-2 text-blue-200 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+              <Globe size={16} className="animate-pulse" />
+              <span className="text-sm">Internet search results included</span>
+            </div>
+          )}
           
           <div 
-            className="leading-relaxed break-words"
+            className="leading-relaxed break-words animate-fadeInUp"
+            style={{ animationDelay: '0.3s' }}
             dangerouslySetInnerHTML={{ 
               __html: parseMarkdown(message.content) 
             }}
           />
           
           {!isUser && (
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
               <span className="text-xs text-gray-500">
                 {message.timestamp.toLocaleTimeString()}
               </span>
               <button
                 onClick={handleCopy}
-                className="p-1 rounded hover:bg-gray-200 transition-colors"
+                className="p-1 rounded hover:bg-gray-200 transition-all duration-200 hover:scale-110 transform"
                 title="Copy message"
               >
                 {copied ? (
-                  <Check size={14} className="text-green-600" />
+                  <Check size={14} className="text-green-600 animate-bounceIn" />
                 ) : (
                   <Copy size={14} className="text-gray-500" />
                 )}

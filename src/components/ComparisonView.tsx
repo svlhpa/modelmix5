@@ -135,7 +135,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   };
 
   const LoadingAnimation = ({ provider }: { provider: string }) => (
-    <div className="flex flex-col items-center justify-center py-8 px-4">
+    <div className="flex flex-col items-center justify-center py-8 px-4 animate-fadeInUp">
       <div className="relative mb-4">
         {/* Outer rotating ring */}
         <div className="w-12 h-12 border-4 border-gray-200 rounded-full animate-spin border-t-emerald-500"></div>
@@ -167,15 +167,15 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   if (responses.length === 0) return null;
 
   return (
-    <div className="mb-6 min-w-0">
+    <div className="mb-6 min-w-0 animate-fadeInUp">
       <div className="flex items-center justify-between mb-4 px-4 md:px-0">
         <div className="flex items-center space-x-2 min-w-0">
-          <Sparkles size={16} className="text-emerald-600 flex-shrink-0" />
+          <Sparkles size={16} className="text-emerald-600 flex-shrink-0 animate-pulse" />
           <h3 className="font-medium text-gray-900 text-sm md:text-base min-w-0">
             AI Responses ({responses.length} models)
           </h3>
           {showSelection && (
-            <span className="text-xs text-gray-500 bg-emerald-50 px-2 py-1 rounded-full hidden sm:inline flex-shrink-0">
+            <span className="text-xs text-gray-500 bg-emerald-50 px-2 py-1 rounded-full hidden sm:inline flex-shrink-0 animate-pulse">
               Click to select best response
             </span>
           )}
@@ -187,7 +187,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             <button
               onClick={scrollLeft}
               disabled={currentIndex === 0}
-              className="p-1.5 rounded-lg bg-white border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 shadow-sm"
+              className="p-1.5 rounded-lg bg-white border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 shadow-sm transition-all duration-200 hover:scale-110 transform"
             >
               <ChevronLeft size={14} />
             </button>
@@ -197,7 +197,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             <button
               onClick={scrollRight}
               disabled={currentIndex === responses.length - 1}
-              className="p-1.5 rounded-lg bg-white border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 shadow-sm"
+              className="p-1.5 rounded-lg bg-white border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 shadow-sm transition-all duration-200 hover:scale-110 transform"
             >
               <ChevronRight size={14} />
             </button>
@@ -220,22 +220,25 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             {responses.map((response, index) => (
               <div
                 key={`${response.provider}-${index}`}
-                className={`flex-shrink-0 border-2 rounded-xl shadow-sm transition-all hover:shadow-lg ${
+                className={`flex-shrink-0 border-2 rounded-xl shadow-sm transition-all duration-300 hover:shadow-lg animate-fadeInUp ${
                   showSelection && !response.loading && !response.error 
-                    ? 'cursor-pointer hover:scale-105' 
+                    ? 'cursor-pointer hover:scale-105 transform' 
                     : ''
                 } ${getProviderColor(response.provider, response.selected)}`}
                 style={{ 
                   minWidth: window.innerWidth < 768 ? '280px' : '320px',
                   maxWidth: window.innerWidth < 768 ? '280px' : '320px',
-                  scrollSnapAlign: 'start'
+                  scrollSnapAlign: 'start',
+                  animationDelay: `${index * 0.1}s`
                 }}
                 onClick={() => showSelection && handleSelectResponse(response)}
               >
                 {/* Header */}
                 <div className="flex items-center justify-between p-3 md:p-4 border-b border-white/50">
                   <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
-                    <span className="text-lg md:text-xl flex-shrink-0">{getProviderIcon(response.provider)}</span>
+                    <span className="text-lg md:text-xl flex-shrink-0 animate-bounceIn" style={{ animationDelay: `${index * 0.1 + 0.2}s` }}>
+                      {getProviderIcon(response.provider)}
+                    </span>
                     <div className="min-w-0">
                       <h3 className="font-semibold text-gray-900 text-xs md:text-sm truncate">{response.provider}</h3>
                       <div className="flex items-center space-x-1">
@@ -253,13 +256,13 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                         )}
                         {response.selected && (
                           <>
-                            <CheckCircle size={12} className="text-green-600" />
+                            <CheckCircle size={12} className="text-green-600 animate-bounceIn" />
                             <span className="text-xs text-green-600 font-medium">Selected</span>
                           </>
                         )}
                         {response.error && (
                           <>
-                            <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+                            <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
                             <span className="text-xs text-red-600 font-medium">Error</span>
                           </>
                         )}
@@ -273,11 +276,11 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                           e.stopPropagation();
                           handleCopy(response.content, index);
                         }}
-                        className="p-1.5 rounded-lg hover:bg-white/50 transition-colors group"
+                        className="p-1.5 rounded-lg hover:bg-white/50 transition-all duration-200 group hover:scale-110 transform"
                         title="Copy response"
                       >
                         {copiedIndex === index ? (
-                          <Check size={14} className="text-green-600" />
+                          <Check size={14} className="text-green-600 animate-bounceIn" />
                         ) : (
                           <Copy size={14} className="text-gray-500 group-hover:text-gray-700" />
                         )}
@@ -291,7 +294,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   {response.loading && <LoadingAnimation provider={response.provider} />}
 
                   {response.error && (
-                    <div className="flex flex-col items-center justify-center py-6">
+                    <div className="flex flex-col items-center justify-center py-6 animate-shakeX">
                       <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mb-3">
                         <AlertCircle size={20} className="text-red-500" />
                       </div>
@@ -308,7 +311,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   )}
 
                   {!response.loading && !response.error && response.content && (
-                    <div className="prose prose-sm max-w-none">
+                    <div className="prose prose-sm max-w-none animate-fadeInUp">
                       <div 
                         className="text-gray-800 text-xs md:text-sm leading-relaxed break-words"
                         dangerouslySetInnerHTML={{ 
@@ -319,8 +322,8 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   )}
 
                   {showSelection && !response.loading && !response.error && response.content && (
-                    <div className="mt-3 text-center">
-                      <div className="text-xs text-gray-500 bg-white/50 px-2 py-1 rounded-full inline-block">
+                    <div className="mt-3 text-center animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+                      <div className="text-xs text-gray-500 bg-white/50 px-2 py-1 rounded-full inline-block hover:bg-white/70 transition-colors duration-200">
                         Tap to select this response
                       </div>
                     </div>
@@ -336,7 +339,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           {currentIndex > 0 && (
             <button
               onClick={scrollLeft}
-              className="absolute left-2 top-1/2 transform -translate-y-1/2 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 z-10"
+              className="absolute left-2 top-1/2 transform -translate-y-1/2 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 z-10 transition-all duration-200 hover:scale-110"
             >
               <ChevronLeft size={20} />
             </button>
@@ -344,7 +347,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           {currentIndex < responses.length - 1 && (
             <button
               onClick={scrollRight}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 z-10"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 z-10 transition-all duration-200 hover:scale-110"
             >
               <ChevronRight size={20} />
             </button>
@@ -359,8 +362,8 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             <button
               key={index}
               onClick={() => scrollToIndex(index)}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                index === currentIndex ? 'bg-emerald-500' : 'bg-gray-300'
+              className={`w-2 h-2 rounded-full transition-all duration-200 ${
+                index === currentIndex ? 'bg-emerald-500 scale-125' : 'bg-gray-300 hover:bg-gray-400'
               }`}
             />
           ))}

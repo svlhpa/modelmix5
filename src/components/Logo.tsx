@@ -28,10 +28,10 @@ export const Logo: React.FC<LogoProps> = ({
     return (
       <div className={`relative ${className}`}>
         <div className="relative">
-          <div className="relative p-1.5 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-lg">
+          <div className="relative p-1.5 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 transform">
             <Shuffle size={iconSizes[size] * 0.7} className="text-white" />
           </div>
-          <Sparkles size={iconSizes[size] * 0.5} className="absolute -top-1 -right-1 text-yellow-500" />
+          <Sparkles size={iconSizes[size] * 0.5} className="absolute -top-1 -right-1 text-yellow-500 animate-pulse" />
         </div>
       </div>
     );
@@ -39,24 +39,24 @@ export const Logo: React.FC<LogoProps> = ({
 
   if (variant === 'text') {
     return (
-      <span className={`font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent ${sizeClasses[size]} ${className}`}>
+      <span className={`font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent ${sizeClasses[size]} ${className} hover:from-emerald-500 hover:to-blue-500 transition-all duration-300`}>
         ModelMix
       </span>
     );
   }
 
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
+    <div className={`flex items-center space-x-2 ${className} group`}>
       <div className="relative">
-        <div className="relative p-2 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-xl shadow-lg">
+        <div className="relative p-2 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-xl shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-110 transform">
           <Shuffle size={iconSizes[size]} className="text-white" />
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
             <Sparkles size={8} className="text-yellow-800" />
           </div>
         </div>
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-xl blur-sm opacity-30 -z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-xl blur-sm opacity-30 -z-10 group-hover:opacity-50 transition-opacity duration-300"></div>
       </div>
-      <span className={`font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent ${sizeClasses[size]}`}>
+      <span className={`font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent ${sizeClasses[size]} group-hover:from-emerald-500 group-hover:to-blue-500 transition-all duration-300`}>
         ModelMix
       </span>
     </div>
