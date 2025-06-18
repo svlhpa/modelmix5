@@ -134,13 +134,17 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
     return parsed;
   };
 
+  // FIXED: Completely smooth loading animation
   const LoadingAnimation = ({ provider }: { provider: string }) => (
     <div className="flex flex-col items-center justify-center py-8 px-4">
       <div className="relative mb-4">
         {/* Smooth rotating ring */}
-        <div className="w-12 h-12 border-4 border-gray-200 rounded-full">
+        <div className="w-12 h-12 relative">
           <div 
-            className="w-12 h-12 border-4 border-transparent border-t-emerald-500 rounded-full animate-spin"
+            className="absolute inset-0 border-4 border-gray-200 rounded-full"
+          ></div>
+          <div 
+            className="absolute inset-0 border-4 border-transparent border-t-emerald-500 rounded-full"
             style={{ 
               animation: 'spin 2s linear infinite',
               transformOrigin: 'center'
@@ -193,6 +197,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
         </div>
       </div>
       
+      {/* FIXED: Inline styles for smooth animations */}
       <style jsx>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }

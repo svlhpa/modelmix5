@@ -107,13 +107,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  // FIXED: Proper scrolling function
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
+      });
+    }
   };
 
+  // FIXED: Better scroll timing
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, currentResponses, isGenerating]);
+    // Use requestAnimationFrame for smoother scrolling
+    const scrollTimeout = setTimeout(() => {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }, 100);
+
+    return () => clearTimeout(scrollTimeout);
+  }, [messages, currentResponses, isGenerating, waitingForSelection]);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -499,10 +514,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
       </div>
 
+      {/* FIXED: Proper scrollable container */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto min-w-0"
-        style={{ scrollBehavior: 'smooth' }}
+        className="flex-1 overflow-y-auto min-w-0 scroll-smooth"
+        style={{ 
+          scrollBehavior: 'smooth',
+          overflowAnchor: 'auto'
+        }}
       >
         {showWelcome ? (
           <div className="flex items-center justify-center h-full p-4">
@@ -757,7 +776,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </div>
             )}
             
-            <div ref={messagesEndRef} />
+            {/* FIXED: Scroll anchor */}
+            <div ref={messagesEndRef} style={{ height: '1px' }} />
           </div>
         )}
       </div>
