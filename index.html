@@ -6,6 +6,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ModelMix - Multi-AI Comparison Platform</title>
     <meta name="description" content="Mix and compare AI responses from multiple models including OpenAI, Claude, Gemini, DeepSeek and more. Get the best insights by blending different AI perspectives." />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#059669" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ModelMix" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="ModelMix" />
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/icons/icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="96x96" href="/icons/icon-96x96.png" />
+    <link rel="apple-touch-icon" sizes="128x128" href="/icons/icon-128x128.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="384x384" href="/icons/icon-384x384.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
+    
+    <!-- Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#059669" />
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://modelmix.app/" />
+    <meta property="og:title" content="ModelMix - Multi-AI Comparison Platform" />
+    <meta property="og:description" content="Mix and compare AI responses from multiple models. Get the best insights by blending different AI perspectives." />
+    <meta property="og:image" content="/icons/icon-512x512.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://modelmix.app/" />
+    <meta property="twitter:title" content="ModelMix - Multi-AI Comparison Platform" />
+    <meta property="twitter:description" content="Mix and compare AI responses from multiple models. Get the best insights by blending different AI perspectives." />
+    <meta property="twitter:image" content="/icons/icon-512x512.png" />
+    
     <style>
       @keyframes rotate {
         from {
@@ -54,10 +100,75 @@
       .bolt-badge-container:hover .bolt-badge {
         animation-duration: 4s;
       }
+
+      /* PWA Install Prompt Styles */
+      .pwa-install-prompt {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #059669, #047857);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        z-index: 10000;
+        display: none;
+        align-items: center;
+        gap: 12px;
+        max-width: 90vw;
+        animation: slideUp 0.3s ease-out;
+      }
+
+      @keyframes slideUp {
+        from {
+          transform: translateX(-50%) translateY(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(-50%) translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .pwa-install-prompt button {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .pwa-install-prompt button:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .pwa-install-prompt .close-btn {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- PWA Install Prompt -->
+    <div id="pwa-install-prompt" class="pwa-install-prompt">
+      <div>
+        <div style="font-weight: 600; margin-bottom: 4px;">Install ModelMix</div>
+        <div style="font-size: 14px; opacity: 0.9;">Add to your home screen for quick access</div>
+      </div>
+      <button id="pwa-install-btn">Install</button>
+      <button id="pwa-close-btn" class="close-btn">×</button>
+    </div>
+    
     <script type="module" src="/src/main.tsx"></script>
     
     <!-- Draggable Bolt.new badge -->
@@ -84,6 +195,121 @@
     </div>
 
     <script>
+      // PWA Installation and Service Worker Registration
+      let deferredPrompt;
+      let isInstallPromptShown = false;
+
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+              
+              // Check for updates
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New content is available, prompt user to refresh
+                    if (confirm('New version available! Refresh to update?')) {
+                      window.location.reload();
+                    }
+                  }
+                });
+              });
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+
+      // PWA Install Prompt
+      window.addEventListener('beforeinstallprompt', (e) => {
+        console.log('PWA install prompt triggered');
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        // Show custom install prompt after a delay
+        setTimeout(() => {
+          if (!isInstallPromptShown && !localStorage.getItem('pwa-install-dismissed')) {
+            showInstallPrompt();
+          }
+        }, 3000);
+      });
+
+      function showInstallPrompt() {
+        const prompt = document.getElementById('pwa-install-prompt');
+        if (prompt && deferredPrompt) {
+          prompt.style.display = 'flex';
+          isInstallPromptShown = true;
+        }
+      }
+
+      function hideInstallPrompt() {
+        const prompt = document.getElementById('pwa-install-prompt');
+        if (prompt) {
+          prompt.style.display = 'none';
+        }
+      }
+
+      // Install button click
+      document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log(`User response to install prompt: ${outcome}`);
+          deferredPrompt = null;
+          hideInstallPrompt();
+        }
+      });
+
+      // Close button click
+      document.getElementById('pwa-close-btn')?.addEventListener('click', () => {
+        hideInstallPrompt();
+        localStorage.setItem('pwa-install-dismissed', 'true');
+      });
+
+      // Track app install
+      window.addEventListener('appinstalled', (evt) => {
+        console.log('PWA was installed');
+        hideInstallPrompt();
+        
+        // Optional: Track installation analytics
+        if (typeof gtag !== 'undefined') {
+          gtag('event', 'pwa_install', {
+            event_category: 'engagement',
+            event_label: 'PWA Installation'
+          });
+        }
+      });
+
+      // Handle iOS Safari install instructions
+      function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      }
+
+      function isInStandaloneMode() {
+        return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      }
+
+      // Show iOS install instructions
+      if (isIOS() && !isInStandaloneMode() && !localStorage.getItem('ios-install-dismissed')) {
+        setTimeout(() => {
+          const iosPrompt = document.createElement('div');
+          iosPrompt.innerHTML = `
+            <div style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #059669, #047857); color: white; padding: 16px 24px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); z-index: 10000; max-width: 90vw; text-align: center;">
+              <div style="font-weight: 600; margin-bottom: 8px;">Install ModelMix</div>
+              <div style="font-size: 14px; margin-bottom: 12px;">Tap <strong>Share</strong> → <strong>Add to Home Screen</strong></div>
+              <button onclick="this.parentElement.parentElement.remove(); localStorage.setItem('ios-install-dismissed', 'true');" style="background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer;">Got it</button>
+            </div>
+          `;
+          document.body.appendChild(iosPrompt);
+        }, 5000);
+      }
+
+      // Draggable badge functionality (existing code)
       (function() {
         const container = document.getElementById('bolt-badge-container');
         const margin = 20; // Margin from edges
