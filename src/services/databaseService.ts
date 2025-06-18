@@ -162,7 +162,7 @@ class DatabaseService {
     }));
   }
 
-  // CRITICAL: Completely rebuilt message loading system
+  // CRITICAL: Fixed message loading to prevent duplicates
   async loadSessionMessages(sessionId: string): Promise<Message[]> {
     const { data, error } = await supabase
       .from('conversation_turns')
@@ -174,8 +174,18 @@ class DatabaseService {
 
     const messages: Message[] = [];
     
+    // CRITICAL: Use a Set to track processed turn IDs to prevent duplicates
+    const processedTurns = new Set<string>();
+    
     // CRITICAL: Rebuild messages in correct chronological order
     data.forEach((turn) => {
+      // Skip if we've already processed this turn
+      if (processedTurns.has(turn.id)) {
+        return;
+      }
+      
+      processedTurns.add(turn.id);
+      
       // Add user message first
       messages.push({
         id: `user-${turn.id}`,
