@@ -134,31 +134,14 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
     return parsed;
   };
 
-  // FIXED: Completely smooth loading animation
   const LoadingAnimation = ({ provider }: { provider: string }) => (
     <div className="flex flex-col items-center justify-center py-8 px-4">
       <div className="relative mb-4">
-        {/* Smooth rotating ring */}
-        <div className="w-12 h-12 relative">
-          <div 
-            className="absolute inset-0 border-4 border-gray-200 rounded-full"
-          ></div>
-          <div 
-            className="absolute inset-0 border-4 border-transparent border-t-emerald-500 rounded-full"
-            style={{ 
-              animation: 'spin 2s linear infinite',
-              transformOrigin: 'center'
-            }}
-          ></div>
-        </div>
+        {/* Outer rotating ring */}
+        <div className="w-12 h-12 border-4 border-gray-200 rounded-full animate-spin border-t-emerald-500"></div>
         {/* Inner pulsing dot */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div 
-            className="w-3 h-3 bg-emerald-500 rounded-full"
-            style={{
-              animation: 'pulse 2s ease-in-out infinite'
-            }}
-          ></div>
+          <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
         </div>
       </div>
       
@@ -171,59 +154,13 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           {provider} is generating your response
         </p>
         
-        {/* Smooth animated dots */}
+        {/* Animated dots */}
         <div className="flex justify-center space-x-1 mt-2">
-          <div 
-            className="w-1.5 h-1.5 bg-emerald-400 rounded-full"
-            style={{ 
-              animation: 'bounce 1.4s ease-in-out infinite both',
-              animationDelay: '0ms'
-            }}
-          ></div>
-          <div 
-            className="w-1.5 h-1.5 bg-emerald-400 rounded-full"
-            style={{ 
-              animation: 'bounce 1.4s ease-in-out infinite both',
-              animationDelay: '0.16s'
-            }}
-          ></div>
-          <div 
-            className="w-1.5 h-1.5 bg-emerald-400 rounded-full"
-            style={{ 
-              animation: 'bounce 1.4s ease-in-out infinite both',
-              animationDelay: '0.32s'
-            }}
-          ></div>
+          <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+          <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+          <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
         </div>
       </div>
-      
-      {/* FIXED: Inline styles for smooth animations */}
-      <style jsx>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes pulse {
-          0%, 100% { 
-            opacity: 1;
-            transform: scale(1);
-          }
-          50% { 
-            opacity: 0.5;
-            transform: scale(0.8);
-          }
-        }
-        
-        @keyframes bounce {
-          0%, 80%, 100% {
-            transform: scale(0);
-          }
-          40% {
-            transform: scale(1);
-          }
-        }
-      `}</style>
     </div>
   );
 
@@ -276,8 +213,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           style={{ 
             scrollbarWidth: 'none', 
             msOverflowStyle: 'none',
-            scrollSnapType: 'x mandatory',
-            scrollBehavior: 'smooth'
+            scrollSnapType: 'x mandatory'
           }}
         >
           <div className="flex space-x-4 px-4 md:px-0" style={{ width: 'max-content' }}>

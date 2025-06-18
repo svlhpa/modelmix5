@@ -60,7 +60,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [internetSearchAvailable, setInternetSearchAvailable] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const currentTier = getCurrentTier();
   const { usage, limit } = getUsageInfo();
@@ -102,33 +101,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       setShowMemoryIndicator(stats.totalMemories > 0);
     } catch (error) {
       console.error('Failed to load memory stats:', error);
-      // Don't show error to user, just disable memory indicator
-      setShowMemoryIndicator(false);
     }
   };
 
-  // FIXED: Proper scrolling function
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'end',
-        inline: 'nearest'
-      });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // FIXED: Better scroll timing
   useEffect(() => {
-    // Use requestAnimationFrame for smoother scrolling
-    const scrollTimeout = setTimeout(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-    }, 100);
-
-    return () => clearTimeout(scrollTimeout);
-  }, [messages, currentResponses, isGenerating, waitingForSelection]);
+    scrollToBottom();
+  }, [messages, currentResponses, isGenerating]);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -514,15 +496,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
       </div>
 
-      {/* FIXED: Proper scrollable container */}
-      <div 
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto min-w-0 scroll-smooth"
-        style={{ 
-          scrollBehavior: 'smooth',
-          overflowAnchor: 'auto'
-        }}
-      >
+      <div className="flex-1 overflow-y-auto min-w-0">
         {showWelcome ? (
           <div className="flex items-center justify-center h-full p-4">
             <div className="text-center max-w-2xl">
@@ -705,9 +679,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3 text-emerald-700 min-w-0">
                         <div className="flex space-x-1 flex-shrink-0">
-                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" style={{ animationDelay: '0ms', animationDuration: '1.5s' }}></div>
-                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" style={{ animationDelay: '0.5s', animationDuration: '1.5s' }}></div>
-                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" style={{ animationDelay: '1s', animationDuration: '1.5s' }}></div>
+                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
                         <span className="font-medium min-w-0">
                           <span className="hidden sm:inline">
@@ -776,8 +750,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </div>
             )}
             
-            {/* FIXED: Scroll anchor */}
-            <div ref={messagesEndRef} style={{ height: '1px' }} />
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
