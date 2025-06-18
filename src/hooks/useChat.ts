@@ -3,6 +3,7 @@ import { Message, APIResponse, ChatSession, ConversationTurn } from '../types';
 import { aiService } from '../services/aiService';
 import { databaseService } from '../services/databaseService';
 import { analyticsService } from '../services/analyticsService';
+import { memoryService } from '../services/memoryService';
 import { useAuth } from './useAuth';
 
 export const useChat = () => {
@@ -34,7 +35,7 @@ export const useChat = () => {
     if (currentSessionId && user && currentSessionId !== loadingSessionId) {
       loadSessionMessages(currentSessionId);
     }
-  }, [currentSessionId, user]);
+  }, [currentSessionId, user, loadingSessionId]);
 
   const loadSessions = async () => {
     try {
@@ -68,6 +69,11 @@ export const useChat = () => {
             ? { ...session, messages }
             : session
         ));
+
+        // Extract memory from loaded messages
+        if (messages.length > 0) {
+          await memoryService.extractMemoryFromMessages(sessionId, messages);
+        }
       }
     } catch (error) {
       console.error('Failed to load session messages:', error);
@@ -147,7 +153,7 @@ export const useChat = () => {
       // Get user's current tier for API key selection
       const userTier = getCurrentTier();
 
-      // Get responses from AI service
+      // Get responses from AI service with memory integration
       const responses = await aiService.getResponses(
         content, 
         conversationHistory,
@@ -155,7 +161,8 @@ export const useChat = () => {
         undefined, // onResponseUpdate callback handled in ChatArea
         undefined, // signal handled in ChatArea
         userTier,
-        useInternetSearch
+        useInternetSearch,
+        currentSessionId // Pass session ID for memory context
       );
       
       return responses;
@@ -213,6 +220,10 @@ export const useChat = () => {
     try {
       await databaseService.saveConversationTurn(currentSessionId, turn);
       await analyticsService.saveConversationTurn(currentSessionId, turn);
+
+      // Extract memory from the new conversation turn
+      const newMessages = [userMessageObj, aiMessage];
+      await memoryService.extractMemoryFromMessages(currentSessionId, newMessages);
     } catch (error) {
       console.error('Failed to save conversation turn:', error);
     }

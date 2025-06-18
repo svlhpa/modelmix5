@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe, Brain } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
 import { globalApiService } from '../services/globalApiService';
+import { memoryService } from '../services/memoryService';
 
 interface ChatAreaProps {
   messages: any[];
@@ -46,6 +47,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   
+  // Memory state
+  const [memoryStats, setMemoryStats] = useState<{
+    totalMemories: number;
+    memoriesByType: Record<string, number>;
+    averageImportance: number;
+  }>({ totalMemories: 0, memoriesByType: {}, averageImportance: 0 });
+  const [showMemoryIndicator, setShowMemoryIndicator] = useState(false);
+  
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
   const [internetSearchAvailable, setInternetSearchAvailable] = useState(false);
@@ -59,6 +68,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     if (user) {
       checkUsageLimit();
       checkGlobalKeysAvailability();
+      loadMemoryStats();
     }
   }, [user, messages.length]);
 
@@ -82,6 +92,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setGlobalKeysAvailable(availability);
     setInternetSearchAvailable(availability.serper);
+  };
+
+  const loadMemoryStats = async () => {
+    try {
+      const stats = await memoryService.getMemoryStats();
+      setMemoryStats(stats);
+      setShowMemoryIndicator(stats.totalMemories > 0);
+    } catch (error) {
+      console.error('Failed to load memory stats:', error);
+    }
   };
 
   const scrollToBottom = () => {
@@ -323,6 +343,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     resetGenerationState();
     await tierService.incrementUsage();
     await checkUsageLimit();
+    await loadMemoryStats(); // Refresh memory stats after new conversation
   };
 
   const allResponsesHaveErrors = currentResponses.length > 0 && 
@@ -374,8 +395,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 <div className="text-gray-500">Conversations persist</div>
               </div>
               <div className="bg-white p-3 rounded-lg border border-gray-200">
-                <div className="font-medium text-gray-900">🚀 Fast</div>
-                <div className="text-gray-500">Compare 400+ AIs</div>
+                <div className="font-medium text-gray-900">🧠 Memory</div>
+                <div className="text-gray-500">AI remembers context</div>
               </div>
             </div>
           </div>
@@ -410,6 +431,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
         <div className="ml-auto flex items-center space-x-2 sm:space-x-4 text-sm text-gray-500 min-w-0">
+          {/* Memory indicator */}
+          {showMemoryIndicator && (
+            <div className="flex items-center space-x-1 flex-shrink-0" title={`${memoryStats.totalMemories} memories stored`}>
+              <Brain size={16} className="text-purple-500" />
+              <span className="hidden sm:inline text-xs text-purple-600">
+                {memoryStats.totalMemories} memories
+              </span>
+              <span className="sm:hidden text-xs text-purple-600">
+                {memoryStats.totalMemories}
+              </span>
+            </div>
+          )}
+          
+          {/* Tier indicator */}
           <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
             {isProUser ? (
               <Crown size={16} className="text-yellow-500" />
@@ -426,6 +461,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </span>
           </div>
           
+          {/* Usage indicator */}
           <div className="flex items-center space-x-1 flex-shrink-0">
             <div className={`w-2 h-2 rounded-full ${usageCheck.canUse ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span className="text-xs">
@@ -469,10 +505,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 Start Mixing AI Models
               </h2>
               <p className="text-gray-600 mb-6">
-                Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
+                Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context and memory.
                 {internetSearchAvailable && (
                   <span className="block mt-2 text-blue-600 font-medium">
                     🌐 Internet search is available! Toggle it on to get real-time information.
+                  </span>
+                )}
+                {showMemoryIndicator && (
+                  <span className="block mt-2 text-purple-600 font-medium">
+                    🧠 AI memory is active! Your conversations will be remembered for better context.
                   </span>
                 )}
               </p>
@@ -560,6 +601,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         🌐 Internet search available for real-time information!
                       </span>
                     )}
+                    {showMemoryIndicator && (
+                      <span className="block mt-1 text-purple-600">
+                        🧠 AI memory active with {memoryStats.totalMemories} stored memories!
+                      </span>
+                    )}
                   </p>
                   {hasAnyGlobalKeyAccess && !isProUser && (
                     <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
@@ -607,6 +653,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         <span className="text-sm">Internet search enabled</span>
                       </div>
                     )}
+                    {showMemoryIndicator && (
+                      <div className="mb-2 flex items-center space-x-2 text-emerald-200">
+                        <Brain size={16} />
+                        <span className="text-sm">AI memory active</span>
+                      </div>
+                    )}
                     <div className="leading-relaxed break-words">{currentUserMessage}</div>
                   </div>
                 </div>
@@ -633,10 +685,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         </div>
                         <span className="font-medium min-w-0">
                           <span className="hidden sm:inline">
-                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)
+                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}{showMemoryIndicator && ' using memory context'}... (responses appear as they complete)
                           </span>
                           <span className="sm:hidden">
-                            AI models mixing{currentUseInternetSearch && ' + web'}...
+                            AI models mixing{currentUseInternetSearch && ' + web'}{showMemoryIndicator && ' + memory'}...
                           </span>
                           {isProUser && enabledCount > 3 && (
                             <span className="ml-2 text-yellow-600">
@@ -705,6 +757,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
       <div className="bg-white border-t border-gray-200 p-4 min-w-0">
         <form onSubmit={handleSubmit} className="max-w-7xl mx-auto">
+          {/* Image previews */}
           {images.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
               {images.map((image, index) => (
@@ -726,30 +779,44 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          {internetSearchAvailable && (
-            <div className="mb-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setUseInternetSearch(!useInternetSearch)}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
-                  useInternetSearch
-                    ? 'bg-blue-50 border-blue-300 text-blue-700'
-                    : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <Globe size={16} />
-                <span className="text-sm font-medium">
-                  {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
-                </span>
-              </button>
+          {/* Feature toggles */}
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              {/* Internet Search Toggle */}
+              {internetSearchAvailable && (
+                <button
+                  type="button"
+                  onClick={() => setUseInternetSearch(!useInternetSearch)}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
+                    useInternetSearch
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Globe size={16} />
+                  <span className="text-sm font-medium">
+                    {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
+                  </span>
+                </button>
+              )}
               
-              {useInternetSearch && (
-                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                  AI will search the web for current information
-                </span>
+              {/* Memory indicator */}
+              {showMemoryIndicator && (
+                <div className="flex items-center space-x-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
+                  <Brain size={16} className="text-purple-600" />
+                  <span className="text-sm text-purple-700">
+                    Memory Active ({memoryStats.totalMemories})
+                  </span>
+                </div>
               )}
             </div>
-          )}
+            
+            {useInternetSearch && (
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                AI will search the web for current information
+              </span>
+            )}
+          </div>
           
           <div className="flex space-x-3 min-w-0">
             <div className="flex-1 relative min-w-0">
@@ -775,7 +842,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                 : isProUser
                                   ? `Ask anything - Pro plan with ${enabledCount} AI models ready!`
                                   : `Ask anything or upload images to mix ${enabledCount} AI responses...`
-                              : "Continue the conversation..."
+                              : showMemoryIndicator
+                                ? "Continue the conversation (AI remembers context)..."
+                                : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
                 disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
@@ -875,7 +944,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           
           {isGenerating && enabledCount > 0 && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
-              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation
+              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'}{showMemoryIndicator && ' using memory context'} - click Stop to cancel generation
               {isProUser && enabledCount > 3 && (
                 <span className="ml-2 text-yellow-600">
                   <Crown size={12} className="inline" /> Pro Power
@@ -887,10 +956,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
               {hasAnyGlobalKeyAccess && !isProUser 
-                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
+                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''}`
                 : isProUser
-                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
-                  : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''} • ${usage}/${limit} conversations used this month`
+                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''}`
+                  : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''} • ${usage}/${limit} conversations used this month`
               }
             </p>
           )}

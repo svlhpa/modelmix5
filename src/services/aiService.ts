@@ -2,6 +2,7 @@ import { APIResponse, APISettings, ModelSettings } from '../types';
 import { databaseService } from './databaseService';
 import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
+import { memoryService } from './memoryService';
 
 class AIService {
   private settings: APISettings = {
@@ -306,7 +307,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  // CRITICAL: Completely rebuilt response generation system
+  // Enhanced response generation with memory integration
   async getResponses(
     currentMessage: string, 
     conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [], 
@@ -314,10 +315,22 @@ class AIService {
     onResponseUpdate?: (responses: APIResponse[]) => void,
     signal?: AbortSignal,
     userTier?: string,
-    useInternetSearch: boolean = false
+    useInternetSearch: boolean = false,
+    sessionId?: string
   ): Promise<APIResponse[]> {
     let enhancedHistory = [...conversationHistory];
     let searchResults = '';
+
+    // Get relevant memories for context
+    let memoryContext = '';
+    if (sessionId) {
+      try {
+        const relevantMemories = await memoryService.getRelevantMemories(sessionId, currentMessage);
+        memoryContext = memoryService.formatMemoriesForContext(relevantMemories);
+      } catch (error) {
+        console.error('Failed to get memories:', error);
+      }
+    }
 
     // Perform internet search if requested
     if (useInternetSearch) {
@@ -349,6 +362,17 @@ class AIService {
             content: `${enhancedHistory[lastUserMessageIndex].content}\n\n[Note: Internet search was requested but failed. Please provide the best response based on your training data.]`
           };
         }
+      }
+    }
+
+    // Add memory context to the conversation if available
+    if (memoryContext && enhancedHistory.length > 0) {
+      const lastUserMessageIndex = enhancedHistory.length - 1;
+      if (lastUserMessageIndex >= 0 && enhancedHistory[lastUserMessageIndex].role === 'user') {
+        enhancedHistory[lastUserMessageIndex] = {
+          ...enhancedHistory[lastUserMessageIndex],
+          content: `${memoryContext}${enhancedHistory[lastUserMessageIndex].content}`
+        };
       }
     }
 
