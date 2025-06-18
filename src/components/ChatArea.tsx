@@ -184,10 +184,24 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setCurrentResponses([]);
 
+    // Build proper conversation context
+    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
+    
+    // Add existing messages from the session
+    messages.forEach(msg => {
+      contextMessages.push({ 
+        role: msg.role, 
+        content: msg.content 
+      });
+    });
+    
+    // Add the current user message
+    contextMessages.push({ role: 'user', content: currentUserMessage });
+
     try {
       const responses = await aiService.getResponses(
         currentUserMessage, 
-        [], // Build context from messages
+        contextMessages,
         currentUserImages,
         (updatedResponses) => {
           if (controller.signal.aborted) return;
@@ -258,10 +272,24 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setCurrentResponses([]);
 
+    // Build proper conversation context
+    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
+    
+    // Add existing messages from the session
+    messages.forEach(msg => {
+      contextMessages.push({ 
+        role: msg.role, 
+        content: msg.content 
+      });
+    });
+    
+    // Add the current user message
+    contextMessages.push({ role: 'user', content: message });
+
     try {
       await aiService.getResponses(
         message, 
-        messages.map(msg => ({ role: msg.role, content: msg.content })),
+        contextMessages,
         messageImages,
         (updatedResponses) => {
           if (controller.signal.aborted) return;
