@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe, Brain } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -8,7 +8,6 @@ import { useAuth } from '../hooks/useAuth';
 import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
 import { globalApiService } from '../services/globalApiService';
-import { memoryService } from '../services/memoryService';
 
 interface ChatAreaProps {
   messages: any[];
@@ -38,7 +37,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [images, setImages] = useState<string[]>([]);
   const [useInternetSearch, setUseInternetSearch] = useState(false);
   
-  // Current generation state
+  // CRITICAL: Separate state for AI generation session
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
@@ -46,14 +45,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  
-  // Memory state
-  const [memoryStats, setMemoryStats] = useState<{
-    totalMemories: number;
-    memoriesByType: Record<string, number>;
-    averageImportance: number;
-  }>({ totalMemories: 0, memoriesByType: {}, averageImportance: 0 });
-  const [showMemoryIndicator, setShowMemoryIndicator] = useState(false);
   
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
@@ -68,7 +59,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     if (user) {
       checkUsageLimit();
       checkGlobalKeysAvailability();
-      loadMemoryStats();
     }
   }, [user, messages.length]);
 
@@ -92,16 +82,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setGlobalKeysAvailable(availability);
     setInternetSearchAvailable(availability.serper);
-  };
-
-  const loadMemoryStats = async () => {
-    try {
-      const stats = await memoryService.getMemoryStats();
-      setMemoryStats(stats);
-      setShowMemoryIndicator(stats.totalMemories > 0);
-    } catch (error) {
-      console.error('Failed to load memory stats:', error);
-    }
   };
 
   const scrollToBottom = () => {
@@ -164,7 +144,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const getMaxAllowedModels = () => {
     const maxModels = getTierLimits().maxModelsPerComparison;
-    return maxModels === -1 ? Infinity : maxModels;
+    return maxModels === -1 ? Infinity : maxModels; // Pro tier has unlimited models
   };
 
   // Reset generation state
@@ -196,37 +176,41 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const handleRetryGeneration = async () => {
     if (!currentUserMessage) return;
     
+    // Reset state and start fresh generation
     setIsGenerating(true);
     setWaitingForSelection(false);
     
+    // Create new abort controller
     const controller = new AbortController();
     setAbortController(controller);
     
     setCurrentResponses([]);
-
-    // Build proper conversation context
-    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
     
-    // Add existing messages from the session
+    // Build conversation context from current messages + the user message we're retrying
+    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
     messages.forEach(msg => {
       contextMessages.push({ 
         role: msg.role, 
         content: msg.content 
       });
     });
-    
-    // Add the current user message
     contextMessages.push({ role: 'user', content: currentUserMessage });
 
+    // Get responses with real-time updates
     try {
-      const responses = await aiService.getResponses(
+      await aiService.getResponses(
         currentUserMessage, 
-        contextMessages,
+        contextMessages, 
         currentUserImages,
         (updatedResponses) => {
-          if (controller.signal.aborted) return;
+          // Check if generation was aborted
+          if (controller.signal.aborted) {
+            return;
+          }
+          
           setCurrentResponses([...updatedResponses]);
           
+          // Check if all responses are complete
           const allComplete = updatedResponses.every(r => !r.loading);
           if (allComplete) {
             setIsGenerating(false);
@@ -249,10 +233,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  // CRITICAL: Completely rebuilt form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
 
+    // Check usage limits (Pro users have unlimited)
     if (!usageCheck.canUse) {
       onTierUpgrade();
       return;
@@ -266,6 +252,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       return;
     }
 
+    // Pro users can use unlimited models
     if (currentTier !== 'tier2' && enabledCount > maxAllowed) {
       alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
       return;
@@ -287,35 +274,43 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setWaitingForSelection(false);
     setIsGenerating(true);
     
+    // Create abort controller for this generation
     const controller = new AbortController();
     setAbortController(controller);
     
     setCurrentResponses([]);
 
-    // Build proper conversation context
-    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
-    
-    // Add existing messages from the session
-    messages.forEach(msg => {
-      contextMessages.push({ 
-        role: msg.role, 
-        content: msg.content 
-      });
-    });
-    
-    // Add the current user message
-    contextMessages.push({ role: 'user', content: message });
-
     try {
+      // CRITICAL: Don't call onSendMessage here - it adds the user message to the session
+      // Instead, directly generate AI responses and let the user select one
+      // The user message will be added when they select a response
+      
+      // Build conversation context from existing messages only
+      const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
+      messages.forEach(msg => {
+        contextMessages.push({ 
+          role: msg.role, 
+          content: msg.content 
+        });
+      });
+      // Add the current message to context for AI generation
+      contextMessages.push({ role: 'user', content: message });
+
+      // Start real-time response generation with loading animations
       await aiService.getResponses(
         message, 
         contextMessages,
         messageImages,
         (updatedResponses) => {
-          if (controller.signal.aborted) return;
+          // Check if generation was aborted
+          if (controller.signal.aborted) {
+            return;
+          }
           
+          // CRITICAL: Update responses as they come in (real-time loading)
           setCurrentResponses([...updatedResponses]);
           
+          // Check if all responses are complete
           const allComplete = updatedResponses.every(r => !r.loading);
           if (allComplete) {
             setIsGenerating(false);
@@ -338,14 +333,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  // CRITICAL: Response selection handler - this is where we add messages to the session
   const handleSelectResponse = async (selectedResponse: APIResponse) => {
+    // CRITICAL: Now we add both the user message AND the selected response to the session
+    // This prevents the duplicate issue
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
+    
+    // Reset generation state
     resetGenerationState();
+
+    // Increment usage counter (Pro users don't increment)
     await tierService.incrementUsage();
-    await checkUsageLimit();
-    await loadMemoryStats(); // Refresh memory stats after new conversation
+    await checkUsageLimit(); // Refresh usage info
   };
 
+  // Check if all current responses have errors
   const allResponsesHaveErrors = currentResponses.length > 0 && 
     currentResponses.every(r => !r.loading && r.error);
 
@@ -354,6 +356,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   if (!user) {
     return (
       <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
+        {/* Header with mobile menu for non-authenticated users */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
           <button
             onClick={onToggleMobileSidebar}
@@ -395,8 +398,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 <div className="text-gray-500">Conversations persist</div>
               </div>
               <div className="bg-white p-3 rounded-lg border border-gray-200">
-                <div className="font-medium text-gray-900">🧠 Memory</div>
-                <div className="text-gray-500">AI remembers context</div>
+                <div className="font-medium text-gray-900">🚀 Fast</div>
+                <div className="text-gray-500">Compare 400+ AIs</div>
               </div>
             </div>
           </div>
@@ -405,7 +408,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     );
   }
 
-  const showWelcome = messages.length === 0 && currentResponses.length === 0 && !isGenerating && !waitingForSelection;
+  const showWelcome = messages.length === 0 && currentResponses.length === 0;
   const canSendMessage = !isLoading && !waitingForSelection && !isGenerating && usageCheck.canUse;
   const enabledCount = getEnabledModelsCount();
   const maxAllowed = getMaxAllowedModels();
@@ -415,6 +418,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
+        {/* Mobile menu button - always visible */}
         <button
           onClick={onToggleMobileSidebar}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden flex-shrink-0"
@@ -422,6 +426,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           <Menu size={20} />
         </button>
         
+        {/* Desktop sidebar toggle */}
         <button
           onClick={onToggleSidebar}
           className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
@@ -431,19 +436,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
         <div className="ml-auto flex items-center space-x-2 sm:space-x-4 text-sm text-gray-500 min-w-0">
-          {/* Memory indicator */}
-          {showMemoryIndicator && (
-            <div className="flex items-center space-x-1 flex-shrink-0" title={`${memoryStats.totalMemories} memories stored`}>
-              <Brain size={16} className="text-purple-500" />
-              <span className="hidden sm:inline text-xs text-purple-600">
-                {memoryStats.totalMemories} memories
-              </span>
-              <span className="sm:hidden text-xs text-purple-600">
-                {memoryStats.totalMemories}
-              </span>
-            </div>
-          )}
-          
           {/* Tier indicator */}
           <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
             {isProUser ? (
@@ -505,15 +497,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 Start Mixing AI Models
               </h2>
               <p className="text-gray-600 mb-6">
-                Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context and memory.
+                Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
                 {internetSearchAvailable && (
                   <span className="block mt-2 text-blue-600 font-medium">
                     🌐 Internet search is available! Toggle it on to get real-time information.
-                  </span>
-                )}
-                {showMemoryIndicator && (
-                  <span className="block mt-2 text-purple-600 font-medium">
-                    🧠 AI memory is active! Your conversations will be remembered for better context.
                   </span>
                 )}
               </p>
@@ -601,11 +588,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         🌐 Internet search available for real-time information!
                       </span>
                     )}
-                    {showMemoryIndicator && (
-                      <span className="block mt-1 text-purple-600">
-                        🧠 AI memory active with {memoryStats.totalMemories} stored memories!
-                      </span>
-                    )}
                   </p>
                   {hasAnyGlobalKeyAccess && !isProUser && (
                     <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
@@ -625,13 +607,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
         ) : (
           <div className="p-4 max-w-7xl mx-auto min-w-0">
-            {/* Display saved conversation messages */}
+            {/* Display conversation messages */}
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
             
-            {/* Show current user message if we're in generation mode */}
-            {currentUserMessage && (isGenerating || waitingForSelection || currentResponses.length > 0) && (
+            {/* CRITICAL: Only show current user message if we're in generation mode */}
+            {currentUserMessage && (isGenerating || waitingForSelection) && (
               <div className="flex justify-end mb-6">
                 <div className="max-w-3xl min-w-0">
                   <div className="px-4 py-3 rounded-2xl bg-emerald-600 text-white">
@@ -653,19 +635,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         <span className="text-sm">Internet search enabled</span>
                       </div>
                     )}
-                    {showMemoryIndicator && (
-                      <div className="mb-2 flex items-center space-x-2 text-emerald-200">
-                        <Brain size={16} />
-                        <span className="text-sm">AI memory active</span>
-                      </div>
-                    )}
                     <div className="leading-relaxed break-words">{currentUserMessage}</div>
                   </div>
                 </div>
               </div>
             )}
             
-            {/* Show current comparison with real-time loading animations */}
+            {/* CRITICAL: Show current comparison with REAL-TIME loading animations */}
             {currentResponses.length > 0 && (
               <div className="mb-8 min-w-0">
                 <ComparisonView 
@@ -685,10 +661,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         </div>
                         <span className="font-medium min-w-0">
                           <span className="hidden sm:inline">
-                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}{showMemoryIndicator && ' using memory context'}... (responses appear as they complete)
+                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)
                           </span>
                           <span className="sm:hidden">
-                            AI models mixing{currentUseInternetSearch && ' + web'}{showMemoryIndicator && ' + memory'}...
+                            AI models mixing{currentUseInternetSearch && ' + web'}...
                           </span>
                           {isProUser && enabledCount > 3 && (
                             <span className="ml-2 text-yellow-600">
@@ -718,6 +694,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   </div>
                 )}
 
+                {/* Show error state with recovery options */}
                 {allResponsesHaveErrors && (
                   <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center justify-between">
@@ -779,44 +756,31 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          {/* Feature toggles */}
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              {/* Internet Search Toggle */}
-              {internetSearchAvailable && (
-                <button
-                  type="button"
-                  onClick={() => setUseInternetSearch(!useInternetSearch)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
-                    useInternetSearch
-                      ? 'bg-blue-50 border-blue-300 text-blue-700'
-                      : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <Globe size={16} />
-                  <span className="text-sm font-medium">
-                    {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
-                  </span>
-                </button>
-              )}
+          {/* Internet Search Toggle */}
+          {internetSearchAvailable && (
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setUseInternetSearch(!useInternetSearch)}
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
+                  useInternetSearch
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Globe size={16} />
+                <span className="text-sm font-medium">
+                  {useInternetSearch ? 'Internet Search ON' : 'Use Internet Search'}
+                </span>
+              </button>
               
-              {/* Memory indicator */}
-              {showMemoryIndicator && (
-                <div className="flex items-center space-x-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
-                  <Brain size={16} className="text-purple-600" />
-                  <span className="text-sm text-purple-700">
-                    Memory Active ({memoryStats.totalMemories})
-                  </span>
-                </div>
+              {useInternetSearch && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                  AI will search the web for current information
+                </span>
               )}
             </div>
-            
-            {useInternetSearch && (
-              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                AI will search the web for current information
-              </span>
-            )}
-          </div>
+          )}
           
           <div className="flex space-x-3 min-w-0">
             <div className="flex-1 relative min-w-0">
@@ -842,9 +806,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                 : isProUser
                                   ? `Ask anything - Pro plan with ${enabledCount} AI models ready!`
                                   : `Ask anything or upload images to mix ${enabledCount} AI responses...`
-                              : showMemoryIndicator
-                                ? "Continue the conversation (AI remembers context)..."
-                                : "Continue the conversation..."
+                              : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
                 disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
@@ -859,6 +821,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </button>
             </div>
             
+            {/* Show reset button when there are current responses but user is stuck */}
             {(waitingForSelection || isGenerating) && (
               <button
                 type="button"
@@ -944,7 +907,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           
           {isGenerating && enabledCount > 0 && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
-              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'}{showMemoryIndicator && ' using memory context'} - click Stop to cancel generation
+              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation
               {isProUser && enabledCount > 3 && (
                 <span className="ml-2 text-yellow-600">
                   <Crown size={12} className="inline" /> Pro Power
@@ -956,10 +919,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
               {hasAnyGlobalKeyAccess && !isProUser 
-                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''}`
+                ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
                 : isProUser
-                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''}`
-                  : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}${showMemoryIndicator ? ` • AI memory active with ${memoryStats.totalMemories} memories` : ''} • ${usage}/${limit} conversations used this month`
+                  ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
+                  : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''} • ${usage}/${limit} conversations used this month`
               }
             </p>
           )}

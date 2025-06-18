@@ -162,7 +162,7 @@ class DatabaseService {
     }));
   }
 
-  // COMPLETELY REBUILT: Message loading with proper deduplication
+  // CRITICAL: Fixed message loading to prevent duplicates
   async loadSessionMessages(sessionId: string): Promise<Message[]> {
     const { data, error } = await supabase
       .from('conversation_turns')
@@ -173,39 +173,37 @@ class DatabaseService {
     if (error) throw error;
 
     const messages: Message[] = [];
-    const processedTurnIds = new Set<string>();
     
-    // Process each conversation turn exactly once
+    // CRITICAL: Use a Set to track processed turn IDs to prevent duplicates
+    const processedTurns = new Set<string>();
+    
+    // CRITICAL: Rebuild messages in correct chronological order
     data.forEach((turn) => {
       // Skip if we've already processed this turn
-      if (processedTurnIds.has(turn.id)) {
+      if (processedTurns.has(turn.id)) {
         return;
       }
       
-      processedTurnIds.add(turn.id);
+      processedTurns.add(turn.id);
       
-      // Create user message
-      const userMessage: Message = {
+      // Add user message first
+      messages.push({
         id: `user-${turn.id}`,
         content: turn.user_message,
         role: 'user',
         timestamp: new Date(turn.created_at),
         images: turn.user_images ? JSON.parse(turn.user_images) : undefined,
-      };
-      
-      messages.push(userMessage);
+      });
 
-      // Create AI response message if available
+      // Add selected AI response if available
       if (turn.selected_response && turn.selected_provider) {
-        const aiMessage: Message = {
+        messages.push({
           id: `ai-${turn.id}`,
           content: turn.selected_response,
           role: 'assistant',
           timestamp: new Date(turn.created_at),
           provider: turn.selected_provider,
-        };
-        
-        messages.push(aiMessage);
+        });
       }
     });
 
@@ -233,23 +231,8 @@ class DatabaseService {
     if (error) throw error;
   }
 
-  // COMPLETELY REBUILT: Conversation turn saving with proper deduplication
+  // CRITICAL: Completely rebuilt conversation turn saving
   async saveConversationTurn(sessionId: string, turn: ConversationTurn) {
-    // Check if this turn already exists to prevent duplicates
-    const { data: existingTurn } = await supabase
-      .from('conversation_turns')
-      .select('id')
-      .eq('session_id', sessionId)
-      .eq('user_message', turn.userMessage)
-      .eq('selected_response', turn.selectedResponse?.content || null)
-      .maybeSingle();
-
-    // If turn already exists, don't save again
-    if (existingTurn) {
-      console.log('Conversation turn already exists, skipping save');
-      return;
-    }
-
     const { error } = await supabase
       .from('conversation_turns')
       .insert({

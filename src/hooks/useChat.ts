@@ -3,7 +3,6 @@ import { Message, APIResponse, ChatSession, ConversationTurn } from '../types';
 import { aiService } from '../services/aiService';
 import { databaseService } from '../services/databaseService';
 import { analyticsService } from '../services/analyticsService';
-import { memoryService } from '../services/memoryService';
 import { useAuth } from './useAuth';
 
 export const useChat = () => {
@@ -12,38 +11,35 @@ export const useChat = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   const currentSession = sessions.find(s => s.id === currentSessionId);
 
-  // Initialize sessions when user is authenticated
+  // Load sessions when user is authenticated
   useEffect(() => {
     if (user && !hasInitialized) {
       loadSessions();
       setHasInitialized(true);
     } else if (!user) {
-      // Clear everything when user logs out
       setSessions([]);
       setCurrentSessionId(null);
       setHasInitialized(false);
-      setLoadingSessionId(null);
     }
   }, [user, hasInitialized]);
 
-  // Load session messages when switching sessions
+  // CRITICAL: Fixed session message loading to prevent duplicates
   useEffect(() => {
-    if (currentSessionId && user && currentSessionId !== loadingSessionId) {
+    if (currentSessionId && user) {
       loadSessionMessages(currentSessionId);
     }
-  }, [currentSessionId, user, loadingSessionId]);
+  }, [currentSessionId, user]);
 
   const loadSessions = async () => {
     try {
       const loadedSessions = await databaseService.loadChatSessions();
       setSessions(loadedSessions);
       
-      // Auto-select the first session if available and no session is currently selected
-      if (loadedSessions.length > 0 && !currentSessionId) {
+      // Auto-select the first session if available
+      if (loadedSessions.length > 0) {
         setCurrentSessionId(loadedSessions[0].id);
       }
     } catch (error) {
@@ -51,34 +47,19 @@ export const useChat = () => {
     }
   };
 
+  // CRITICAL: Fixed message loading to prevent duplicates on refresh
   const loadSessionMessages = async (sessionId: string) => {
-    // Prevent loading the same session multiple times
-    if (loadingSessionId === sessionId) {
-      return;
-    }
-
-    setLoadingSessionId(sessionId);
-    
     try {
       const messages = await databaseService.loadSessionMessages(sessionId);
       
-      // Only update if this is still the current session
-      if (sessionId === currentSessionId) {
-        setSessions(prev => prev.map(session => 
-          session.id === sessionId 
-            ? { ...session, messages }
-            : session
-        ));
-
-        // Extract memory from loaded messages
-        if (messages.length > 0) {
-          await memoryService.extractMemoryFromMessages(sessionId, messages);
-        }
-      }
+      // CRITICAL: Replace the entire messages array instead of appending
+      setSessions(prev => prev.map(session => 
+        session.id === sessionId 
+          ? { ...session, messages } // Replace messages completely
+          : session
+      ));
     } catch (error) {
       console.error('Failed to load session messages:', error);
-    } finally {
-      setLoadingSessionId(null);
     }
   };
 
@@ -90,7 +71,7 @@ export const useChat = () => {
       const newSession: ChatSession = {
         id: sessionId,
         title: 'New Chat',
-        messages: [],
+        messages: [], // Start with empty messages array
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -104,6 +85,7 @@ export const useChat = () => {
     }
   }, [user]);
 
+  // CRITICAL: Simplified sendMessage - only returns responses, doesn't modify session
   const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false): Promise<APIResponse[]> => {
     if (!user) {
       const newSessionId = await createNewSession();
@@ -116,7 +98,7 @@ export const useChat = () => {
     const session = sessions.find(s => s.id === currentSessionId);
     if (!session) return [];
 
-    // Build conversation context from current session state
+    // CRITICAL: Build conversation context from CURRENT session state
     const conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [];
     
     // Add all existing messages from the session to context
@@ -135,13 +117,6 @@ export const useChat = () => {
       try {
         const title = content.slice(0, 30) + (content.length > 30 ? '...' : '');
         await databaseService.updateChatSession(currentSessionId, title);
-        
-        // Update local session title
-        setSessions(prev => prev.map(s => 
-          s.id === currentSessionId 
-            ? { ...s, title }
-            : s
-        ));
       } catch (error) {
         console.error('Failed to update session title:', error);
       }
@@ -153,7 +128,8 @@ export const useChat = () => {
       // Get user's current tier for API key selection
       const userTier = getCurrentTier();
 
-      // Get responses from AI service with memory integration
+      // CRITICAL: Just return the responses - don't modify session state here
+      // The ChatArea component will handle the real-time updates
       const responses = await aiService.getResponses(
         content, 
         conversationHistory,
@@ -161,8 +137,7 @@ export const useChat = () => {
         undefined, // onResponseUpdate callback handled in ChatArea
         undefined, // signal handled in ChatArea
         userTier,
-        useInternetSearch,
-        currentSessionId // Pass session ID for memory context
+        useInternetSearch
       );
       
       return responses;
@@ -174,6 +149,7 @@ export const useChat = () => {
     }
   }, [currentSessionId, createNewSession, user, sessions, getCurrentTier]);
 
+  // CRITICAL: Response selection function - this is where we add messages to the session
   const selectResponse = useCallback(async (selectedResponse: APIResponse, userMessage: string, images: string[] = []) => {
     if (!currentSessionId) return;
 
@@ -195,7 +171,7 @@ export const useChat = () => {
       provider: selectedResponse.provider,
     };
 
-    // Add both messages to the session at once
+    // CRITICAL: Add BOTH messages to the session at once
     setSessions(prev => prev.map(session => 
       session.id === currentSessionId
         ? { 
@@ -220,10 +196,6 @@ export const useChat = () => {
     try {
       await databaseService.saveConversationTurn(currentSessionId, turn);
       await analyticsService.saveConversationTurn(currentSessionId, turn);
-
-      // Extract memory from the new conversation turn
-      const newMessages = [userMessageObj, aiMessage];
-      await memoryService.extractMemoryFromMessages(currentSessionId, newMessages);
     } catch (error) {
       console.error('Failed to save conversation turn:', error);
     }
@@ -233,7 +205,6 @@ export const useChat = () => {
     try {
       await databaseService.deleteChatSession(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
-      
       if (currentSessionId === sessionId) {
         const remainingSessions = sessions.filter(s => s.id !== sessionId);
         setCurrentSessionId(remainingSessions.length > 0 ? remainingSessions[0].id : null);
@@ -253,20 +224,13 @@ export const useChat = () => {
     }
   }, [currentSessionId]);
 
-  // Safe session switching that prevents race conditions
-  const switchToSession = useCallback((sessionId: string) => {
-    if (sessionId !== currentSessionId && sessionId !== loadingSessionId) {
-      setCurrentSessionId(sessionId);
-    }
-  }, [currentSessionId, loadingSessionId]);
-
   return {
     sessions,
     currentSession,
     currentSessionId,
     isLoading,
     createNewSession,
-    setCurrentSessionId: switchToSession,
+    setCurrentSessionId,
     sendMessage,
     selectResponse,
     deleteSession,
