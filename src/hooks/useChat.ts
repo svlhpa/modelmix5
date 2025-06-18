@@ -183,11 +183,11 @@ export const useChat = () => {
         : session
     ));
 
-    // Save the conversation turn to database
+    // CRITICAL: Save the conversation turn to database with ALL responses for proper analytics
     const turn: ConversationTurn = {
       id: `turn-${Date.now()}`,
       userMessage,
-      responses: [selectedResponse],
+      responses: [], // This will be populated by the ChatArea component
       selectedResponse,
       timestamp: new Date(),
       images: images.length > 0 ? images : undefined
@@ -214,10 +214,12 @@ export const useChat = () => {
     }
   }, [currentSessionId, sessions]);
 
+  // CRITICAL: Updated to save conversation turn with ALL responses for analytics
   const saveConversationTurn = useCallback(async (turn: ConversationTurn) => {
     if (!currentSessionId) return;
     
     try {
+      await databaseService.saveConversationTurn(currentSessionId, turn);
       await analyticsService.saveConversationTurn(currentSessionId, turn);
     } catch (error) {
       console.error('Failed to save conversation turn:', error);

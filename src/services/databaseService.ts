@@ -256,19 +256,24 @@ class DatabaseService {
       .update({ updated_at: new Date().toISOString() })
       .eq('id', sessionId);
 
-    // Update analytics
-    if (turn.selectedResponse) {
+    // CRITICAL: Update analytics with ALL responses, not just selected one
+    if (turn.responses && turn.responses.length > 0) {
       await this.updateProviderAnalytics(turn);
     }
   }
 
-  // Analytics
+  // CRITICAL: Completely rebuilt analytics tracking
   async updateProviderAnalytics(turn: ConversationTurn) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Update analytics for all providers that responded
+    // CRITICAL: Track ALL providers that responded, not just the selected one
     const promises = turn.responses.map(async (response) => {
+      // Skip responses that had errors
+      if (response.error) {
+        return;
+      }
+
       const { data: existing } = await supabase
         .from('provider_analytics')
         .select('*')
@@ -277,35 +282,35 @@ class DatabaseService {
         .maybeSingle();
 
       const isSelected = response.provider === turn.selectedResponse?.provider;
-      const hasError = !!response.error;
 
       if (existing) {
+        // CRITICAL: Increment total responses for ALL providers that responded
         const newTotalResponses = existing.total_responses + 1;
+        // CRITICAL: Only increment selections for the actually selected provider
         const newTotalSelections = existing.total_selections + (isSelected ? 1 : 0);
-        const newErrorCount = existing.error_count + (hasError ? 1 : 0);
-        const newSelectionRate = (newTotalSelections / newTotalResponses) * 100;
+        const newSelectionRate = newTotalResponses > 0 ? (newTotalSelections / newTotalResponses) * 100 : 0;
 
         await supabase
           .from('provider_analytics')
           .update({
             total_responses: newTotalResponses,
             total_selections: newTotalSelections,
-            error_count: newErrorCount,
             selection_rate: newSelectionRate,
             last_used: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
       } else {
+        // CRITICAL: Create new analytics entry with correct initial values
         await supabase
           .from('provider_analytics')
           .insert({
             user_id: user.id,
             provider: response.provider,
-            total_responses: 1,
-            total_selections: isSelected ? 1 : 0,
-            error_count: hasError ? 1 : 0,
-            selection_rate: isSelected ? 100 : 0,
+            total_responses: 1, // This provider responded once
+            total_selections: isSelected ? 1 : 0, // Only count as selection if it was actually selected
+            selection_rate: isSelected ? 100 : 0, // 100% if selected on first try, 0% if not selected
+            error_count: 0,
             last_used: new Date().toISOString(),
           });
       }
@@ -332,7 +337,7 @@ class DatabaseService {
       totalResponses: analytics.total_responses,
       selectionRate: analytics.selection_rate,
       avgResponseTime: 0, // Not tracked yet
-      errorRate: analytics.total_responses > 0 ? analytics.error_count / analytics.total_responses : 0,
+      errorRate: analytics.total_responses > 0 ? (analytics.error_count / analytics.total_responses) * 100 : 0,
       lastUsed: new Date(analytics.last_used),
     }));
   }

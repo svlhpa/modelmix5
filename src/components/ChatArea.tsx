@@ -333,8 +333,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  // CRITICAL: Response selection handler - this is where we add messages to the session
+  // CRITICAL: Response selection handler - this is where we add messages to the session AND save analytics
   const handleSelectResponse = async (selectedResponse: APIResponse) => {
+    // CRITICAL: Create conversation turn with ALL responses for proper analytics
+    const turn: ConversationTurn = {
+      id: `turn-${Date.now()}`,
+      userMessage: currentUserMessage,
+      responses: currentResponses, // CRITICAL: Include ALL responses for analytics
+      selectedResponse,
+      timestamp: new Date(),
+      images: currentUserImages.length > 0 ? currentUserImages : undefined
+    };
+
+    // CRITICAL: Save the turn with all responses for analytics BEFORE adding to UI
+    await onSaveConversationTurn(turn);
+
     // CRITICAL: Now we add both the user message AND the selected response to the session
     // This prevents the duplicate issue
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
