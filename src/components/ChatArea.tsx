@@ -45,6 +45,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [generationId, setGenerationId] = useState<string | null>(null); // Track current generation
   
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
@@ -155,6 +156,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setCurrentUserMessage('');
     setCurrentUserImages([]);
     setCurrentUseInternetSearch(false);
+    setGenerationId(null);
     if (abortController) {
       abortController.abort();
       setAbortController(null);
@@ -180,7 +182,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setIsGenerating(true);
     setWaitingForSelection(false);
     
-    // Create new abort controller
+    // Create new generation ID and abort controller
+    const newGenerationId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setGenerationId(newGenerationId);
+    
     const controller = new AbortController();
     setAbortController(controller);
     
@@ -203,8 +208,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         contextMessages, 
         currentUserImages,
         (updatedResponses) => {
-          // Check if generation was aborted
-          if (controller.signal.aborted) {
+          // Check if generation was aborted or if this is an old generation
+          if (controller.signal.aborted || generationId !== newGenerationId) {
             return;
           }
           
@@ -274,17 +279,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setWaitingForSelection(false);
     setIsGenerating(true);
     
-    // Create abort controller for this generation
+    // Create new generation ID and abort controller
+    const newGenerationId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setGenerationId(newGenerationId);
+    
     const controller = new AbortController();
     setAbortController(controller);
     
     setCurrentResponses([]);
 
     try {
-      // CRITICAL: Don't call onSendMessage here - it adds the user message to the session
-      // Instead, directly generate AI responses and let the user select one
-      // The user message will be added when they select a response
-      
       // Build conversation context from existing messages only
       const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
       messages.forEach(msg => {
@@ -302,8 +306,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         contextMessages,
         messageImages,
         (updatedResponses) => {
-          // Check if generation was aborted
-          if (controller.signal.aborted) {
+          // Check if generation was aborted or if this is an old generation
+          if (controller.signal.aborted || generationId !== newGenerationId) {
             return;
           }
           
