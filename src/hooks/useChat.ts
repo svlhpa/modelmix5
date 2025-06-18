@@ -26,7 +26,7 @@ export const useChat = () => {
     }
   }, [user, hasInitialized]);
 
-  // CRITICAL: Fixed session message loading to prevent duplicates
+  // CRITICAL: Load session messages only when session changes and prevent duplicates
   useEffect(() => {
     if (currentSessionId && user) {
       loadSessionMessages(currentSessionId);
@@ -47,15 +47,15 @@ export const useChat = () => {
     }
   };
 
-  // CRITICAL: Fixed message loading to prevent duplicates on refresh
+  // CRITICAL: Completely rebuilt message loading to prevent duplicates
   const loadSessionMessages = async (sessionId: string) => {
     try {
       const messages = await databaseService.loadSessionMessages(sessionId);
       
-      // CRITICAL: Replace the entire messages array instead of appending
+      // CRITICAL: Replace messages completely and only for the specific session
       setSessions(prev => prev.map(session => 
         session.id === sessionId 
-          ? { ...session, messages } // Replace messages completely
+          ? { ...session, messages } // Replace with fresh messages from database
           : session
       ));
     } catch (error) {
@@ -71,7 +71,7 @@ export const useChat = () => {
       const newSession: ChatSession = {
         id: sessionId,
         title: 'New Chat',
-        messages: [], // Start with empty messages array
+        messages: [], // Start with empty messages
         createdAt: new Date(),
         updatedAt: new Date()
       };

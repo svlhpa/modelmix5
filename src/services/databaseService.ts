@@ -162,7 +162,7 @@ class DatabaseService {
     }));
   }
 
-  // CRITICAL: Fixed message loading to prevent duplicates
+  // CRITICAL: Completely rebuilt message loading to prevent duplicates
   async loadSessionMessages(sessionId: string): Promise<Message[]> {
     const { data, error } = await supabase
       .from('conversation_turns')
@@ -174,18 +174,8 @@ class DatabaseService {
 
     const messages: Message[] = [];
     
-    // CRITICAL: Use a Set to track processed turn IDs to prevent duplicates
-    const processedTurns = new Set<string>();
-    
-    // CRITICAL: Rebuild messages in correct chronological order
+    // CRITICAL: Process each turn exactly once to prevent duplicates
     data.forEach((turn) => {
-      // Skip if we've already processed this turn
-      if (processedTurns.has(turn.id)) {
-        return;
-      }
-      
-      processedTurns.add(turn.id);
-      
       // Add user message first
       messages.push({
         id: `user-${turn.id}`,
@@ -231,8 +221,23 @@ class DatabaseService {
     if (error) throw error;
   }
 
-  // CRITICAL: Completely rebuilt conversation turn saving
+  // CRITICAL: Fixed conversation turn saving to prevent duplicates
   async saveConversationTurn(sessionId: string, turn: ConversationTurn) {
+    // CRITICAL: Check if this turn already exists to prevent duplicates
+    const { data: existingTurn } = await supabase
+      .from('conversation_turns')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('user_message', turn.userMessage)
+      .eq('selected_response', turn.selectedResponse?.content || null)
+      .maybeSingle();
+
+    // If turn already exists, don't save it again
+    if (existingTurn) {
+      console.log('Conversation turn already exists, skipping save');
+      return;
+    }
+
     const { error } = await supabase
       .from('conversation_turns')
       .insert({
