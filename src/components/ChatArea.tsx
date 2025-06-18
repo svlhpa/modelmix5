@@ -37,7 +37,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [images, setImages] = useState<string[]>([]);
   const [useInternetSearch, setUseInternetSearch] = useState(false);
   
-  // CRITICAL: Separate state for AI generation session
+  // Current generation state
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
@@ -45,7 +45,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [generationId, setGenerationId] = useState<string | null>(null); // Track current generation
   
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
@@ -145,7 +144,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const getMaxAllowedModels = () => {
     const maxModels = getTierLimits().maxModelsPerComparison;
-    return maxModels === -1 ? Infinity : maxModels; // Pro tier has unlimited models
+    return maxModels === -1 ? Infinity : maxModels;
   };
 
   // Reset generation state
@@ -156,7 +155,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setCurrentUserMessage('');
     setCurrentUserImages([]);
     setCurrentUseInternetSearch(false);
-    setGenerationId(null);
     if (abortController) {
       abortController.abort();
       setAbortController(null);
@@ -178,44 +176,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const handleRetryGeneration = async () => {
     if (!currentUserMessage) return;
     
-    // Reset state and start fresh generation
     setIsGenerating(true);
     setWaitingForSelection(false);
-    
-    // Create new generation ID and abort controller
-    const newGenerationId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setGenerationId(newGenerationId);
     
     const controller = new AbortController();
     setAbortController(controller);
     
     setCurrentResponses([]);
-    
-    // Build conversation context from current messages + the user message we're retrying
-    const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
-    messages.forEach(msg => {
-      contextMessages.push({ 
-        role: msg.role, 
-        content: msg.content 
-      });
-    });
-    contextMessages.push({ role: 'user', content: currentUserMessage });
 
-    // Get responses with real-time updates
     try {
-      await aiService.getResponses(
+      const responses = await aiService.getResponses(
         currentUserMessage, 
-        contextMessages, 
+        [], // Build context from messages
         currentUserImages,
         (updatedResponses) => {
-          // Check if generation was aborted or if this is an old generation
-          if (controller.signal.aborted || generationId !== newGenerationId) {
-            return;
-          }
-          
+          if (controller.signal.aborted) return;
           setCurrentResponses([...updatedResponses]);
           
-          // Check if all responses are complete
           const allComplete = updatedResponses.every(r => !r.loading);
           if (allComplete) {
             setIsGenerating(false);
@@ -238,12 +215,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  // CRITICAL: Completely rebuilt form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !user) return;
 
-    // Check usage limits (Pro users have unlimited)
     if (!usageCheck.canUse) {
       onTierUpgrade();
       return;
@@ -257,7 +232,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       return;
     }
 
-    // Pro users can use unlimited models
     if (currentTier !== 'tier2' && enabledCount > maxAllowed) {
       alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
       return;
@@ -279,42 +253,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setWaitingForSelection(false);
     setIsGenerating(true);
     
-    // Create new generation ID and abort controller
-    const newGenerationId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setGenerationId(newGenerationId);
-    
     const controller = new AbortController();
     setAbortController(controller);
     
     setCurrentResponses([]);
 
     try {
-      // Build conversation context from existing messages only
-      const contextMessages: Array<{role: 'user' | 'assistant', content: string}> = [];
-      messages.forEach(msg => {
-        contextMessages.push({ 
-          role: msg.role, 
-          content: msg.content 
-        });
-      });
-      // Add the current message to context for AI generation
-      contextMessages.push({ role: 'user', content: message });
-
-      // Start real-time response generation with loading animations
       await aiService.getResponses(
         message, 
-        contextMessages,
+        messages.map(msg => ({ role: msg.role, content: msg.content })),
         messageImages,
         (updatedResponses) => {
-          // Check if generation was aborted or if this is an old generation
-          if (controller.signal.aborted || generationId !== newGenerationId) {
-            return;
-          }
+          if (controller.signal.aborted) return;
           
-          // CRITICAL: Update responses as they come in (real-time loading)
           setCurrentResponses([...updatedResponses]);
           
-          // Check if all responses are complete
           const allComplete = updatedResponses.every(r => !r.loading);
           if (allComplete) {
             setIsGenerating(false);
@@ -337,21 +290,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
-  // CRITICAL: Response selection handler - this is where we add messages to the session
   const handleSelectResponse = async (selectedResponse: APIResponse) => {
-    // CRITICAL: Now we add both the user message AND the selected response to the session
-    // This prevents the duplicate issue
     onSelectResponse(selectedResponse, currentUserMessage, currentUserImages);
-    
-    // Reset generation state
     resetGenerationState();
-
-    // Increment usage counter (Pro users don't increment)
     await tierService.incrementUsage();
-    await checkUsageLimit(); // Refresh usage info
+    await checkUsageLimit();
   };
 
-  // Check if all current responses have errors
   const allResponsesHaveErrors = currentResponses.length > 0 && 
     currentResponses.every(r => !r.loading && r.error);
 
@@ -360,7 +305,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   if (!user) {
     return (
       <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
-        {/* Header with mobile menu for non-authenticated users */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
           <button
             onClick={onToggleMobileSidebar}
@@ -412,7 +356,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     );
   }
 
-  const showWelcome = messages.length === 0 && currentResponses.length === 0;
+  const showWelcome = messages.length === 0 && currentResponses.length === 0 && !isGenerating && !waitingForSelection;
   const canSendMessage = !isLoading && !waitingForSelection && !isGenerating && usageCheck.canUse;
   const enabledCount = getEnabledModelsCount();
   const maxAllowed = getMaxAllowedModels();
@@ -422,7 +366,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50 min-w-0">
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center min-w-0">
-        {/* Mobile menu button - always visible */}
         <button
           onClick={onToggleMobileSidebar}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden flex-shrink-0"
@@ -430,7 +373,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           <Menu size={20} />
         </button>
         
-        {/* Desktop sidebar toggle */}
         <button
           onClick={onToggleSidebar}
           className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
@@ -440,7 +382,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
         <div className="ml-auto flex items-center space-x-2 sm:space-x-4 text-sm text-gray-500 min-w-0">
-          {/* Tier indicator */}
           <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
             {isProUser ? (
               <Crown size={16} className="text-yellow-500" />
@@ -457,7 +398,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </span>
           </div>
           
-          {/* Usage indicator */}
           <div className="flex items-center space-x-1 flex-shrink-0">
             <div className={`w-2 h-2 rounded-full ${usageCheck.canUse ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span className="text-xs">
@@ -611,13 +551,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
         ) : (
           <div className="p-4 max-w-7xl mx-auto min-w-0">
-            {/* Display conversation messages */}
+            {/* Display saved conversation messages */}
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
             
-            {/* CRITICAL: Only show current user message if we're in generation mode */}
-            {currentUserMessage && (isGenerating || waitingForSelection) && (
+            {/* Show current user message if we're in generation mode */}
+            {currentUserMessage && (isGenerating || waitingForSelection || currentResponses.length > 0) && (
               <div className="flex justify-end mb-6">
                 <div className="max-w-3xl min-w-0">
                   <div className="px-4 py-3 rounded-2xl bg-emerald-600 text-white">
@@ -645,7 +585,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </div>
             )}
             
-            {/* CRITICAL: Show current comparison with REAL-TIME loading animations */}
+            {/* Show current comparison with real-time loading animations */}
             {currentResponses.length > 0 && (
               <div className="mb-8 min-w-0">
                 <ComparisonView 
@@ -698,7 +638,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   </div>
                 )}
 
-                {/* Show error state with recovery options */}
                 {allResponsesHaveErrors && (
                   <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center justify-between">
@@ -738,7 +677,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
       <div className="bg-white border-t border-gray-200 p-4 min-w-0">
         <form onSubmit={handleSubmit} className="max-w-7xl mx-auto">
-          {/* Image previews */}
           {images.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
               {images.map((image, index) => (
@@ -760,7 +698,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          {/* Internet Search Toggle */}
           {internetSearchAvailable && (
             <div className="mb-3 flex items-center justify-between">
               <button
@@ -825,7 +762,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </button>
             </div>
             
-            {/* Show reset button when there are current responses but user is stuck */}
             {(waitingForSelection || isGenerating) && (
               <button
                 type="button"
