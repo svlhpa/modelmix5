@@ -361,7 +361,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  // CRITICAL: Enhanced debate response generation with OpenRouter support
+  // CRITICAL: Completely rebuilt debate response generation for proper engagement
   async generateDebateResponse(
     topic: string,
     position: string,
@@ -373,7 +373,6 @@ class AIService {
     
     // CRITICAL: Load current settings first to ensure we have the latest API keys
     await this.loadSettings();
-    await this.loadOpenRouterModels();
     
     // CRITICAL: Build proper debate context with opponent's arguments
     const opponentMessages = previousMessages.filter(msg => 
@@ -408,13 +407,7 @@ class AIService {
     try {
       console.log(`Calling ${model} API with enhanced context...`);
       
-      // CRITICAL: Check if this is an OpenRouter model
-      const openRouterModel = this.openRouterModels.find(m => m.id === model);
-      if (openRouterModel) {
-        return await this.callOpenRouterForDebate(model, messages);
-      }
-      
-      // CRITICAL: Call traditional models with tier2 access for Pro users, tier1 for free users
+      // CRITICAL: Call with tier2 access for Pro users, tier1 for free users
       switch (model) {
         case 'openai':
           return await this.callOpenAI(messages, [], undefined, 'tier2');
@@ -429,56 +422,11 @@ class AIService {
       console.error(`Error generating debate response for ${model}:`, error);
       
       // Return a more helpful fallback response
-      const modelName = this.getModelDisplayName(model);
+      const modelName = model === 'openai' ? 'GPT-4o' : 
+                       model === 'gemini' ? 'Gemini Pro' : 
+                       model === 'deepseek' ? 'DeepSeek' : model;
       
       return `I apologize, but I'm having trouble generating a response right now. ${error instanceof Error ? error.message : 'Please try again.'}\n\n💡 **Tip:** Make sure you have configured your API keys in Settings, or the debate will use free trial access if available.`;
-    }
-  }
-
-  // CRITICAL: New method to call OpenRouter models for debates
-  private async callOpenRouterForDebate(modelId: string, messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>): Promise<string> {
-    // Try tier2 first, then tier1 as fallback
-    let { key: apiKey, isGlobal } = await this.getApiKey('openrouter', 'tier2');
-    
-    if (!apiKey) {
-      console.log('No tier2 key for OpenRouter, trying tier1 fallback');
-      const fallback = await this.getApiKey('openrouter', 'tier1');
-      apiKey = fallback.key;
-      isGlobal = fallback.isGlobal;
-    }
-    
-    if (!apiKey) {
-      throw new Error('OpenRouter API key not available. Please configure your API key in settings or contact support for global key access.');
-    }
-
-    const result = await openRouterService.callModel(modelId, messages as any, apiKey, []);
-    
-    // Increment global usage if using global key
-    if (isGlobal) {
-      await globalApiService.incrementGlobalUsage('openrouter');
-    }
-    
-    return result;
-  }
-
-  // CRITICAL: Helper to get model display name
-  private getModelDisplayName(model: string): string {
-    // Check if it's an OpenRouter model
-    const openRouterModel = this.openRouterModels.find(m => m.id === model);
-    if (openRouterModel) {
-      return openRouterModel.name;
-    }
-    
-    // Traditional models
-    switch (model) {
-      case 'openai':
-        return 'GPT-4o';
-      case 'gemini':
-        return 'Gemini Pro';
-      case 'deepseek':
-        return 'DeepSeek';
-      default:
-        return model;
     }
   }
 
@@ -548,9 +496,10 @@ class AIService {
     myPreviousMessages: any[],
     totalTurns: number
   ): string {
-    const modelName = this.getModelDisplayName(model);
+    const modelName = model === 'openai' ? 'GPT-4o' : 
+                     model === 'gemini' ? 'Gemini Pro' : 
+                     model === 'deepseek' ? 'DeepSeek' : model;
     
-    // Determine opponent name based on available models
     const opponentName = model === 'openai' ? 'Gemini Pro' : 
                         model === 'gemini' ? 'GPT-4o' : 
                         'GPT-4o'; // Default opponent
