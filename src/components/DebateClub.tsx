@@ -124,6 +124,44 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  // CRITICAL: Enhanced markdown parser for debate messages
+  const parseMarkdown = (text: string) => {
+    if (!text) return text;
+    
+    let parsed = text;
+    
+    // Parse headers (### Header, ## Header, # Header)
+    parsed = parsed.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mb-2 mt-3">$1</h3>');
+    parsed = parsed.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mb-2 mt-4">$1</h2>');
+    parsed = parsed.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mb-3 mt-4">$1</h1>');
+    
+    // Parse **bold** text
+    parsed = parsed.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>');
+    
+    // Parse *italic* text
+    parsed = parsed.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+    
+    // Parse `code` text
+    parsed = parsed.replace(/`(.*?)`/g, '<code class="bg-white/20 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
+    
+    // Parse bullet points (- item or • item)
+    parsed = parsed.replace(/^[-•]\s+(.*$)/gm, '<li class="ml-4 mb-1">• $1</li>');
+    
+    // Wrap consecutive list items in ul tags
+    parsed = parsed.replace(/(<li.*?<\/li>\s*)+/g, '<ul class="mb-2">$&</ul>');
+    
+    // Parse numbered lists (1. item, 2. item, etc.)
+    parsed = parsed.replace(/^\d+\.\s+(.*$)/gm, '<li class="ml-4 mb-1">$1</li>');
+    
+    // Parse line breaks
+    parsed = parsed.replace(/\n/g, '<br>');
+    
+    // Parse quotes (> text)
+    parsed = parsed.replace(/^&gt;\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
+    
+    return parsed;
+  };
+
   const startDebate = async () => {
     if (!user) return;
 
@@ -722,9 +760,13 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                           </div>
                         )}
                         
-                        <div className="whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </div>
+                        {/* CRITICAL: Enhanced message content with markdown parsing */}
+                        <div 
+                          className="leading-relaxed"
+                          dangerouslySetInnerHTML={{ 
+                            __html: parseMarkdown(message.content) 
+                          }}
+                        />
                         
                         <div className="flex items-center justify-between mt-3">
                           <span className={`text-xs ${message.speaker === 'moderator' ? 'text-gray-500' : 'text-white/70'}`}>
