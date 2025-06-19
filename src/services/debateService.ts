@@ -14,19 +14,14 @@ interface DebateSession {
   ai2Model: string;
   ai1Position: string;
   ai2Position: string;
-  status: 'setup' | 'opening' | 'debate' | 'closing' | 'finished' | 'winner_declared';
+  status: 'setup' | 'opening' | 'debate' | 'closing' | 'finished';
   currentTurn: 'ai1' | 'ai2';
   messages: any[];
   votes: { ai1: number; ai2: number };
   userVote?: 'ai1' | 'ai2';
   winner?: 'ai1' | 'ai2' | 'tie';
-  winnerDeclaredBy?: 'user' | 'votes';
-  winnerReason?: string;
   createdAt: Date;
   turnCount: number;
-  round?: number;
-  isPublic?: boolean;
-  shareUrl?: string;
 }
 
 interface DebateStats {
@@ -53,9 +48,7 @@ class DebateService {
       messages: [],
       votes: { ai1: 0, ai2: 0 },
       createdAt: new Date(),
-      turnCount: 0,
-      round: 1,
-      isPublic: false
+      turnCount: 0
     };
 
     // Save to localStorage for demo purposes
@@ -86,8 +79,8 @@ class DebateService {
         userParticipation++;
       }
       
-      // Count wins - only count declared winners
-      if (debate.winner && debate.winner !== 'tie' && debate.winnerDeclaredBy === 'user') {
+      // Count wins
+      if (debate.winner && debate.winner !== 'tie') {
         const winningModel = debate.winner === 'ai1' ? debate.ai1Model : debate.ai2Model;
         modelWins[winningModel] = (modelWins[winningModel] || 0) + 1;
       }
@@ -99,21 +92,6 @@ class DebateService {
       topTopics: Array.from(topicsSet).slice(0, 5),
       userParticipation
     };
-  }
-
-  async getPublicDebate(shareId: string): Promise<DebateSession | null> {
-    const debates = this.getDebatesFromStorage();
-    return debates.find(debate => 
-      debate.isPublic && 
-      debate.shareUrl?.includes(shareId)
-    ) || null;
-  }
-
-  async getDebateHistory(): Promise<DebateSession[]> {
-    return this.getDebatesFromStorage()
-      .filter(debate => debate.status === 'winner_declared')
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 10); // Return last 10 completed debates
   }
 
   private generatePositions(topic: string): { position1: string; position2: string } {
@@ -157,9 +135,9 @@ class DebateService {
       debates.push(debate);
     }
     
-    // Keep only last 100 debates to prevent storage bloat
-    if (debates.length > 100) {
-      debates.splice(0, debates.length - 100);
+    // Keep only last 50 debates to prevent storage bloat
+    if (debates.length > 50) {
+      debates.splice(0, debates.length - 50);
     }
     
     localStorage.setItem('ai-debates', JSON.stringify(debates));
