@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, Users, Trophy, ThumbsUp, ThumbsDown, MessageCircle, Send, Zap, Crown, Siren as Fire, Brain, Laugh, Clock, Vote, TrendingUp, Shuffle, History, Sparkles, RotateCcw, Play } from 'lucide-react';
+import { X, Mic, Users, Trophy, ThumbsUp, ThumbsDown, MessageCircle, Send, Zap, Crown, Siren as Fire, Brain, Laugh, Clock, Vote, TrendingUp, Shuffle, History, Sparkles, RotateCcw, Play, Share2, Download, ExternalLink, Copy, CheckCircle, Medal, Star } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { debateService } from '../services/debateService';
 import { aiService } from '../services/aiService';
@@ -26,15 +26,19 @@ interface DebateSession {
   ai2Model: string;
   ai1Position: string;
   ai2Position: string;
-  status: 'setup' | 'opening' | 'debate' | 'closing' | 'finished';
+  status: 'setup' | 'opening' | 'debate' | 'closing' | 'finished' | 'winner_declared';
   currentTurn: 'ai1' | 'ai2';
   messages: DebateMessage[];
   votes: { ai1: number; ai2: number };
   userVote?: 'ai1' | 'ai2';
   winner?: 'ai1' | 'ai2' | 'tie';
+  winnerDeclaredBy?: 'user' | 'votes';
+  winnerReason?: string;
   createdAt: Date;
   turnCount: number;
   round: number;
+  isPublic?: boolean;
+  shareUrl?: string;
 }
 
 interface DebateStats {
@@ -80,6 +84,11 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   const [selectedAI2, setSelectedAI2] = useState('gemini');
   const [userInput, setUserInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showWinnerModal, setShowWinnerModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [winnerReason, setWinnerReason] = useState('');
+  const [shareUrl, setShareUrl] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
   const [stats, setStats] = useState<DebateStats>({
     totalDebates: 0,
     modelWins: {},
@@ -157,7 +166,7 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     parsed = parsed.replace(/\n/g, '<br>');
     
     // Parse quotes (> text)
-    parsed = parsed.replace(/^&gt;\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
+    parsed = parsed.replace(/^>\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
     
     return parsed;
   };
@@ -211,7 +220,7 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   };
 
   const generateNextResponse = async (debate: DebateSession) => {
-    if (!debate || debate.status === 'finished') {
+    if (!debate || debate.status === 'finished' || debate.status === 'winner_declared') {
       setIsGenerating(false);
       return;
     }
@@ -287,7 +296,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
         const roundConclusionMessage: DebateMessage = {
           id: `msg-${Date.now()}-round-end`,
           speaker: 'moderator',
-          content: `🏛️ **The Chair calls for order!**\n\n⚖️ **Round ${updatedDebate.round} has concluded.**\n\n📊 **Current Standing:**\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai1Model)?.name}: ${updatedDebate.votes.ai1} votes\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai2Model)?.name}: ${updatedDebate.votes.ai2} votes\n\n🎭 **The House may now vote on this round, or call for another round to strengthen arguments!**`,
+          content: `🏛️ **The Chair calls for order!**\n\n⚖️ **Round ${updatedDebate.round} has concluded.**\n\n📊 **Current Standing:**\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai1Model)?.name}: ${updatedDebate.votes.ai1} votes\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai2Model)?.name}: ${updatedDebate.votes.ai2} votes\n\n🎭 **The House may now vote on this round, declare a winner, or call for another round to strengthen arguments!**`,
           timestamp: new Date()
         };
         
@@ -370,6 +379,143 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
     
     await debateService.updateDebate(updatedDebate);
     setCurrentDebate(updatedDebate);
+  };
+
+  const handleDeclareWinner = async (winner: 'ai1' | 'ai2' | 'tie') => {
+    if (!currentDebate) return;
+
+    const updatedDebate = { ...currentDebate };
+    updatedDebate.winner = winner;
+    updatedDebate.winnerDeclaredBy = 'user';
+    updatedDebate.winnerReason = winnerReason.trim() || 'No reason provided';
+    updatedDebate.status = 'winner_declared';
+
+    // Add winner announcement
+    const winnerMessage: DebateMessage = {
+      id: `msg-${Date.now()}-winner`,
+      speaker: 'moderator',
+      content: `🏛️ **PARLIAMENTARY DECISION DECLARED!**\n\n🏆 **Winner:** ${
+        winner === 'tie' 
+          ? 'Honorable Tie - Both sides presented compelling arguments' 
+          : `The Honorable ${AVAILABLE_MODELS.find(m => m.id === (winner === 'ai1' ? updatedDebate.ai1Model : updatedDebate.ai2Model))?.name} (${winner === 'ai1' ? 'Government' : 'Opposition'} Bench)`
+      }\n\n📝 **Reason:** ${updatedDebate.winnerReason}\n\n🎭 **The House is adjourned. Thank you for this spirited parliamentary debate!**\n\n📊 **Final Votes:** Government ${updatedDebate.votes.ai1} - Opposition ${updatedDebate.votes.ai2}`,
+      timestamp: new Date()
+    };
+
+    updatedDebate.messages.push(winnerMessage);
+    
+    await debateService.updateDebate(updatedDebate);
+    setCurrentDebate(updatedDebate);
+    setShowWinnerModal(false);
+    setWinnerReason('');
+    await loadStats(); // Refresh stats
+  };
+
+  const handleMakePublic = async () => {
+    if (!currentDebate) return;
+
+    const updatedDebate = { ...currentDebate };
+    updatedDebate.isPublic = true;
+    
+    // Generate a shareable URL (in a real app, this would be a proper URL)
+    const shareId = btoa(updatedDebate.id).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+    updatedDebate.shareUrl = `${window.location.origin}/debate/${shareId}`;
+    
+    await debateService.updateDebate(updatedDebate);
+    setCurrentDebate(updatedDebate);
+    setShareUrl(updatedDebate.shareUrl);
+    setShowShareModal(true);
+  };
+
+  const handleDownloadDebate = () => {
+    if (!currentDebate) return;
+
+    const debateText = generateDebateText(currentDebate);
+    const blob = new Blob([debateText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `debate-${currentDebate.topic.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const generateDebateText = (debate: DebateSession): string => {
+    let text = `🏛️ PARLIAMENTARY AI DEBATE PROCEEDINGS\n`;
+    text += `═══════════════════════════════════════\n\n`;
+    text += `📜 Motion: ${debate.topic}\n`;
+    text += `📅 Date: ${debate.createdAt.toLocaleDateString()}\n`;
+    text += `🎭 Participants:\n`;
+    text += `   • Government Bench: ${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name} (${debate.ai1Position})\n`;
+    text += `   • Opposition Bench: ${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name} (${debate.ai2Position})\n\n`;
+    
+    if (debate.winner) {
+      text += `🏆 Winner: ${
+        debate.winner === 'tie' 
+          ? 'Honorable Tie' 
+          : `${AVAILABLE_MODELS.find(m => m.id === (debate.winner === 'ai1' ? debate.ai1Model : debate.ai2Model))?.name} (${debate.winner === 'ai1' ? 'Government' : 'Opposition'})`
+      }\n`;
+      if (debate.winnerReason) {
+        text += `📝 Reason: ${debate.winnerReason}\n`;
+      }
+      text += `📊 Final Votes: Government ${debate.votes.ai1} - Opposition ${debate.votes.ai2}\n\n`;
+    }
+    
+    text += `DEBATE PROCEEDINGS:\n`;
+    text += `═══════════════════\n\n`;
+    
+    debate.messages.forEach((message, index) => {
+      const speaker = message.speaker === 'ai1' ? `${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name} (Government)` :
+                     message.speaker === 'ai2' ? `${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name} (Opposition)` :
+                     message.speaker === 'user' ? 'Gallery Intervention' :
+                     'The Speaker';
+      
+      text += `[${message.timestamp.toLocaleTimeString()}] ${speaker}:\n`;
+      text += `${message.content.replace(/<[^>]*>/g, '').replace(/\*\*/g, '').replace(/\*/g, '')}\n\n`;
+    });
+    
+    text += `═══════════════════════════════════════\n`;
+    text += `Generated by ModelMix AI Debate Club\n`;
+    text += `${window.location.origin}\n`;
+    
+    return text;
+  };
+
+  const handleCopyShareUrl = async () => {
+    if (!shareUrl) return;
+    
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy URL:', error);
+    }
+  };
+
+  const handleShareToSocial = (platform: 'twitter' | 'facebook' | 'linkedin') => {
+    if (!currentDebate || !shareUrl) return;
+
+    const text = `🏛️ Check out this epic AI Parliamentary Debate: "${currentDebate.topic}" between ${AVAILABLE_MODELS.find(m => m.id === currentDebate.ai1Model)?.name} vs ${AVAILABLE_MODELS.find(m => m.id === currentDebate.ai2Model)?.name}! ${shareUrl}`;
+    
+    let url = '';
+    switch (platform) {
+      case 'twitter':
+        url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+        break;
+      case 'facebook':
+        url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(text)}`;
+        break;
+      case 'linkedin':
+        url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+        break;
+    }
+    
+    if (url) {
+      window.open(url, '_blank', 'width=600,height=400');
+    }
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
@@ -551,7 +697,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                       <p className="text-sm text-blue-700">
                         AIs will address each other formally in Parliament style! They'll reference previous arguments, 
                         use formal language, and engage in proper debate flow. After 6 turns, you can start a new round 
-                        to strengthen arguments!
+                        to strengthen arguments, declare winners, and share debates publicly!
                       </p>
                     </div>
                   </div>
@@ -703,6 +849,12 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                         <Clock size={14} />
                         <span>Round {currentDebate.round || 1} - Turn {currentDebate.turnCount}/6</span>
                       </span>
+                      {currentDebate.winner && (
+                        <span className="flex items-center space-x-1 text-yellow-600">
+                          <Trophy size={14} />
+                          <span>Winner Declared</span>
+                        </span>
+                      )}
                       {isGenerating && (
                         <span className="flex items-center space-x-1 text-purple-600">
                           <div className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
@@ -712,27 +864,61 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                     </div>
                   </div>
                   
-                  {/* Vote Buttons */}
-                  {currentDebate.status !== 'finished' && !currentDebate.userVote && (
-                    <div className="flex space-x-2">
+                  {/* Action Buttons */}
+                  <div className="flex items-center space-x-2">
+                    {/* Vote Buttons */}
+                    {currentDebate.status !== 'winner_declared' && !currentDebate.userVote && (
+                      <>
+                        <button
+                          onClick={() => handleVote('ai1')}
+                          className="flex items-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                        >
+                          <ThumbsUp size={14} />
+                          <span>Gov</span>
+                          <span className="bg-blue-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai1}</span>
+                        </button>
+                        <button
+                          onClick={() => handleVote('ai2')}
+                          className="flex items-center space-x-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
+                        >
+                          <ThumbsUp size={14} />
+                          <span>Opp</span>
+                          <span className="bg-red-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai2}</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Winner Declaration Button */}
+                    {(currentDebate.status === 'finished' || currentDebate.turnCount >= 3) && currentDebate.status !== 'winner_declared' && (
                       <button
-                        onClick={() => handleVote('ai1')}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                        onClick={() => setShowWinnerModal(true)}
+                        className="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors text-sm"
                       >
-                        <ThumbsUp size={16} />
-                        <span>Government</span>
-                        <span className="bg-blue-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai1}</span>
+                        <Trophy size={14} />
+                        <span>Declare Winner</span>
                       </button>
-                      <button
-                        onClick={() => handleVote('ai2')}
-                        className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                      >
-                        <ThumbsUp size={16} />
-                        <span>Opposition</span>
-                        <span className="bg-red-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai2}</span>
-                      </button>
-                    </div>
-                  )}
+                    )}
+
+                    {/* Share & Download Buttons */}
+                    {currentDebate.status === 'winner_declared' && (
+                      <>
+                        <button
+                          onClick={handleMakePublic}
+                          className="flex items-center space-x-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm"
+                        >
+                          <Share2 size={14} />
+                          <span>Share</span>
+                        </button>
+                        <button
+                          onClick={handleDownloadDebate}
+                          className="flex items-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                        >
+                          <Download size={14} />
+                          <span>Download</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -815,7 +1001,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                 )}
                 
                 {/* New Round Button */}
-                {currentDebate.status === 'finished' && (
+                {currentDebate.status === 'finished' && currentDebate.status !== 'winner_declared' && (
                   <div className="flex justify-center">
                     <button
                       onClick={startNewRound}
@@ -832,7 +1018,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
               </div>
 
               {/* User Input - Gallery Intervention */}
-              {currentDebate.status !== 'finished' && (
+              {currentDebate.status !== 'winner_declared' && (
                 <div className="border-t border-gray-200 p-4">
                   <div className="flex space-x-3">
                     <input
@@ -956,6 +1142,156 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
             </div>
           )}
         </div>
+
+        {/* Winner Declaration Modal */}
+        {showWinnerModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-yellow-100 rounded-lg">
+                  <Trophy className="text-yellow-600" size={20} />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">🏛️ Declare Parliamentary Winner</h3>
+              </div>
+              
+              <p className="text-gray-600 mb-4">
+                Who presented the most compelling arguments in this parliamentary debate?
+              </p>
+              
+              <div className="space-y-3 mb-4">
+                <button
+                  onClick={() => handleDeclareWinner('ai1')}
+                  className="w-full p-3 text-left rounded-lg border-2 border-blue-200 bg-blue-50 hover:border-blue-400 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-xl">{getModelIcon(currentDebate?.ai1Model || '')}</span>
+                    <div>
+                      <div className="font-medium text-blue-900">
+                        {AVAILABLE_MODELS.find(m => m.id === currentDebate?.ai1Model)?.name} (Government)
+                      </div>
+                      <div className="text-sm text-blue-600">{currentDebate?.ai1Position}</div>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleDeclareWinner('ai2')}
+                  className="w-full p-3 text-left rounded-lg border-2 border-red-200 bg-red-50 hover:border-red-400 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-xl">{getModelIcon(currentDebate?.ai2Model || '')}</span>
+                    <div>
+                      <div className="font-medium text-red-900">
+                        {AVAILABLE_MODELS.find(m => m.id === currentDebate?.ai2Model)?.name} (Opposition)
+                      </div>
+                      <div className="text-sm text-red-600">{currentDebate?.ai2Position}</div>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleDeclareWinner('tie')}
+                  className="w-full p-3 text-left rounded-lg border-2 border-gray-200 bg-gray-50 hover:border-gray-400 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-xl">🤝</span>
+                    <div>
+                      <div className="font-medium text-gray-900">Honorable Tie</div>
+                      <div className="text-sm text-gray-600">Both sides presented compelling arguments</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason for decision (optional):
+                </label>
+                <textarea
+                  value={winnerReason}
+                  onChange={(e) => setWinnerReason(e.target.value)}
+                  placeholder="Explain why this side won the debate..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowWinnerModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Share2 className="text-green-600" size={20} />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">🌐 Share Parliamentary Debate</h3>
+              </div>
+              
+              <p className="text-gray-600 mb-4">
+                Your debate is now public! Share it with the world:
+              </p>
+              
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={shareUrl}
+                    readOnly
+                    className="flex-1 bg-transparent text-sm text-gray-700"
+                  />
+                  <button
+                    onClick={handleCopyShareUrl}
+                    className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    {copySuccess ? <CheckCircle size={16} className="text-green-600" /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <button
+                  onClick={() => handleShareToSocial('twitter')}
+                  className="flex items-center justify-center space-x-2 p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  <span className="text-sm font-medium">Twitter</span>
+                </button>
+                <button
+                  onClick={() => handleShareToSocial('facebook')}
+                  className="flex items-center justify-center space-x-2 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <span className="text-sm font-medium">Facebook</span>
+                </button>
+                <button
+                  onClick={() => handleShareToSocial('linkedin')}
+                  className="flex items-center justify-center space-x-2 p-3 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors"
+                >
+                  <span className="text-sm font-medium">LinkedIn</span>
+                </button>
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
