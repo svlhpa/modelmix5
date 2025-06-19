@@ -33,6 +33,7 @@ interface DebateSession {
   userVote?: 'ai1' | 'ai2';
   winner?: 'ai1' | 'ai2' | 'tie';
   createdAt: Date;
+  turnCount: number;
 }
 
 interface DebateStats {
@@ -63,8 +64,7 @@ const DEBATE_TOPICS = [
 const AVAILABLE_MODELS = [
   { id: 'openai', name: 'GPT-4o', personality: 'Analytical and precise' },
   { id: 'gemini', name: 'Gemini Pro', personality: 'Creative and thoughtful' },
-  { id: 'deepseek', name: 'DeepSeek', personality: 'Logical and methodical' },
-  { id: 'claude', name: 'Claude', personality: 'Balanced and nuanced' }
+  { id: 'deepseek', name: 'DeepSeek', personality: 'Logical and methodical' }
 ];
 
 const REACTION_EMOJIS = ['🔥', '🤯', '😂', '👏', '💯', '🎯', '🤔', '😴'];
@@ -132,6 +132,22 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   const generateOpeningStatements = async (debate: DebateSession) => {
     setIsGenerating(true);
     try {
+      // Add moderator introduction
+      const introMessage: DebateMessage = {
+        id: `moderator-intro-${Date.now()}`,
+        speaker: 'moderator',
+        content: `🎤 Welcome to the AI Debate Club! Today's topic: "${debate.topic}"\n\n${getModelDisplayName(debate.ai1Model)} will argue ${debate.ai1Position.toLowerCase()}, while ${getModelDisplayName(debate.ai2Model)} will argue ${debate.ai2Position.toLowerCase()}.\n\nLet the debate begin! 🥊`,
+        timestamp: new Date(),
+        reactions: {}
+      };
+
+      // Update debate with intro
+      let updatedDebate = {
+        ...debate,
+        messages: [introMessage]
+      };
+      setCurrentDebate(updatedDebate);
+
       // Generate opening statement for AI1
       const ai1Opening = await aiService.generateDebateResponse(
         debate.topic,
@@ -149,6 +165,16 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
         model: debate.ai1Model,
         reactions: {}
       };
+
+      // Update with AI1 message
+      updatedDebate = {
+        ...updatedDebate,
+        messages: [...updatedDebate.messages, ai1Message]
+      };
+      setCurrentDebate(updatedDebate);
+
+      // Small delay for better UX
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // Generate opening statement for AI2
       const ai2Opening = await aiService.generateDebateResponse(
@@ -168,11 +194,13 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
         reactions: {}
       };
 
-      const updatedDebate = {
-        ...debate,
-        status: 'debate' as const,
-        messages: [ai1Message, ai2Message],
-        currentTurn: 'ai1' as const
+      // Final update
+      updatedDebate = {
+        ...updatedDebate,
+        status: 'debate',
+        messages: [...updatedDebate.messages, ai2Message],
+        currentTurn: 'ai1',
+        turnCount: 1
       };
 
       setCurrentDebate(updatedDebate);
@@ -187,17 +215,31 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   const continueDebate = async () => {
     if (!currentDebate || isGenerating) return;
 
+    // Check if debate should end
+    if (currentDebate.turnCount >= 6) {
+      await endDebate();
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const currentModel = currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model;
       const currentPosition = currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Position : currentDebate.ai2Position;
 
+      // Build conversation context
+      const conversationHistory = currentDebate.messages
+        .filter(msg => msg.speaker !== 'moderator')
+        .map(msg => ({
+          role: msg.speaker === 'user' ? 'user' as const : 'assistant' as const,
+          content: msg.content
+        }));
+
       const response = await aiService.generateDebateResponse(
         currentDebate.topic,
         currentPosition,
-        currentDebate.messages,
+        conversationHistory,
         currentModel,
-        'rebuttal'
+        currentDebate.turnCount >= 5 ? 'closing' : 'rebuttal'
       );
 
       const newMessage: DebateMessage = {
@@ -212,7 +254,8 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
       const updatedDebate = {
         ...currentDebate,
         messages: [...currentDebate.messages, newMessage],
-        currentTurn: currentDebate.currentTurn === 'ai1' ? 'ai2' as const : 'ai1' as const
+        currentTurn: currentDebate.currentTurn === 'ai1' ? 'ai2' as const : 'ai1' as const,
+        turnCount: currentDebate.currentTurn === 'ai2' ? currentDebate.turnCount + 1 : currentDebate.turnCount
       };
 
       setCurrentDebate(updatedDebate);
@@ -222,6 +265,34 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const endDebate = async () => {
+    if (!currentDebate) return;
+
+    const winner = currentDebate.votes.ai1 > currentDebate.votes.ai2 ? 'ai1' : 
+                   currentDebate.votes.ai2 > currentDebate.votes.ai1 ? 'ai2' : 'tie';
+
+    const endMessage: DebateMessage = {
+      id: `moderator-end-${Date.now()}`,
+      speaker: 'moderator',
+      content: `🏁 The debate has concluded! \n\n${
+        winner === 'tie' ? 'It\'s a tie! Both AI models presented compelling arguments.' :
+        `🏆 ${getModelDisplayName(winner === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model)} wins with ${winner === 'ai1' ? currentDebate.votes.ai1 : currentDebate.votes.ai2} votes!`
+      }\n\nThank you for participating in the AI Debate Club! 🎉`,
+      timestamp: new Date(),
+      reactions: {}
+    };
+
+    const finalDebate = {
+      ...currentDebate,
+      status: 'finished' as const,
+      winner,
+      messages: [...currentDebate.messages, endMessage]
+    };
+
+    setCurrentDebate(finalDebate);
+    await debateService.updateDebate(finalDebate);
   };
 
   const addUserMessage = async () => {
@@ -249,10 +320,17 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
       const currentModel = currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model;
       const currentPosition = currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Position : currentDebate.ai2Position;
 
+      const conversationHistory = updatedDebate.messages
+        .filter(msg => msg.speaker !== 'moderator')
+        .map(msg => ({
+          role: msg.speaker === 'user' ? 'user' as const : 'assistant' as const,
+          content: msg.content
+        }));
+
       const response = await aiService.generateDebateResponse(
         currentDebate.topic,
         currentPosition,
-        updatedDebate.messages,
+        conversationHistory,
         currentModel,
         'response_to_user'
       );
@@ -283,14 +361,25 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   const voteForAI = async (aiSide: 'ai1' | 'ai2') => {
     if (!currentDebate || !user) return;
 
+    const wasVotingForSame = currentDebate.userVote === aiSide;
+    const previousVote = currentDebate.userVote;
+
+    let newVotes = { ...currentDebate.votes };
+
+    // Remove previous vote if exists
+    if (previousVote) {
+      newVotes[previousVote] = Math.max(0, newVotes[previousVote] - 1);
+    }
+
+    // Add new vote if not removing the same vote
+    if (!wasVotingForSame) {
+      newVotes[aiSide] = newVotes[aiSide] + 1;
+    }
+
     const updatedDebate = {
       ...currentDebate,
-      votes: {
-        ...currentDebate.votes,
-        [aiSide]: currentDebate.votes[aiSide] + (currentDebate.userVote === aiSide ? -1 : 1),
-        [currentDebate.userVote === 'ai1' ? 'ai1' : 'ai2']: currentDebate.userVote ? currentDebate.votes[currentDebate.userVote] - 1 : currentDebate.votes[currentDebate.userVote === 'ai1' ? 'ai1' : 'ai2']
-      },
-      userVote: currentDebate.userVote === aiSide ? undefined : aiSide
+      votes: newVotes,
+      userVote: wasVotingForSame ? undefined : aiSide
     };
 
     setCurrentDebate(updatedDebate);
@@ -539,177 +628,203 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {activeTab === 'debate' && currentDebate && (
+          {activeTab === 'debate' && (
             <div className="h-full flex flex-col">
-              {/* Debate Header */}
-              <div className="p-4 border-b border-gray-200 bg-gray-50">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">{currentDebate.topic}</h3>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <Vote size={16} className="text-gray-500" />
-                      <span className="text-sm text-gray-600">
-                        {currentDebate.votes.ai1 + currentDebate.votes.ai2} votes
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Clock size={16} className="text-gray-500" />
-                      <span className="text-sm text-gray-600">
-                        {currentDebate.messages.length} exchanges
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Debaters */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className={`p-3 rounded-lg border-2 transition-all ${
-                    currentDebate.userVote === 'ai1' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-white'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{getModelDisplayName(currentDebate.ai1Model)}</h4>
-                        <p className="text-sm text-gray-600">{currentDebate.ai1Position}</p>
-                      </div>
-                      <button
-                        onClick={() => voteForAI('ai1')}
-                        className={`p-2 rounded-lg transition-all ${
-                          currentDebate.userVote === 'ai1' 
-                            ? 'bg-purple-600 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-purple-100'
-                        }`}
-                      >
-                        <ThumbsUp size={16} />
-                      </button>
-                    </div>
-                    <div className="mt-2 text-sm text-purple-600 font-medium">
-                      {currentDebate.votes.ai1} votes
-                    </div>
-                  </div>
-
-                  <div className={`p-3 rounded-lg border-2 transition-all ${
-                    currentDebate.userVote === 'ai2' ? 'border-pink-500 bg-pink-50' : 'border-gray-200 bg-white'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{getModelDisplayName(currentDebate.ai2Model)}</h4>
-                        <p className="text-sm text-gray-600">{currentDebate.ai2Position}</p>
-                      </div>
-                      <button
-                        onClick={() => voteForAI('ai2')}
-                        className={`p-2 rounded-lg transition-all ${
-                          currentDebate.userVote === 'ai2' 
-                            ? 'bg-pink-600 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-pink-100'
-                        }`}
-                      >
-                        <ThumbsUp size={16} />
-                      </button>
-                    </div>
-                    <div className="mt-2 text-sm text-pink-600 font-medium">
-                      {currentDebate.votes.ai2} votes
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {currentDebate.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.speaker === 'user' ? 'justify-end' : 'justify-start'} animate-fadeInUp`}
-                  >
-                    <div className={`max-w-3xl p-4 rounded-lg ${
-                      message.speaker === 'ai1' ? 'bg-purple-100 border border-purple-200' :
-                      message.speaker === 'ai2' ? 'bg-pink-100 border border-pink-200' :
-                      message.speaker === 'user' ? 'bg-blue-600 text-white' :
-                      'bg-gray-100 border border-gray-200'
-                    }`}>
-                      {message.speaker !== 'user' && (
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <Brain size={16} className={
-                              message.speaker === 'ai1' ? 'text-purple-600' : 'text-pink-600'
-                            } />
-                            <span className="font-semibold text-sm">
-                              {message.model ? getModelDisplayName(message.model) : 'Moderator'}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {message.timestamp.toLocaleTimeString()}
+              {currentDebate ? (
+                <>
+                  {/* Debate Header */}
+                  <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">{currentDebate.topic}</h3>
+                      <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-2">
+                          <Vote size={16} className="text-gray-500" />
+                          <span className="text-sm text-gray-600">
+                            {currentDebate.votes.ai1 + currentDebate.votes.ai2} votes
                           </span>
                         </div>
-                      )}
-                      
-                      <p className="leading-relaxed">{message.content}</p>
-                      
-                      {message.speaker !== 'user' && (
-                        <div className="flex items-center justify-between mt-3">
-                          <div className="flex items-center space-x-1">
-                            {REACTION_EMOJIS.map(emoji => (
-                              <button
-                                key={emoji}
-                                onClick={() => addReaction(message.id, emoji)}
-                                className={`p-1 rounded hover:bg-white/50 transition-all text-sm ${
-                                  message.userReaction === emoji ? 'bg-white/70 scale-110' : ''
-                                }`}
-                              >
-                                {emoji} {message.reactions?.[emoji] || ''}
-                              </button>
-                            ))}
-                          </div>
+                        <div className="flex items-center space-x-2">
+                          <Clock size={16} className="text-gray-500" />
+                          <span className="text-sm text-gray-600">
+                            Turn {currentDebate.turnCount}/6
+                          </span>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                
-                {isGenerating && (
-                  <div className="flex justify-center animate-pulse">
-                    <div className="bg-gray-100 p-4 rounded-lg">
-                      <div className="flex items-center space-x-2">
-                        <Brain size={16} className="text-gray-600 animate-spin" />
-                        <span className="text-gray-600">AI is thinking...</span>
+
+                    {/* Debaters */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className={`p-3 rounded-lg border-2 transition-all ${
+                        currentDebate.userVote === 'ai1' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-white'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{getModelDisplayName(currentDebate.ai1Model)}</h4>
+                            <p className="text-sm text-gray-600">{currentDebate.ai1Position}</p>
+                          </div>
+                          <button
+                            onClick={() => voteForAI('ai1')}
+                            className={`p-2 rounded-lg transition-all ${
+                              currentDebate.userVote === 'ai1' 
+                                ? 'bg-purple-600 text-white' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-purple-100'
+                            }`}
+                          >
+                            <ThumbsUp size={16} />
+                          </button>
+                        </div>
+                        <div className="mt-2 text-sm text-purple-600 font-medium">
+                          {currentDebate.votes.ai1} votes
+                        </div>
+                      </div>
+
+                      <div className={`p-3 rounded-lg border-2 transition-all ${
+                        currentDebate.userVote === 'ai2' ? 'border-pink-500 bg-pink-50' : 'border-gray-200 bg-white'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{getModelDisplayName(currentDebate.ai2Model)}</h4>
+                            <p className="text-sm text-gray-600">{currentDebate.ai2Position}</p>
+                          </div>
+                          <button
+                            onClick={() => voteForAI('ai2')}
+                            className={`p-2 rounded-lg transition-all ${
+                              currentDebate.userVote === 'ai2' 
+                                ? 'bg-pink-600 text-white' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-pink-100'
+                            }`}
+                          >
+                            <ThumbsUp size={16} />
+                          </button>
+                        </div>
+                        <div className="mt-2 text-sm text-pink-600 font-medium">
+                          {currentDebate.votes.ai2} votes
+                        </div>
                       </div>
                     </div>
                   </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
 
-              {/* Input Area */}
-              <div className="p-4 border-t border-gray-200 bg-white">
-                <div className="flex space-x-4 mb-3">
-                  <button
-                    onClick={continueDebate}
-                    disabled={isGenerating}
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition-all duration-200 transform hover:scale-105"
-                  >
-                    {isGenerating ? 'AI Responding...' : 'Continue Debate'}
-                  </button>
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {currentDebate.messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.speaker === 'user' ? 'justify-end' : 'justify-start'} animate-fadeInUp`}
+                      >
+                        <div className={`max-w-3xl p-4 rounded-lg ${
+                          message.speaker === 'ai1' ? 'bg-purple-100 border border-purple-200' :
+                          message.speaker === 'ai2' ? 'bg-pink-100 border border-pink-200' :
+                          message.speaker === 'user' ? 'bg-blue-600 text-white' :
+                          'bg-yellow-50 border border-yellow-200'
+                        }`}>
+                          {message.speaker !== 'user' && (
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                {message.speaker === 'moderator' ? (
+                                  <Mic size={16} className="text-yellow-600" />
+                                ) : (
+                                  <Brain size={16} className={
+                                    message.speaker === 'ai1' ? 'text-purple-600' : 'text-pink-600'
+                                  } />
+                                )}
+                                <span className="font-semibold text-sm">
+                                  {message.speaker === 'moderator' ? 'Moderator' : 
+                                   message.model ? getModelDisplayName(message.model) : 'AI'}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {message.timestamp.toLocaleTimeString()}
+                              </span>
+                            </div>
+                          )}
+                          
+                          <p className="leading-relaxed whitespace-pre-line">{message.content}</p>
+                          
+                          {message.speaker !== 'user' && message.speaker !== 'moderator' && (
+                            <div className="flex items-center justify-between mt-3">
+                              <div className="flex items-center space-x-1">
+                                {REACTION_EMOJIS.map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => addReaction(message.id, emoji)}
+                                    className={`p-1 rounded hover:bg-white/50 transition-all text-sm ${
+                                      message.userReaction === emoji ? 'bg-white/70 scale-110' : ''
+                                    }`}
+                                  >
+                                    {emoji} {message.reactions?.[emoji] || ''}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {isGenerating && (
+                      <div className="flex justify-center animate-pulse">
+                        <div className="bg-gray-100 p-4 rounded-lg">
+                          <div className="flex items-center space-x-2">
+                            <Brain size={16} className="text-gray-600 animate-spin" />
+                            <span className="text-gray-600">AI is thinking...</span>
+                          </div>
+                        </div>
+                      )}
+                    )}
+                    
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Input Area */}
+                  <div className="p-4 border-t border-gray-200 bg-white">
+                    {currentDebate.status !== 'finished' && (
+                      <div className="flex space-x-4 mb-3">
+                        <button
+                          onClick={continueDebate}
+                          disabled={isGenerating}
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition-all duration-200 transform hover:scale-105"
+                        >
+                          {isGenerating ? 'AI Responding...' : 
+                           currentDebate.turnCount >= 6 ? 'End Debate' : 'Continue Debate'}
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={userMessage}
+                        onChange={(e) => setUserMessage(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addUserMessage()}
+                        placeholder="Jump in with your own argument..."
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        disabled={isGenerating || currentDebate.status === 'finished'}
+                      />
+                      <button
+                        onClick={addUserMessage}
+                        disabled={!userMessage.trim() || isGenerating || currentDebate.status === 'finished'}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <Mic size={48} className="text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Active Debate</h3>
+                    <p className="text-gray-500 mb-4">Start a new debate from the lobby to see the action!</p>
+                    <button
+                      onClick={() => setActiveTab('lobby')}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      Go to Lobby
+                    </button>
+                  </div>
                 </div>
-                
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={userMessage}
-                    onChange={(e) => setUserMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addUserMessage()}
-                    placeholder="Jump in with your own argument..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    disabled={isGenerating}
-                  />
-                  <button
-                    onClick={addUserMessage}
-                    disabled={!userMessage.trim() || isGenerating}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
