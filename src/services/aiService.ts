@@ -361,7 +361,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  // CRITICAL: Updated debate response generation to use tier2 for Pro users
+  // CRITICAL: Completely rebuilt debate response generation for proper engagement
   async generateDebateResponse(
     topic: string,
     position: string,
@@ -374,28 +374,40 @@ class AIService {
     // CRITICAL: Load current settings first to ensure we have the latest API keys
     await this.loadSettings();
     
-    const systemPrompt = this.getDebateSystemPrompt(topic, position, responseType);
+    // CRITICAL: Build proper debate context with opponent's arguments
+    const opponentMessages = previousMessages.filter(msg => 
+      (msg.speaker === 'ai1' || msg.speaker === 'ai2') && msg.speaker !== this.getCurrentSpeaker(model, previousMessages)
+    );
     
-    // Build conversation context
+    const myPreviousMessages = previousMessages.filter(msg => 
+      msg.speaker === this.getCurrentSpeaker(model, previousMessages)
+    );
+
+    const systemPrompt = this.getEnhancedDebateSystemPrompt(
+      topic, 
+      position, 
+      responseType, 
+      model, 
+      opponentMessages, 
+      myPreviousMessages,
+      previousMessages.length
+    );
+    
+    // Build conversation context with FULL debate history
     const messages: Array<{role: 'user' | 'assistant' | 'system', content: string}> = [
       { role: 'system', content: systemPrompt }
     ];
     
-    // Add previous debate messages as context
-    previousMessages.forEach(msg => {
-      if (msg.speaker === 'user') {
-        messages.push({ role: 'user', content: msg.content });
-      } else if (msg.speaker === 'ai1' || msg.speaker === 'ai2') {
-        messages.push({ role: 'assistant', content: msg.content });
-      }
-      // Skip moderator messages as they're not part of the debate flow
-    });
+    // Add the FULL debate context so AI can reference previous arguments
+    if (previousMessages.length > 0) {
+      const debateContext = this.buildDebateContext(previousMessages, model);
+      messages.push({ role: 'user', content: debateContext });
+    }
 
     try {
-      console.log(`Calling ${model} API...`);
+      console.log(`Calling ${model} API with enhanced context...`);
       
       // CRITICAL: Call with tier2 access for Pro users, tier1 for free users
-      // The API methods will handle fallback logic internally
       switch (model) {
         case 'openai':
           return await this.callOpenAI(messages, [], undefined, 'tier2');
@@ -418,44 +430,131 @@ class AIService {
     }
   }
 
-  private getDebateSystemPrompt(topic: string, position: string, responseType: string): string {
-    const basePrompt = `You are participating in a formal debate about: "${topic}"
+  // CRITICAL: Helper to determine current speaker
+  private getCurrentSpeaker(model: string, previousMessages: any[]): 'ai1' | 'ai2' {
+    // Find which AI this model represents by looking at previous messages
+    const ai1Messages = previousMessages.filter(msg => msg.speaker === 'ai1');
+    const ai2Messages = previousMessages.filter(msg => msg.speaker === 'ai2');
+    
+    // Check if this model has spoken as ai1 or ai2 before
+    if (ai1Messages.length > 0 && ai1Messages[0].model?.toLowerCase().includes(model)) {
+      return 'ai1';
+    }
+    if (ai2Messages.length > 0 && ai2Messages[0].model?.toLowerCase().includes(model)) {
+      return 'ai2';
+    }
+    
+    // Default logic based on turn count
+    const aiMessageCount = previousMessages.filter(msg => msg.speaker === 'ai1' || msg.speaker === 'ai2').length;
+    return aiMessageCount % 2 === 0 ? 'ai1' : 'ai2';
+  }
+
+  // CRITICAL: Build comprehensive debate context
+  private buildDebateContext(previousMessages: any[], currentModel: string): string {
+    const currentSpeaker = this.getCurrentSpeaker(currentModel, previousMessages);
+    const opponentSpeaker = currentSpeaker === 'ai1' ? 'ai2' : 'ai1';
+    
+    let context = "=== CURRENT DEBATE CONTEXT ===\n\n";
+    
+    // Add recent debate exchanges (last 4 messages)
+    const recentMessages = previousMessages
+      .filter(msg => msg.speaker === 'ai1' || msg.speaker === 'ai2')
+      .slice(-4);
+    
+    if (recentMessages.length > 0) {
+      context += "**Recent Debate Exchanges:**\n\n";
+      recentMessages.forEach((msg, index) => {
+        const speakerLabel = msg.speaker === currentSpeaker ? "YOU" : "YOUR OPPONENT";
+        context += `${speakerLabel} (${msg.model}): ${msg.content}\n\n`;
+      });
+    }
+    
+    // Add opponent's key arguments to address
+    const opponentMessages = previousMessages.filter(msg => msg.speaker === opponentSpeaker);
+    if (opponentMessages.length > 0) {
+      context += "**Your Opponent's Key Arguments to Address:**\n";
+      opponentMessages.forEach((msg, index) => {
+        context += `${index + 1}. ${msg.content.substring(0, 200)}...\n`;
+      });
+      context += "\n";
+    }
+    
+    context += "=== YOUR TASK ===\n";
+    context += "You must DIRECTLY RESPOND to your opponent's arguments above. Reference specific points they made and counter them with your own evidence and logic. This is a competitive debate - be assertive and persuasive!\n\n";
+    context += "Now provide your response:";
+    
+    return context;
+  }
+
+  // CRITICAL: Enhanced system prompt for competitive debate
+  private getEnhancedDebateSystemPrompt(
+    topic: string, 
+    position: string, 
+    responseType: string, 
+    model: string,
+    opponentMessages: any[],
+    myPreviousMessages: any[],
+    totalTurns: number
+  ): string {
+    const modelName = model === 'openai' ? 'GPT-4o' : 
+                     model === 'gemini' ? 'Gemini Pro' : 
+                     model === 'deepseek' ? 'DeepSeek' : model;
+    
+    const opponentName = model === 'openai' ? 'Gemini Pro' : 
+                        model === 'gemini' ? 'GPT-4o' : 
+                        'GPT-4o'; // Default opponent
+
+    const basePrompt = `You are ${modelName} in a COMPETITIVE Parliamentary debate about: "${topic}"
 
 Your position: ${position}
+Your opponent: ${opponentName}
 
-Guidelines:
-- Be persuasive and articulate
-- Use facts, logic, and compelling arguments
-- Stay focused on your assigned position
-- Be respectful but assertive
-- Keep responses concise (2-3 paragraphs max)
-- Make your arguments engaging and memorable
-- Use a conversational but professional tone`;
+CRITICAL DEBATE RULES:
+🏛️ **Parliamentary Style**: Use formal language ("The Honorable Member", "My learned colleague")
+🎯 **Be COMPETITIVE**: This is a contest - you want to WIN this debate
+🔥 **Address Opponent Directly**: Reference their specific arguments and counter them
+💪 **Be Assertive**: Don't just state your position - ATTACK their weak points
+📊 **Use Evidence**: Cite facts, studies, examples to support your arguments
+🎭 **Show Personality**: Be passionate about your position while remaining respectful
 
-    switch (responseType) {
-      case 'opening':
-        return `${basePrompt}
+DEBATE ENGAGEMENT REQUIREMENTS:
+- NEVER just give a generic opening statement
+- ALWAYS reference what your opponent has said (if they've spoken)
+- Point out flaws in their logic
+- Use phrases like "My opponent claims... but they're wrong because..."
+- Build on the debate flow - this is a CONVERSATION, not separate speeches
+- Be competitive but respectful
+- Keep responses 2-3 paragraphs maximum
+- End with a strong challenge or question for your opponent`;
 
-This is your opening statement. Present your strongest arguments and set the tone for the debate. Make a compelling case for your position.`;
+    // Add specific instructions based on response type and debate progress
+    let specificInstructions = "";
+    
+    if (responseType === 'opening' && totalTurns <= 1) {
+      specificInstructions = `
+This is your OPENING STATEMENT. Set the tone and present your strongest arguments. Be bold and confident in your position.`;
+    } else if (opponentMessages.length > 0) {
+      const lastOpponentMessage = opponentMessages[opponentMessages.length - 1];
+      specificInstructions = `
+This is a REBUTTAL. Your opponent just said: "${lastOpponentMessage.content.substring(0, 300)}..."
 
-      case 'rebuttal':
-        return `${basePrompt}
+You MUST:
+1. Directly address their specific points
+2. Point out flaws in their argument
+3. Counter with your own evidence
+4. Challenge them on weak spots
+5. Strengthen your own position
 
-This is a rebuttal round. Address the opposing arguments while strengthening your own position. Counter their points with evidence and logic.`;
-
-      case 'closing':
-        return `${basePrompt}
-
-This is your closing statement. Summarize your key points and make a final compelling case. Leave the audience with a strong impression.`;
-
-      case 'response_to_user':
-        return `${basePrompt}
-
-A user has jumped into the debate with their own point. Respond to their argument while maintaining your position. Be engaging and acknowledge their input.`;
-
-      default:
-        return basePrompt;
+Be competitive and assertive - you're trying to WIN this debate!`;
+    } else if (responseType === 'closing') {
+      specificInstructions = `
+This is your CLOSING ARGUMENT. Summarize why you've won this debate, address their strongest points one final time, and make a compelling final case.`;
+    } else {
+      specificInstructions = `
+Continue the debate by addressing your opponent's arguments and strengthening your position. Be competitive and engaging.`;
     }
+
+    return basePrompt + specificInstructions;
   }
 
   // CRITICAL: Completely rebuilt response generation system
