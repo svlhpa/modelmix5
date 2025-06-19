@@ -58,24 +58,38 @@ class AIService {
     return this.openRouterModels;
   }
 
-  // Get API key with fallback to global keys for free trial
+  // CRITICAL: Updated API key access to prioritize Pro users for global keys
   private async getApiKey(provider: string, userTier: string): Promise<{ key: string | null; isGlobal: boolean }> {
     // First try user's personal API key
     const userKey = this.settings[provider as keyof APISettings];
     if (userKey && userKey.trim() !== '') {
+      console.log(`Using personal API key for ${provider}`);
       return { key: userKey, isGlobal: false };
     }
 
-    // Fallback to global API key for free trial
-    const globalKey = await globalApiService.getGlobalApiKey(provider, userTier as any);
-    if (globalKey) {
-      // Check if global key is within usage limits
-      const canUse = await globalApiService.checkGlobalUsageLimit(provider);
-      if (canUse) {
-        return { key: globalKey, isGlobal: true };
+    // CRITICAL: For Pro users (tier2), always try global keys as fallback
+    // For Free users (tier1), also try global keys for free trial
+    console.log(`No personal key for ${provider}, checking global keys for tier: ${userTier}`);
+    
+    try {
+      const globalKey = await globalApiService.getGlobalApiKey(provider, userTier as any);
+      if (globalKey && globalKey !== 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN') {
+        // Check if global key is within usage limits
+        const canUse = await globalApiService.checkGlobalUsageLimit(provider);
+        if (canUse) {
+          console.log(`Using global API key for ${provider} (tier: ${userTier})`);
+          return { key: globalKey, isGlobal: true };
+        } else {
+          console.log(`Global API key for ${provider} is over usage limit`);
+        }
+      } else {
+        console.log(`No global API key available for ${provider}`);
       }
+    } catch (error) {
+      console.error(`Error accessing global API key for ${provider}:`, error);
     }
 
+    console.log(`No API key available for ${provider}`);
     return { key: null, isGlobal: false };
   }
 
@@ -157,9 +171,20 @@ class AIService {
   }
 
   private async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
-    const { key: apiKey, isGlobal } = await this.getApiKey('openai', userTier || 'tier1');
+    // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
+    const tier = userTier || 'tier2';
+    let { key: apiKey, isGlobal } = await this.getApiKey('openai', tier);
+    
+    // If no key found for tier2, try tier1 as fallback
+    if (!apiKey && tier === 'tier2') {
+      console.log('No tier2 key for OpenAI, trying tier1 fallback');
+      const fallback = await this.getApiKey('openai', 'tier1');
+      apiKey = fallback.key;
+      isGlobal = fallback.isGlobal;
+    }
+    
     if (!apiKey) {
-      throw new Error('OpenAI API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
+      throw new Error('OpenAI API key not available. Please configure your API key in settings or contact support for global key access.');
     }
 
     // Format messages for vision if images are present
@@ -210,9 +235,20 @@ class AIService {
   }
 
   private async callGemini(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
-    const { key: apiKey, isGlobal } = await this.getApiKey('gemini', userTier || 'tier1');
+    // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
+    const tier = userTier || 'tier2';
+    let { key: apiKey, isGlobal } = await this.getApiKey('gemini', tier);
+    
+    // If no key found for tier2, try tier1 as fallback
+    if (!apiKey && tier === 'tier2') {
+      console.log('No tier2 key for Gemini, trying tier1 fallback');
+      const fallback = await this.getApiKey('gemini', 'tier1');
+      apiKey = fallback.key;
+      isGlobal = fallback.isGlobal;
+    }
+    
     if (!apiKey) {
-      throw new Error('Gemini API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
+      throw new Error('Gemini API key not available. Please configure your API key in settings or contact support for global key access.');
     }
 
     // Convert messages to Gemini format, handling system messages
@@ -279,9 +315,20 @@ class AIService {
   }
 
   private async callDeepSeek(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
-    const { key: apiKey, isGlobal } = await this.getApiKey('deepseek', userTier || 'tier1');
+    // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
+    const tier = userTier || 'tier2';
+    let { key: apiKey, isGlobal } = await this.getApiKey('deepseek', tier);
+    
+    // If no key found for tier2, try tier1 as fallback
+    if (!apiKey && tier === 'tier2') {
+      console.log('No tier2 key for DeepSeek, trying tier1 fallback');
+      const fallback = await this.getApiKey('deepseek', 'tier1');
+      apiKey = fallback.key;
+      isGlobal = fallback.isGlobal;
+    }
+    
     if (!apiKey) {
-      throw new Error('DeepSeek API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
+      throw new Error('DeepSeek API key not available. Please configure your API key in settings or contact support for global key access.');
     }
 
     const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -314,7 +361,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  // NEW: Generate debate responses with proper API key handling
+  // CRITICAL: Updated debate response generation to use tier2 for Pro users
   async generateDebateResponse(
     topic: string,
     position: string,
@@ -347,14 +394,15 @@ class AIService {
     try {
       console.log(`Calling ${model} API...`);
       
-      // Call the appropriate AI model with tier1 access (for free trial support)
+      // CRITICAL: Call with tier2 access for Pro users, tier1 for free users
+      // The API methods will handle fallback logic internally
       switch (model) {
         case 'openai':
-          return await this.callOpenAI(messages, [], undefined, 'tier1');
+          return await this.callOpenAI(messages, [], undefined, 'tier2');
         case 'gemini':
-          return await this.callGemini(messages, [], undefined, 'tier1');
+          return await this.callGemini(messages, [], undefined, 'tier2');
         case 'deepseek':
-          return await this.callDeepSeek(messages, [], undefined, 'tier1');
+          return await this.callDeepSeek(messages, [], undefined, 'tier2');
         default:
           throw new Error(`Unsupported model for debate: ${model}`);
       }
