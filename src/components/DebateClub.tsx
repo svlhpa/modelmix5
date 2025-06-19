@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, Users, Trophy, ThumbsUp, ThumbsDown, MessageCircle, Send, Zap, Crown, Siren as Fire, Brain, Laugh, Clock, Vote, TrendingUp, Shuffle, History, Sparkles, RotateCcw, Play, Share2, Download, ExternalLink, Copy, CheckCircle, Medal, Star } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import { debateService } from '../services/debateService';
+import { X, Mic, Users, Trophy, Play, Pause, RotateCcw, Crown, Share2, Download, ExternalLink, Copy, CheckCircle, MessageSquare, ThumbsUp, ThumbsDown, Gavel, Award, Globe, Zap } from 'lucide-react';
 import { aiService } from '../services/aiService';
+import { debateService } from '../services/debateService';
+import { useAuth } from '../hooks/useAuth';
+import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 
 interface DebateClubProps {
   isOpen: boolean;
@@ -11,12 +12,11 @@ interface DebateClubProps {
 
 interface DebateMessage {
   id: string;
-  speaker: 'ai1' | 'ai2' | 'user' | 'moderator';
+  speaker: 'ai1' | 'ai2' | 'user';
   content: string;
   timestamp: Date;
   model?: string;
-  reactions?: { [emoji: string]: number };
-  userReaction?: string;
+  position?: string;
 }
 
 interface DebateSession {
@@ -36,7 +36,7 @@ interface DebateSession {
   winnerReason?: string;
   createdAt: Date;
   turnCount: number;
-  round: number;
+  round?: number;
   isPublic?: boolean;
   shareUrl?: string;
 }
@@ -48,60 +48,40 @@ interface DebateStats {
   userParticipation: number;
 }
 
-const DEBATE_TOPICS = [
-  "Is artificial intelligence a threat to humanity?",
-  "Should social media be regulated by governments?",
-  "Is remote work better than office work?",
-  "Should we colonize Mars?",
-  "Is cryptocurrency the future of money?",
-  "Should we ban single-use plastics?",
-  "Is TikTok harmful to society?",
-  "Should we have universal basic income?",
-  "Is nuclear energy the solution to climate change?",
-  "Should we edit human genes?",
-  "Is pineapple on pizza acceptable?",
-  "Are cats better than dogs?",
-  "Should we have a 4-day work week?",
-  "Is the metaverse the future of the internet?",
-  "Should we tax billionaires more?"
-];
-
-const AVAILABLE_MODELS = [
-  { id: 'openai', name: 'GPT-4o', personality: 'Analytical and precise' },
-  { id: 'gemini', name: 'Gemini Pro', personality: 'Creative and thoughtful' },
-  { id: 'deepseek', name: 'DeepSeek', personality: 'Logical and methodical' }
-];
-
-const REACTION_EMOJIS = ['🔥', '🤯', '😂', '👏', '💯', '🎯', '🤔', '😴'];
+interface WinnerDeclaration {
+  winner: 'ai1' | 'ai2' | 'tie';
+  reason?: string;
+}
 
 export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'lobby' | 'debate' | 'leaderboard'>('lobby');
+  const { user, getCurrentTier } = useAuth();
+  const [activeTab, setActiveTab] = useState<'lobby' | 'live' | 'leaderboard'>('lobby');
   const [currentDebate, setCurrentDebate] = useState<DebateSession | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState('');
-  const [customTopic, setCustomTopic] = useState('');
-  const [selectedAI1, setSelectedAI1] = useState('openai');
-  const [selectedAI2, setSelectedAI2] = useState('gemini');
-  const [userInput, setUserInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [userInput, setUserInput] = useState('');
+  const [stats, setStats] = useState<DebateStats>({ totalDebates: 0, modelWins: {}, topTopics: [], userParticipation: 0 });
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [winnerReason, setWinnerReason] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
-  const [stats, setStats] = useState<DebateStats>({
-    totalDebates: 0,
-    modelWins: {},
-    topTopics: [],
-    userParticipation: 0
-  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Model selection states
+  const [selectedAI1, setSelectedAI1] = useState('openai');
+  const [selectedAI2, setSelectedAI2] = useState('gemini');
+  const [debateTopic, setDebateTopic] = useState('');
+  const [availableModels, setAvailableModels] = useState<{ traditional: any[], openrouter: OpenRouterModel[] }>({
+    traditional: [],
+    openrouter: []
+  });
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  const currentTier = getCurrentTier();
 
   useEffect(() => {
     if (isOpen) {
       loadStats();
-      // CRITICAL: Load AI settings when debate club opens
-      initializeAIService();
+      loadAvailableModels();
     }
   }, [isOpen]);
 
@@ -109,18 +89,41 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     scrollToBottom();
   }, [currentDebate?.messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const initializeAIService = async () => {
+  const loadAvailableModels = async () => {
+    setLoadingModels(true);
     try {
-      // Load current API settings to ensure AI service has access to keys
-      await aiService.loadSettings();
-      await aiService.loadModelSettings();
-      console.log('AI service initialized for debate club');
+      // Load traditional models
+      const traditional = [
+        { id: 'openai', name: 'OpenAI GPT-4o', icon: '🤖', description: 'Latest GPT model with advanced reasoning' },
+        { id: 'gemini', name: 'Google Gemini Pro', icon: '💎', description: 'Google\'s multimodal AI model' },
+        { id: 'deepseek', name: 'DeepSeek Chat', icon: '🔍', description: 'Advanced reasoning and analysis model' }
+      ];
+
+      // Load OpenRouter models
+      const openRouterModels = await openRouterService.getAvailableModels();
+      
+      // Filter OpenRouter models for debate (exclude embedding, image, etc.)
+      const debateModels = openRouterModels.filter(model => {
+        const modelName = model.name.toLowerCase();
+        const modelId = model.id.toLowerCase();
+        
+        // Include popular chat models
+        return !modelId.includes('embedding') && 
+               !modelId.includes('whisper') && 
+               !modelId.includes('dall-e') &&
+               !modelId.includes('stable-diffusion') &&
+               !modelId.includes('tts') &&
+               model.context_length >= 8000; // Ensure good context for debates
+      }).slice(0, 20); // Limit to top 20 for UI performance
+
+      setAvailableModels({
+        traditional,
+        openrouter: debateModels
+      });
     } catch (error) {
-      console.error('Failed to initialize AI service:', error);
+      console.error('Failed to load available models:', error);
+    } finally {
+      setLoadingModels(false);
     }
   };
 
@@ -133,305 +136,230 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  // CRITICAL: Enhanced markdown parser for debate messages
-  const parseMarkdown = (text: string) => {
-    if (!text) return text;
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const getAllModels = () => {
+    return [
+      ...availableModels.traditional,
+      ...availableModels.openrouter.map(model => ({
+        id: model.id,
+        name: model.name,
+        icon: getOpenRouterModelIcon(model),
+        description: model.description || 'OpenRouter AI model',
+        isOpenRouter: true,
+        isFree: model.pricing.prompt === "0"
+      }))
+    ];
+  };
+
+  const getOpenRouterModelIcon = (model: OpenRouterModel) => {
+    const modelId = model.id.toLowerCase();
+    const modelName = model.name.toLowerCase();
     
-    let parsed = text;
-    
-    // Parse headers (### Header, ## Header, # Header)
-    parsed = parsed.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mb-2 mt-3">$1</h3>');
-    parsed = parsed.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mb-2 mt-4">$1</h2>');
-    parsed = parsed.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mb-3 mt-4">$1</h1>');
-    
-    // Parse **bold** text
-    parsed = parsed.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>');
-    
-    // Parse *italic* text
-    parsed = parsed.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
-    
-    // Parse `code` text
-    parsed = parsed.replace(/`(.*?)`/g, '<code class="bg-white/20 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
-    
-    // Parse bullet points (- item or • item)
-    parsed = parsed.replace(/^[-•]\s+(.*$)/gm, '<li class="ml-4 mb-1">• $1</li>');
-    
-    // Wrap consecutive list items in ul tags
-    parsed = parsed.replace(/(<li.*?<\/li>\s*)+/g, '<ul class="mb-2">$&</ul>');
-    
-    // Parse numbered lists (1. item, 2. item, etc.)
-    parsed = parsed.replace(/^\d+\.\s+(.*$)/gm, '<li class="ml-4 mb-1">$1</li>');
-    
-    // Parse line breaks
-    parsed = parsed.replace(/\n/g, '<br>');
-    
-    // Parse quotes (> text)
-    parsed = parsed.replace(/^>\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
-    
-    return parsed;
+    if (modelId.includes('claude') || modelId.includes('anthropic')) return '🔮';
+    if (modelId.includes('gpt') || modelId.includes('openai')) return '🤖';
+    if (modelId.includes('gemini') || modelId.includes('google')) return '💎';
+    if (modelId.includes('llama') || modelId.includes('meta')) return '🦙';
+    if (modelId.includes('deepseek')) return '🔍';
+    if (modelId.includes('mistral')) return '⚡';
+    if (modelId.includes('qwen')) return '🌟';
+    if (modelId.includes('gemma')) return '🔷';
+    if (modelId.includes('yi')) return '🎯';
+    if (modelId.includes('mixtral')) return '🌀';
+    return '🤖';
+  };
+
+  const getModelDisplayName = (modelId: string) => {
+    const allModels = getAllModels();
+    const model = allModels.find(m => m.id === modelId);
+    return model ? model.name : modelId;
+  };
+
+  const getModelIcon = (modelId: string) => {
+    const allModels = getAllModels();
+    const model = allModels.find(m => m.id === modelId);
+    return model ? model.icon : '🤖';
+  };
+
+  const isModelFree = (modelId: string) => {
+    const allModels = getAllModels();
+    const model = allModels.find(m => m.id === modelId);
+    return model?.isFree || false;
   };
 
   const startDebate = async () => {
-    if (!user) return;
-
-    const topic = customTopic.trim() || selectedTopic;
-    if (!topic) return;
+    if (!debateTopic.trim() || !user) return;
 
     try {
-      setIsGenerating(true);
-      
-      // CRITICAL: Ensure AI service is ready
-      await initializeAIService();
-      
       const debate = await debateService.createDebate({
-        topic,
+        topic: debateTopic.trim(),
         ai1Model: selectedAI1,
         ai2Model: selectedAI2,
         userId: user.id
       });
 
-      // Initialize round counter
-      debate.round = 1;
-
       setCurrentDebate(debate);
-      setActiveTab('debate');
-
-      // Add moderator introduction with Parliament style
-      const introMessage: DebateMessage = {
-        id: `msg-${Date.now()}`,
-        speaker: 'moderator',
-        content: `🏛️ **Order! Order!** Welcome to the Parliamentary AI Debate Chamber!\n\n📜 **Motion before the House:** "${topic}"\n\n🎭 **The Honorable Members:**\n• **${AVAILABLE_MODELS.find(m => m.id === selectedAI1)?.name}** (Government Bench) - ${debate.ai1Position}\n• **${AVAILABLE_MODELS.find(m => m.id === selectedAI2)?.name}** (Opposition Bench) - ${debate.ai2Position}\n\n⚖️ **Round 1 of Parliamentary Debate**\n\nThe Chair recognizes the Government to open proceedings! 🎤`,
-        timestamp: new Date()
-      };
-
-      debate.messages.push(introMessage);
-      debate.status = 'opening';
-      setCurrentDebate({ ...debate });
+      setActiveTab('live');
       
-      // Start the debate with a small delay for better UX
-      setTimeout(() => {
-        generateNextResponse(debate);
-      }, 1000);
-      
+      // Start with AI1's opening statement
+      await generateNextResponse(debate);
     } catch (error) {
       console.error('Failed to start debate:', error);
-      setIsGenerating(false);
     }
   };
 
-  const generateNextResponse = async (debate: DebateSession) => {
-    if (!debate || debate.status === 'finished' || debate.status === 'winner_declared') {
-      setIsGenerating(false);
-      return;
-    }
+  const generateNextResponse = async (debate?: DebateSession) => {
+    const currentDebateState = debate || currentDebate;
+    if (!currentDebateState || isGenerating) return;
 
-    console.log(`Generating response for ${debate.currentTurn}, turn ${debate.turnCount}, round ${debate.round}`);
     setIsGenerating(true);
-    
+
     try {
-      const isAI1Turn = debate.currentTurn === 'ai1';
-      const model = isAI1Turn ? debate.ai1Model : debate.ai2Model;
-      const position = isAI1Turn ? debate.ai1Position : debate.ai2Position;
-      const modelName = AVAILABLE_MODELS.find(m => m.id === model)?.name;
-      const opponentName = AVAILABLE_MODELS.find(m => m.id === isAI1Turn ? debate.ai2Model : debate.ai1Model)?.name;
+      const currentSpeaker = currentDebateState.currentTurn;
+      const model = currentSpeaker === 'ai1' ? currentDebateState.ai1Model : currentDebateState.ai2Model;
+      const position = currentSpeaker === 'ai1' ? currentDebateState.ai1Position : currentDebateState.ai2Position;
       
       // Determine response type based on turn count
-      let responseType: 'opening' | 'rebuttal' | 'closing' = 'rebuttal';
-      if (debate.turnCount === 0 || debate.turnCount === 1) {
+      let responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user' = 'rebuttal';
+      if (currentDebateState.turnCount === 0) {
         responseType = 'opening';
-      } else if (debate.turnCount >= 5) {
+      } else if (currentDebateState.turnCount >= 5) {
         responseType = 'closing';
       }
 
-      console.log(`Calling AI service for ${model} with response type: ${responseType}`);
-      
-      // Enhanced system prompt for Parliament-style debate
-      const parliamentPrompt = `You are ${modelName} participating in a formal Parliamentary debate about: "${debate.topic}"
+      console.log(`Generating ${responseType} for ${model} (${currentSpeaker})`);
 
-Your position: ${position}
-Your opponent: ${opponentName}
-Current round: ${debate.round}
-
-CRITICAL PARLIAMENTARY DEBATE RULES:
-- Address your opponent directly by name (e.g., "The Honorable ${opponentName}")
-- Use formal parliamentary language ("I yield the floor", "Point of order", "The distinguished member")
-- Reference previous arguments made by your opponent
-- Be respectful but assertive in your disagreement
-- Use phrases like "My learned colleague is mistaken when they claim..."
-- Build upon the debate flow, don't just repeat your position
-- Keep responses 2-3 paragraphs maximum
-- End with a strong statement that invites rebuttal
-
-This is ${responseType === 'opening' ? 'your opening statement' : responseType === 'closing' ? 'your closing argument' : 'a rebuttal to your opponent'}. Make it compelling and directly engage with the ongoing debate!`;
-      
       const response = await aiService.generateDebateResponse(
-        debate.topic,
+        currentDebateState.topic,
         position,
-        debate.messages,
+        currentDebateState.messages,
         model,
         responseType
       );
 
-      console.log(`Got response from ${model}:`, response.substring(0, 100) + '...');
-
       const newMessage: DebateMessage = {
         id: `msg-${Date.now()}`,
-        speaker: isAI1Turn ? 'ai1' : 'ai2',
+        speaker: currentSpeaker,
         content: response,
         timestamp: new Date(),
-        model: modelName,
-        reactions: {}
+        model: getModelDisplayName(model),
+        position
       };
 
-      const updatedDebate = { ...debate };
-      updatedDebate.messages.push(newMessage);
-      updatedDebate.turnCount++;
-      
-      // Switch turns
-      updatedDebate.currentTurn = isAI1Turn ? 'ai2' : 'ai1';
-      
-      // Check if round should end (after 6 turns)
-      if (updatedDebate.turnCount >= 6) {
-        // Add round conclusion
-        const roundConclusionMessage: DebateMessage = {
-          id: `msg-${Date.now()}-round-end`,
-          speaker: 'moderator',
-          content: `🏛️ **The Chair calls for order!**\n\n⚖️ **Round ${updatedDebate.round} has concluded.**\n\n📊 **Current Standing:**\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai1Model)?.name}: ${updatedDebate.votes.ai1} votes\n• ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai2Model)?.name}: ${updatedDebate.votes.ai2} votes\n\n🎭 **The House may now vote on this round, declare a winner, or call for another round to strengthen arguments!**`,
-          timestamp: new Date()
-        };
-        
-        updatedDebate.messages.push(roundConclusionMessage);
-        updatedDebate.status = 'finished';
-        setIsGenerating(false);
-        await loadStats(); // Refresh stats after round ends
-      }
-
-      await debateService.updateDebate(updatedDebate);
-      setCurrentDebate(updatedDebate);
-      
-      // Continue the debate if not finished
-      if (updatedDebate.status !== 'finished') {
-        setTimeout(() => generateNextResponse(updatedDebate), 3000); // 3 second delay between responses
-      }
-      
-    } catch (error) {
-      console.error('Failed to generate debate response:', error);
-      setIsGenerating(false);
-      
-      // Add error message to debate
-      const errorMessage: DebateMessage = {
-        id: `msg-${Date.now()}-error`,
-        speaker: 'moderator',
-        content: `⚠️ The Honorable ${AVAILABLE_MODELS.find(m => m.id === (debate.currentTurn === 'ai1' ? debate.ai1Model : debate.ai2Model))?.name} has encountered a technical difficulty. The Chair will proceed with the next speaker.`,
-        timestamp: new Date()
+      const updatedDebate: DebateSession = {
+        ...currentDebateState,
+        messages: [...currentDebateState.messages, newMessage],
+        currentTurn: currentSpeaker === 'ai1' ? 'ai2' : 'ai1',
+        turnCount: currentDebateState.turnCount + 1,
+        status: currentDebateState.turnCount >= 5 ? 'finished' : currentDebateState.status
       };
-      
-      const updatedDebate = { ...debate };
-      updatedDebate.messages.push(errorMessage);
-      updatedDebate.currentTurn = debate.currentTurn === 'ai1' ? 'ai2' : 'ai1';
-      
+
       setCurrentDebate(updatedDebate);
       await debateService.updateDebate(updatedDebate);
-      
-      // Continue with next AI if possible
-      if (updatedDebate.turnCount < 6) {
+
+      // Auto-continue if not finished and less than 6 turns
+      if (updatedDebate.status !== 'finished' && updatedDebate.turnCount < 6) {
         setTimeout(() => generateNextResponse(updatedDebate), 2000);
       }
+
+    } catch (error) {
+      console.error('Error generating debate response:', error);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const startNewRound = async () => {
-    if (!currentDebate) return;
+  const handleUserInput = async () => {
+    if (!userInput.trim() || !currentDebate || isGenerating) return;
 
-    setIsGenerating(true);
-    
-    const updatedDebate = { ...currentDebate };
-    updatedDebate.round = (updatedDebate.round || 1) + 1;
-    updatedDebate.turnCount = 0;
-    updatedDebate.status = 'debate';
-    updatedDebate.currentTurn = 'ai1'; // Government starts new round
-    
-    // Add new round announcement
-    const newRoundMessage: DebateMessage = {
-      id: `msg-${Date.now()}-new-round`,
-      speaker: 'moderator',
-      content: `🏛️ **The Speaker calls the House to order!**\n\n🔥 **Round ${updatedDebate.round} - Strengthening Arguments**\n\nThe previous round has concluded, and the House has called for continued debate to strengthen the proposition!\n\n📜 **Motion remains:** "${updatedDebate.topic}"\n\n⚖️ Both sides may now present **stronger, more compelling arguments** building upon the previous round.\n\nThe Chair recognizes the Government to begin Round ${updatedDebate.round}! 🎤`,
+    const userMessage: DebateMessage = {
+      id: `msg-${Date.now()}`,
+      speaker: 'user',
+      content: userInput.trim(),
       timestamp: new Date()
     };
-    
-    updatedDebate.messages.push(newRoundMessage);
-    
-    await debateService.updateDebate(updatedDebate);
+
+    const updatedDebate: DebateSession = {
+      ...currentDebate,
+      messages: [...currentDebate.messages, userMessage]
+    };
+
     setCurrentDebate(updatedDebate);
-    
-    // Start the new round
-    setTimeout(() => {
-      generateNextResponse(updatedDebate);
-    }, 1000);
+    setUserInput('');
+    await debateService.updateDebate(updatedDebate);
+
+    // Generate AI response to user input
+    setTimeout(() => generateNextResponse(updatedDebate), 1000);
   };
 
   const handleVote = async (side: 'ai1' | 'ai2') => {
     if (!currentDebate || currentDebate.userVote) return;
 
-    const updatedDebate = { ...currentDebate };
-    updatedDebate.votes[side]++;
-    updatedDebate.userVote = side;
-    
-    await debateService.updateDebate(updatedDebate);
-    setCurrentDebate(updatedDebate);
-  };
-
-  const handleDeclareWinner = async (winner: 'ai1' | 'ai2' | 'tie') => {
-    if (!currentDebate) return;
-
-    const updatedDebate = { ...currentDebate };
-    updatedDebate.winner = winner;
-    updatedDebate.winnerDeclaredBy = 'user';
-    updatedDebate.winnerReason = winnerReason.trim() || 'No reason provided';
-    updatedDebate.status = 'winner_declared';
-
-    // Add winner announcement
-    const winnerMessage: DebateMessage = {
-      id: `msg-${Date.now()}-winner`,
-      speaker: 'moderator',
-      content: `🏛️ **PARLIAMENTARY DECISION DECLARED!**\n\n🏆 **Winner:** ${
-        winner === 'tie' 
-          ? 'Honorable Tie - Both sides presented compelling arguments' 
-          : `The Honorable ${AVAILABLE_MODELS.find(m => m.id === (winner === 'ai1' ? updatedDebate.ai1Model : updatedDebate.ai2Model))?.name} (${winner === 'ai1' ? 'Government' : 'Opposition'} Bench)`
-      }\n\n📝 **Reason:** ${updatedDebate.winnerReason}\n\n🎭 **The House is adjourned. Thank you for this spirited parliamentary debate!**\n\n📊 **Final Votes:** Government ${updatedDebate.votes.ai1} - Opposition ${updatedDebate.votes.ai2}`,
-      timestamp: new Date()
+    const updatedDebate: DebateSession = {
+      ...currentDebate,
+      votes: {
+        ...currentDebate.votes,
+        [side]: currentDebate.votes[side] + 1
+      },
+      userVote: side
     };
 
-    updatedDebate.messages.push(winnerMessage);
-    
-    await debateService.updateDebate(updatedDebate);
     setCurrentDebate(updatedDebate);
-    setShowWinnerModal(false);
-    setWinnerReason('');
-    await loadStats(); // Refresh stats
+    await debateService.updateDebate(updatedDebate);
   };
 
-  const handleMakePublic = async () => {
+  const declareWinner = async (declaration: WinnerDeclaration) => {
     if (!currentDebate) return;
 
-    const updatedDebate = { ...currentDebate };
-    updatedDebate.isPublic = true;
-    
-    // Generate a shareable URL (in a real app, this would be a proper URL)
-    const shareId = btoa(updatedDebate.id).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
-    updatedDebate.shareUrl = `${window.location.origin}/debate/${shareId}`;
-    
-    await debateService.updateDebate(updatedDebate);
+    const updatedDebate: DebateSession = {
+      ...currentDebate,
+      winner: declaration.winner,
+      winnerDeclaredBy: 'user',
+      winnerReason: declaration.reason,
+      status: 'winner_declared'
+    };
+
     setCurrentDebate(updatedDebate);
-    setShareUrl(updatedDebate.shareUrl);
+    await debateService.updateDebate(updatedDebate);
+    setShowWinnerModal(false);
+    await loadStats();
+  };
+
+  const shareDebate = async () => {
+    if (!currentDebate) return;
+
+    const shareId = `${currentDebate.id}-${Date.now()}`;
+    const url = `${window.location.origin}/debate/${shareId}`;
+    
+    const updatedDebate: DebateSession = {
+      ...currentDebate,
+      isPublic: true,
+      shareUrl: url
+    };
+
+    setCurrentDebate(updatedDebate);
+    await debateService.updateDebate(updatedDebate);
+    setShareUrl(url);
     setShowShareModal(true);
   };
 
-  const handleDownloadDebate = () => {
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  };
+
+  const downloadDebate = () => {
     if (!currentDebate) return;
 
-    const debateText = generateDebateText(currentDebate);
-    const blob = new Blob([debateText], { type: 'text/plain' });
+    const transcript = generateDebateTranscript(currentDebate);
+    const blob = new Blob([transcript], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -442,366 +370,289 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
     URL.revokeObjectURL(url);
   };
 
-  const generateDebateText = (debate: DebateSession): string => {
-    let text = `🏛️ PARLIAMENTARY AI DEBATE PROCEEDINGS\n`;
-    text += `═══════════════════════════════════════\n\n`;
-    text += `📜 Motion: ${debate.topic}\n`;
-    text += `📅 Date: ${debate.createdAt.toLocaleDateString()}\n`;
-    text += `🎭 Participants:\n`;
-    text += `   • Government Bench: ${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name} (${debate.ai1Position})\n`;
-    text += `   • Opposition Bench: ${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name} (${debate.ai2Position})\n\n`;
+  const generateDebateTranscript = (debate: DebateSession): string => {
+    let transcript = `🏛️ AI DEBATE CLUB - PARLIAMENTARY PROCEEDINGS 🏛️\n\n`;
+    transcript += `📋 DEBATE DETAILS:\n`;
+    transcript += `Topic: ${debate.topic}\n`;
+    transcript += `Date: ${debate.createdAt.toLocaleDateString()}\n`;
+    transcript += `Government Bench: ${getModelDisplayName(debate.ai1Model)} (${debate.ai1Position})\n`;
+    transcript += `Opposition Bench: ${getModelDisplayName(debate.ai2Model)} (${debate.ai2Position})\n\n`;
     
     if (debate.winner) {
-      text += `🏆 Winner: ${
-        debate.winner === 'tie' 
-          ? 'Honorable Tie' 
-          : `${AVAILABLE_MODELS.find(m => m.id === (debate.winner === 'ai1' ? debate.ai1Model : debate.ai2Model))?.name} (${debate.winner === 'ai1' ? 'Government' : 'Opposition'})`
-      }\n`;
+      const winnerModel = debate.winner === 'ai1' ? getModelDisplayName(debate.ai1Model) : 
+                         debate.winner === 'ai2' ? getModelDisplayName(debate.ai2Model) : 'Honorable Tie';
+      transcript += `🏆 DECLARED WINNER: ${winnerModel}\n`;
       if (debate.winnerReason) {
-        text += `📝 Reason: ${debate.winnerReason}\n`;
+        transcript += `📝 Reasoning: ${debate.winnerReason}\n`;
       }
-      text += `📊 Final Votes: Government ${debate.votes.ai1} - Opposition ${debate.votes.ai2}\n\n`;
+      transcript += `📊 Final Votes: Government ${debate.votes.ai1} - Opposition ${debate.votes.ai2}\n\n`;
     }
     
-    text += `DEBATE PROCEEDINGS:\n`;
-    text += `═══════════════════\n\n`;
-    
+    transcript += `📜 DEBATE PROCEEDINGS:\n`;
+    transcript += `${'='.repeat(50)}\n\n`;
+
     debate.messages.forEach((message, index) => {
-      const speaker = message.speaker === 'ai1' ? `${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name} (Government)` :
-                     message.speaker === 'ai2' ? `${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name} (Opposition)` :
-                     message.speaker === 'user' ? 'Gallery Intervention' :
-                     'The Speaker';
+      const timestamp = message.timestamp.toLocaleTimeString();
       
-      text += `[${message.timestamp.toLocaleTimeString()}] ${speaker}:\n`;
-      text += `${message.content.replace(/<[^>]*>/g, '').replace(/\*\*/g, '').replace(/\*/g, '')}\n\n`;
+      if (message.speaker === 'user') {
+        transcript += `[${timestamp}] 🎤 POINT OF ORDER FROM THE GALLERY:\n`;
+        transcript += `${message.content}\n\n`;
+      } else {
+        const speakerLabel = message.speaker === 'ai1' ? 
+          `🏛️ GOVERNMENT BENCH - ${message.model}` : 
+          `🏛️ OPPOSITION BENCH - ${message.model}`;
+        
+        transcript += `[${timestamp}] ${speakerLabel}:\n`;
+        transcript += `${message.content}\n\n`;
+      }
     });
-    
-    text += `═══════════════════════════════════════\n`;
-    text += `Generated by ModelMix AI Debate Club\n`;
-    text += `${window.location.origin}\n`;
-    
-    return text;
+
+    transcript += `${'='.repeat(50)}\n`;
+    transcript += `📊 DEBATE STATISTICS:\n`;
+    transcript += `Total Turns: ${debate.turnCount}\n`;
+    transcript += `User Interventions: ${debate.messages.filter(m => m.speaker === 'user').length}\n`;
+    transcript += `Status: ${debate.status.toUpperCase()}\n\n`;
+    transcript += `Generated by ModelMix AI Debate Club\n`;
+    transcript += `${new Date().toISOString()}\n`;
+
+    return transcript;
   };
 
-  const handleCopyShareUrl = async () => {
-    if (!shareUrl) return;
-    
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy URL:', error);
-    }
-  };
-
-  const handleShareToSocial = (platform: 'twitter' | 'facebook' | 'linkedin') => {
+  const shareToSocial = (platform: 'twitter' | 'facebook' | 'linkedin') => {
     if (!currentDebate || !shareUrl) return;
 
-    const text = `🏛️ Check out this epic AI Parliamentary Debate: "${currentDebate.topic}" between ${AVAILABLE_MODELS.find(m => m.id === currentDebate.ai1Model)?.name} vs ${AVAILABLE_MODELS.find(m => m.id === currentDebate.ai2Model)?.name}! ${shareUrl}`;
+    const text = `🏛️ Just witnessed an epic AI debate: "${currentDebate.topic}" between ${getModelDisplayName(currentDebate.ai1Model)} vs ${getModelDisplayName(currentDebate.ai2Model)}! ${currentDebate.winner ? `Winner: ${currentDebate.winner === 'ai1' ? getModelDisplayName(currentDebate.ai1Model) : currentDebate.winner === 'ai2' ? getModelDisplayName(currentDebate.ai2Model) : 'Tie'}` : ''} Check it out:`;
     
-    let url = '';
-    switch (platform) {
-      case 'twitter':
-        url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-        break;
-      case 'facebook':
-        url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(text)}`;
-        break;
-      case 'linkedin':
-        url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
-        break;
-    }
-    
-    if (url) {
-      window.open(url, '_blank', 'width=600,height=400');
-    }
-  };
-
-  const handleReaction = async (messageId: string, emoji: string) => {
-    if (!currentDebate) return;
-
-    const updatedDebate = { ...currentDebate };
-    const message = updatedDebate.messages.find(m => m.id === messageId);
-    
-    if (message) {
-      if (!message.reactions) message.reactions = {};
-      
-      // Remove previous reaction if exists
-      if (message.userReaction) {
-        message.reactions[message.userReaction] = Math.max(0, (message.reactions[message.userReaction] || 0) - 1);
-      }
-      
-      // Add new reaction
-      message.reactions[emoji] = (message.reactions[emoji] || 0) + 1;
-      message.userReaction = emoji;
-      
-      await debateService.updateDebate(updatedDebate);
-      setCurrentDebate(updatedDebate);
-    }
-  };
-
-  const handleUserInput = async () => {
-    if (!currentDebate || !userInput.trim() || isGenerating) return;
-
-    const userMessage: DebateMessage = {
-      id: `msg-${Date.now()}-user`,
-      speaker: 'user',
-      content: `🎤 **Point of Order from the Gallery!**\n\n"${userInput.trim()}"`,
-      timestamp: new Date()
+    const urls = {
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`
     };
 
-    const updatedDebate = { ...currentDebate };
-    updatedDebate.messages.push(userMessage);
+    window.open(urls[platform], '_blank', 'width=600,height=400');
+  };
+
+  const parseMarkdown = (text: string) => {
+    if (!text) return text;
     
+    // Replace **bold** with <strong>
+    let parsed = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Replace *italic* with <em>
+    parsed = parsed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Replace `code` with <code>
+    parsed = parsed.replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
+    
+    // Replace line breaks with <br>
+    parsed = parsed.replace(/\n/g, '<br>');
+    
+    return parsed;
+  };
+
+  const resetDebate = () => {
+    setCurrentDebate(null);
+    setActiveTab('lobby');
+    setDebateTopic('');
     setUserInput('');
-    setCurrentDebate(updatedDebate);
-    
-    // Generate AI response to user input
-    setIsGenerating(true);
-    
-    try {
-      const isAI1Turn = updatedDebate.currentTurn === 'ai1';
-      const model = isAI1Turn ? updatedDebate.ai1Model : updatedDebate.ai2Model;
-      const position = isAI1Turn ? updatedDebate.ai1Position : updatedDebate.ai2Position;
-      const modelName = AVAILABLE_MODELS.find(m => m.id === model)?.name;
-      
-      const response = await aiService.generateDebateResponse(
-        updatedDebate.topic,
-        position,
-        updatedDebate.messages,
-        model,
-        'response_to_user'
-      );
-
-      const aiResponse: DebateMessage = {
-        id: `msg-${Date.now()}-ai-response`,
-        speaker: isAI1Turn ? 'ai1' : 'ai2',
-        content: `**The Honorable ${modelName} responds to the gallery:**\n\n${response}`,
-        timestamp: new Date(),
-        model: modelName,
-        reactions: {}
-      };
-
-      updatedDebate.messages.push(aiResponse);
-      await debateService.updateDebate(updatedDebate);
-      setCurrentDebate(updatedDebate);
-      
-    } catch (error) {
-      console.error('Failed to generate AI response to user:', error);
-    } finally {
-      setIsGenerating(false);
-    }
   };
 
-  const getModelIcon = (modelId: string) => {
-    switch (modelId) {
-      case 'openai': return '🤖';
-      case 'gemini': return '💎';
-      case 'deepseek': return '🔍';
-      default: return '🤖';
-    }
-  };
-
-  const getSpeakerAlignment = (speaker: string) => {
-    switch (speaker) {
-      case 'ai1': return 'justify-start'; // Left side (Government)
-      case 'ai2': return 'justify-end';   // Right side (Opposition)
-      case 'user': return 'justify-center'; // Center
-      case 'moderator': return 'justify-center'; // Center
-      default: return 'justify-center';
-    }
-  };
-
-  const getSpeakerColor = (speaker: string) => {
-    switch (speaker) {
-      case 'ai1': return 'from-blue-500 to-blue-600'; // Government Blue
-      case 'ai2': return 'from-red-500 to-red-600';   // Opposition Red
-      case 'user': return 'from-green-500 to-green-600'; // User Green
-      case 'moderator': return 'from-gray-500 to-gray-600'; // Moderator Gray
-      default: return 'from-gray-500 to-gray-600';
-    }
-  };
-
-  const getSpeakerLabel = (speaker: string, debate: DebateSession) => {
-    switch (speaker) {
-      case 'ai1': return `🏛️ Government Bench - ${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name}`;
-      case 'ai2': return `⚖️ Opposition Bench - ${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name}`;
-      case 'user': return '🎤 Gallery Intervention';
-      case 'moderator': return '🏛️ The Speaker';
-      default: return 'Unknown Speaker';
-    }
-  };
+  const suggestedTopics = [
+    "Is artificial intelligence a threat to humanity?",
+    "Should we colonize Mars?",
+    "Is remote work better than office work?",
+    "Should social media be regulated?",
+    "Is cryptocurrency the future of money?",
+    "Should we ban autonomous weapons?",
+    "Is universal basic income necessary?",
+    "Should we edit human genes?",
+    "Is nuclear energy safe?",
+    "Should we tax carbon emissions?"
+  ];
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-xl max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-7xl w-full h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
-                <Mic size={24} />
-              </div>
+              <Mic size={24} className="animate-pulse" />
               <div>
-                <h2 className="text-2xl font-bold">AI Debate Club 🏛️🎤</h2>
+                <h2 className="text-2xl font-bold">AI Debate Club 🏛️ ⚖️</h2>
                 <p className="text-purple-100">Parliamentary-style AI debates with formal proceedings!</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
+              className="p-2 rounded-lg hover:bg-white/20 transition-colors"
             >
               <X size={24} />
             </button>
           </div>
+        </div>
 
-          {/* Tab Navigation */}
-          <div className="flex space-x-1 mt-4 bg-white/10 p-1 rounded-lg">
-            {[
-              { id: 'lobby', label: 'Debate Lobby', icon: Users },
-              { id: 'debate', label: 'Live Debate', icon: Mic },
-              { id: 'leaderboard', label: 'Leaderboard', icon: Trophy }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-all duration-200 ${
-                  activeTab === tab.id 
-                    ? 'bg-white text-purple-600 shadow-sm transform scale-105' 
-                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                <tab.icon size={16} />
-                <span className="font-medium">{tab.label}</span>
-              </button>
-            ))}
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 bg-gray-50">
+          {[
+            { id: 'lobby', label: 'Debate Lobby', icon: Users },
+            { id: 'live', label: 'Live Debate', icon: Mic },
+            { id: 'leaderboard', label: 'Leaderboard', icon: Trophy }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 flex items-center justify-center space-x-2 px-6 py-4 font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-white text-purple-600 border-b-2 border-purple-600'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <tab.icon size={20} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
           {activeTab === 'lobby' && (
-            <div className="p-6 h-full overflow-y-auto">
-              <div className="max-w-4xl mx-auto space-y-6">
-                {/* API Key Notice */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-1 bg-blue-100 rounded-lg">
-                      <Sparkles className="text-blue-600" size={16} />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-blue-800 mb-1">🏛️ Parliamentary Debate Rules</h4>
-                      <p className="text-sm text-blue-700">
-                        AIs will address each other formally in Parliament style! They'll reference previous arguments, 
-                        use formal language, and engage in proper debate flow. After 6 turns, you can start a new round 
-                        to strengthen arguments, declare winners, and share debates publicly!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
+            <div className="h-full overflow-y-auto p-6">
+              <div className="max-w-4xl mx-auto space-y-8">
                 {/* Topic Selection */}
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                    <Sparkles className="text-purple-600" size={20} />
-                    <span>Choose Your Parliamentary Motion</span>
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    {DEBATE_TOPICS.map((topic, index) => (
-                      <button
-                        key={index}
-                        onClick={() => {
-                          setSelectedTopic(topic);
-                          setCustomTopic('');
-                        }}
-                        className={`p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                          selectedTopic === topic
-                            ? 'border-purple-500 bg-purple-50 text-purple-900'
-                            : 'border-gray-200 bg-white hover:border-purple-300'
-                        }`}
-                      >
-                        <span className="text-sm font-medium">{topic}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={customTopic}
-                      onChange={(e) => {
-                        setCustomTopic(e.target.value);
-                        setSelectedTopic('');
-                      }}
-                      placeholder="Or propose your own motion for debate..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                    <Shuffle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">🎯 Choose Your Debate Topic</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Enter a debate topic or question:
+                      </label>
+                      <input
+                        type="text"
+                        value={debateTopic}
+                        onChange={(e) => setDebateTopic(e.target.value)}
+                        placeholder="e.g., Should artificial intelligence replace human teachers?"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <p className="text-sm text-gray-600 mb-3">Or choose from popular topics:</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {suggestedTopics.map((topic, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setDebateTopic(topic)}
+                            className="text-left p-3 bg-gray-50 hover:bg-purple-50 border border-gray-200 hover:border-purple-300 rounded-lg transition-colors text-sm"
+                          >
+                            {topic}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* AI Model Selection - Parliament Style */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Model Selection */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Government Bench (AI1) */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                    <h4 className="font-semibold text-blue-900 mb-4 flex items-center space-x-2">
-                      <Brain className="text-blue-600" size={20} />
-                      <span>🏛️ Government Bench (Left Side)</span>
-                    </h4>
-                    <p className="text-xs text-blue-600 mb-3">Will argue in favor of the motion</p>
-                    <div className="space-y-3">
-                      {AVAILABLE_MODELS.map((model) => (
-                        <button
-                          key={model.id}
-                          onClick={() => setSelectedAI1(model.id)}
-                          className={`w-full p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                            selectedAI1 === model.id
-                              ? 'border-blue-500 bg-blue-100'
-                              : 'border-gray-200 bg-white hover:border-blue-300'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xl">{getModelIcon(model.id)}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{model.name}</div>
-                              <div className="text-xs text-gray-500">{model.personality}</div>
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">
+                      🏛️ Government Bench (Pro Position)
+                    </h3>
+                    {loadingModels ? (
+                      <div className="text-center py-8">
+                        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-blue-600">Loading AI models...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {getAllModels().map((model) => (
+                          <div
+                            key={model.id}
+                            onClick={() => setSelectedAI1(model.id)}
+                            className={`p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              selectedAI1 === model.id
+                                ? 'border-blue-500 bg-blue-100'
+                                : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <span className="text-2xl">{model.icon}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2">
+                                  <h4 className="font-medium text-gray-900 truncate">{model.name}</h4>
+                                  {model.isOpenRouter && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                      <Globe size={10} className="mr-1" />
+                                      OpenRouter
+                                    </span>
+                                  )}
+                                  {model.isFree && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <Zap size={10} className="mr-1" />
+                                      Free
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-600 truncate">{model.description}</p>
+                              </div>
                             </div>
                           </div>
-                        </button>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
+                  {/* Opposition Bench (AI2) */}
                   <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <h4 className="font-semibold text-red-900 mb-4 flex items-center space-x-2">
-                      <Brain className="text-red-600" size={20} />
-                      <span>⚖️ Opposition Bench (Right Side)</span>
-                    </h4>
-                    <p className="text-xs text-red-600 mb-3">Will argue against the motion</p>
-                    <div className="space-y-3">
-                      {AVAILABLE_MODELS.map((model) => (
-                        <button
-                          key={model.id}
-                          onClick={() => setSelectedAI2(model.id)}
-                          className={`w-full p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                            selectedAI2 === model.id
-                              ? 'border-red-500 bg-red-100'
-                              : 'border-gray-200 bg-white hover:border-red-300'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xl">{getModelIcon(model.id)}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{model.name}</div>
-                              <div className="text-xs text-gray-500">{model.personality}</div>
+                    <h3 className="text-lg font-semibold text-red-900 mb-4">
+                      🏛️ Opposition Bench (Con Position)
+                    </h3>
+                    {loadingModels ? (
+                      <div className="text-center py-8">
+                        <div className="w-8 h-8 border-4 border-red-200 border-t-red-600 rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-red-600">Loading AI models...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {getAllModels().map((model) => (
+                          <div
+                            key={model.id}
+                            onClick={() => setSelectedAI2(model.id)}
+                            className={`p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              selectedAI2 === model.id
+                                ? 'border-red-500 bg-red-100'
+                                : 'border-gray-200 hover:border-red-300 hover:bg-red-50'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <span className="text-2xl">{model.icon}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2">
+                                  <h4 className="font-medium text-gray-900 truncate">{model.name}</h4>
+                                  {model.isOpenRouter && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                      <Globe size={10} className="mr-1" />
+                                      OpenRouter
+                                    </span>
+                                  )}
+                                  {model.isFree && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <Zap size={10} className="mr-1" />
+                                      Free
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-600 truncate">{model.description}</p>
+                              </div>
                             </div>
                           </div>
-                        </button>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -809,215 +660,170 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                 <div className="text-center">
                   <button
                     onClick={startDebate}
-                    disabled={(!selectedTopic && !customTopic.trim()) || selectedAI1 === selectedAI2 || isGenerating}
-                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold text-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 transform shadow-lg"
+                    disabled={!debateTopic.trim() || selectedAI1 === selectedAI2 || loadingModels}
+                    className="inline-flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 text-lg font-semibold"
                   >
-                    {isGenerating ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Convening Parliament...</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        <Zap size={20} />
-                        <span>🏛️ Convene Parliamentary Debate!</span>
-                      </div>
-                    )}
+                    <Play size={24} />
+                    <span>Start Parliamentary Debate! 🏛️</span>
                   </button>
-                  
                   {selectedAI1 === selectedAI2 && (
-                    <p className="text-red-600 text-sm mt-2">Please select different AI models for the debate!</p>
+                    <p className="text-red-600 text-sm mt-2">Please select different AI models for each bench</p>
                   )}
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === 'debate' && currentDebate && (
+          {activeTab === 'live' && currentDebate && (
             <div className="h-full flex flex-col">
               {/* Debate Header */}
               <div className="bg-gray-50 border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">🏛️ {currentDebate.topic}</h3>
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
-                      <span className="flex items-center space-x-1">
-                        <Vote size={14} />
-                        <span>{currentDebate.votes.ai1 + currentDebate.votes.ai2} votes</span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <Clock size={14} />
-                        <span>Round {currentDebate.round || 1} - Turn {currentDebate.turnCount}/6</span>
-                      </span>
-                      {currentDebate.winner && (
-                        <span className="flex items-center space-x-1 text-yellow-600">
-                          <Trophy size={14} />
-                          <span>Winner Declared</span>
-                        </span>
-                      )}
-                      {isGenerating && (
-                        <span className="flex items-center space-x-1 text-purple-600">
-                          <div className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                          <span>AI debating...</span>
-                        </span>
-                      )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">🏛️ {currentDebate.topic}</h3>
+                    <div className="flex items-center space-x-4 mt-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-500">👥 0 votes</span>
+                        <span className="text-sm text-gray-500">⏱️ Round {currentDebate.round} - Turn {Math.ceil((currentDebate.turnCount + 1) / 2)}/6</span>
+                        {isGenerating && (
+                          <span className="text-sm text-purple-600 animate-pulse">🤖 AI debating...</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
-                  {/* Action Buttons */}
                   <div className="flex items-center space-x-2">
-                    {/* Vote Buttons */}
-                    {currentDebate.status !== 'winner_declared' && !currentDebate.userVote && (
-                      <>
-                        <button
-                          onClick={() => handleVote('ai1')}
-                          className="flex items-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
-                        >
-                          <ThumbsUp size={14} />
-                          <span>Gov</span>
-                          <span className="bg-blue-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai1}</span>
-                        </button>
-                        <button
-                          onClick={() => handleVote('ai2')}
-                          className="flex items-center space-x-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
-                        >
-                          <ThumbsUp size={14} />
-                          <span>Opp</span>
-                          <span className="bg-red-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai2}</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Winner Declaration Button */}
-                    {(currentDebate.status === 'finished' || currentDebate.turnCount >= 3) && currentDebate.status !== 'winner_declared' && (
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleVote('ai1')}
+                        disabled={!!currentDebate.userVote}
+                        className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                          currentDebate.userVote === 'ai1'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        }`}
+                      >
+                        <ThumbsUp size={14} />
+                        <span>Government</span>
+                        <span className="font-bold">{currentDebate.votes.ai1}</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => handleVote('ai2')}
+                        disabled={!!currentDebate.userVote}
+                        className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                          currentDebate.userVote === 'ai2'
+                            ? 'bg-red-600 text-white'
+                            : 'bg-red-100 text-red-700 hover:bg-red-200'
+                        }`}
+                      >
+                        <ThumbsDown size={14} />
+                        <span>Opposition</span>
+                        <span className="font-bold">{currentDebate.votes.ai2}</span>
+                      </button>
+                    </div>
+                    
+                    {(currentDebate.status === 'finished' || currentDebate.turnCount >= 3) && !currentDebate.winner && (
                       <button
                         onClick={() => setShowWinnerModal(true)}
-                        className="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors text-sm"
+                        className="flex items-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
                       >
-                        <Trophy size={14} />
+                        <Gavel size={16} />
                         <span>Declare Winner</span>
                       </button>
                     )}
-
-                    {/* Share & Download Buttons */}
-                    {currentDebate.status === 'winner_declared' && (
-                      <>
-                        <button
-                          onClick={handleMakePublic}
-                          className="flex items-center space-x-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm"
-                        >
-                          <Share2 size={14} />
-                          <span>Share</span>
-                        </button>
-                        <button
-                          onClick={handleDownloadDebate}
-                          className="flex items-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-                        >
-                          <Download size={14} />
-                          <span>Download</span>
-                        </button>
-                      </>
+                    
+                    {currentDebate.winner && (
+                      <button
+                        onClick={shareDebate}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Share2 size={16} />
+                        <span>Share</span>
+                      </button>
                     )}
+                    
+                    <button
+                      onClick={resetDebate}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      <RotateCcw size={16} />
+                      <span>New Debate</span>
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Messages - Parliament Layout */}
+              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {currentDebate.messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${getSpeakerAlignment(message.speaker)}`}
+                    className={`flex ${
+                      message.speaker === 'user' ? 'justify-center' : 
+                      message.speaker === 'ai1' ? 'justify-start' : 'justify-end'
+                    }`}
                   >
-                    <div className={`max-w-2xl ${message.speaker === 'moderator' || message.speaker === 'user' ? 'w-full max-w-4xl' : ''}`}>
-                      <div
-                        className={`p-4 rounded-lg ${
-                          message.speaker === 'moderator'
-                            ? 'bg-gray-100 border border-gray-200 text-center'
-                            : message.speaker === 'user'
-                              ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-                              : `bg-gradient-to-r ${getSpeakerColor(message.speaker)} text-white`
-                        }`}
-                      >
-                        {message.speaker !== 'moderator' && (
-                          <div className="flex items-center space-x-2 mb-2 text-white/80">
-                            <span className="text-lg">{getModelIcon(message.speaker === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model)}</span>
-                            <span className="font-medium text-sm">{getSpeakerLabel(message.speaker, currentDebate)}</span>
-                          </div>
-                        )}
-                        
-                        {/* CRITICAL: Enhanced message content with markdown parsing */}
-                        <div 
-                          className="leading-relaxed"
-                          dangerouslySetInnerHTML={{ 
-                            __html: parseMarkdown(message.content) 
-                          }}
-                        />
-                        
-                        <div className="flex items-center justify-between mt-3">
-                          <span className={`text-xs ${message.speaker === 'moderator' ? 'text-gray-500' : 'text-white/70'}`}>
-                            {message.timestamp.toLocaleTimeString()}
-                          </span>
-                          
-                          {message.speaker !== 'moderator' && message.speaker !== 'user' && (
-                            <div className="flex items-center space-x-1">
-                              {REACTION_EMOJIS.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  onClick={() => handleReaction(message.id, emoji)}
-                                  className={`p-1 rounded hover:bg-white/20 transition-colors ${
-                                    message.userReaction === emoji ? 'bg-white/20' : ''
-                                  }`}
-                                >
-                                  <span className="text-sm">{emoji}</span>
-                                  {message.reactions?.[emoji] && (
-                                    <span className="text-xs ml-1">{message.reactions[emoji]}</span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                    <div
+                      className={`max-w-2xl p-4 rounded-lg ${
+                        message.speaker === 'user'
+                          ? 'bg-yellow-100 border border-yellow-300'
+                          : message.speaker === 'ai1'
+                            ? 'bg-blue-100 border border-blue-300'
+                            : 'bg-red-100 border border-red-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-lg">
+                          {message.speaker === 'user' ? '🎤' : getModelIcon(currentDebate[message.speaker === 'ai1' ? 'ai1Model' : 'ai2Model'])}
+                        </span>
+                        <span className="font-semibold text-sm">
+                          {message.speaker === 'user' 
+                            ? '🎤 Point of Order from the Gallery'
+                            : `🏛️ ${message.speaker === 'ai1' ? 'Government Bench' : 'Opposition Bench'} - ${message.model}`
+                          }
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {message.timestamp.toLocaleTimeString()}
+                        </span>
                       </div>
+                      <div 
+                        className="text-gray-800 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: parseMarkdown(message.content) }}
+                      />
                     </div>
                   </div>
                 ))}
                 
-                {isGenerating && (
-                  <div className="flex justify-center">
-                    <div className="bg-gray-100 p-4 rounded-lg">
+                {currentDebate.winner && (
+                  <div className="text-center py-8">
+                    <div className="inline-block bg-gradient-to-r from-yellow-400 to-yellow-600 text-white px-8 py-4 rounded-lg">
                       <div className="flex items-center space-x-3">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        <Trophy size={24} />
+                        <div>
+                          <div className="font-bold text-lg">
+                            🏆 Winner Declared: {
+                              currentDebate.winner === 'ai1' ? `Government Bench (${getModelDisplayName(currentDebate.ai1Model)})` :
+                              currentDebate.winner === 'ai2' ? `Opposition Bench (${getModelDisplayName(currentDebate.ai2Model)})` :
+                              'Honorable Tie'
+                            }
+                          </div>
+                          {currentDebate.winnerReason && (
+                            <div className="text-sm mt-1 opacity-90">{currentDebate.winnerReason}</div>
+                          )}
+                          <div className="text-sm mt-2">
+                            📊 Final Votes: Government {currentDebate.votes.ai1} - Opposition {currentDebate.votes.ai2}
+                          </div>
                         </div>
-                        <span className="text-sm text-gray-600">
-                          The Honorable {AVAILABLE_MODELS.find(m => m.id === (currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model))?.name} is preparing their argument...
-                        </span>
                       </div>
                     </div>
-                  </div>
-                )}
-                
-                {/* New Round Button */}
-                {currentDebate.status === 'finished' && currentDebate.status !== 'winner_declared' && (
-                  <div className="flex justify-center">
-                    <button
-                      onClick={startNewRound}
-                      disabled={isGenerating}
-                      className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition-all duration-200 hover:scale-105 transform shadow-lg"
-                    >
-                      <RotateCcw size={18} />
-                      <span>🏛️ Call for Another Round!</span>
-                    </button>
                   </div>
                 )}
                 
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* User Input - Gallery Intervention */}
+              {/* User Input */}
               {currentDebate.status !== 'winner_declared' && (
                 <div className="border-t border-gray-200 p-4">
                   <div className="flex space-x-3">
@@ -1033,12 +839,12 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                     <button
                       onClick={handleUserInput}
                       disabled={!userInput.trim() || isGenerating}
-                      className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      <Send size={18} />
+                      <MessageSquare size={18} />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 text-center">
+                  <p className="text-xs text-gray-500 mt-2">
                     💡 Your input will appear in the center as a "Point of Order from the Gallery"
                   </p>
                 </div>
@@ -1047,68 +853,51 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
           )}
 
           {activeTab === 'leaderboard' && (
-            <div className="p-6 h-full overflow-y-auto">
+            <div className="h-full overflow-y-auto p-6">
               <div className="max-w-4xl mx-auto space-y-6">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">🏆 AI Debate Championship</h3>
+                  <p className="text-gray-600">Rankings based on declared winners only</p>
+                </div>
+
                 {/* Stats Overview */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                    <div className="flex items-center space-x-3">
-                      <Trophy className="text-blue-600" size={24} />
-                      <div>
-                        <p className="text-sm text-blue-600 font-medium">Total Debates</p>
-                        <p className="text-2xl font-bold text-blue-900">{stats.totalDebates}</p>
-                      </div>
-                    </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-blue-900">{stats.totalDebates}</div>
+                    <div className="text-sm text-blue-600">Total Debates</div>
                   </div>
-
-                  <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-                    <div className="flex items-center space-x-3">
-                      <Users className="text-green-600" size={24} />
-                      <div>
-                        <p className="text-sm text-green-600 font-medium">User Participation</p>
-                        <p className="text-2xl font-bold text-green-900">{stats.userParticipation}</p>
-                      </div>
-                    </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-green-900">{stats.userParticipation}</div>
+                    <div className="text-sm text-green-600">User Participated</div>
                   </div>
-
-                  <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-                    <div className="flex items-center space-x-3">
-                      <TrendingUp className="text-purple-600" size={24} />
-                      <div>
-                        <p className="text-sm text-purple-600 font-medium">Top Topics</p>
-                        <p className="text-2xl font-bold text-purple-900">{stats.topTopics.length}</p>
-                      </div>
-                    </div>
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-purple-900">{Object.keys(stats.modelWins).length}</div>
+                    <div className="text-sm text-purple-600">Active Models</div>
                   </div>
                 </div>
 
-                {/* Model Leaderboard */}
+                {/* Model Rankings */}
                 <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                    <Crown className="text-yellow-500" size={20} />
-                    <span>🏛️ Parliamentary Champions</span>
-                  </h3>
-                  
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">🥇 Model Performance Rankings</h4>
                   {Object.keys(stats.modelWins).length > 0 ? (
                     <div className="space-y-3">
                       {Object.entries(stats.modelWins)
                         .sort(([,a], [,b]) => b - a)
                         .map(([model, wins], index) => (
-                          <div key={model} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div key={model} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
                             <div className="flex items-center space-x-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                index === 0 ? 'bg-yellow-100 text-yellow-600' :
-                                index === 1 ? 'bg-gray-100 text-gray-600' :
-                                'bg-orange-100 text-orange-600'
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                                index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-amber-600' : 'bg-gray-300'
                               }`}>
-                                {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                                {index + 1}
                               </div>
-                              <span className="text-xl">{getModelIcon(model)}</span>
-                              <span className="font-medium">{AVAILABLE_MODELS.find(m => m.id === model)?.name || model}</span>
+                              <span className="text-2xl">{getModelIcon(model)}</span>
+                              <span className="font-medium text-gray-900">{getModelDisplayName(model)}</span>
                             </div>
+                            <div className="flex-1"></div>
                             <div className="text-right">
-                              <div className="font-bold text-lg">{wins}</div>
-                              <div className="text-xs text-gray-500">parliamentary victories</div>
+                              <div className="font-bold text-lg text-gray-900">{wins}</div>
+                              <div className="text-sm text-gray-500">wins</div>
                             </div>
                           </div>
                         ))}
@@ -1116,8 +905,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <Trophy size={48} className="mx-auto mb-4 opacity-50" />
-                      <p>No parliamentary debates completed yet!</p>
-                      <p className="text-sm">Convene a debate to see the champions.</p>
+                      <p>No declared winners yet. Start debating to see rankings!</p>
                     </div>
                   )}
                 </div>
@@ -1125,14 +913,12 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                 {/* Popular Topics */}
                 {stats.topTopics.length > 0 && (
                   <div className="bg-white border border-gray-200 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                      <Fire className="text-red-500" size={20} />
-                      <span>🔥 Trending Parliamentary Motions</span>
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">🔥 Popular Debate Topics</h4>
+                    <div className="space-y-2">
                       {stats.topTopics.map((topic, index) => (
-                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                          <span className="text-sm font-medium text-gray-900">{topic}</span>
+                        <div key={index} className="flex items-center space-x-3 p-2 bg-gray-50 rounded">
+                          <span className="text-sm font-medium text-gray-600">#{index + 1}</span>
+                          <span className="text-sm text-gray-900">{topic}</span>
                         </div>
                       ))}
                     </div>
@@ -1144,76 +930,51 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
         </div>
 
         {/* Winner Declaration Modal */}
-        {showWinnerModal && (
+        {showWinnerModal && currentDebate && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <Trophy className="text-yellow-600" size={20} />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">🏛️ Declare Parliamentary Winner</h3>
-              </div>
+            <div className="bg-white rounded-xl max-w-md w-full p-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">🏛️ Declare the Winner</h3>
+              <p className="text-gray-600 mb-6">Who presented the most compelling arguments in this parliamentary debate?</p>
               
-              <p className="text-gray-600 mb-4">
-                Who presented the most compelling arguments in this parliamentary debate?
-              </p>
-              
-              <div className="space-y-3 mb-4">
+              <div className="space-y-3 mb-6">
                 <button
-                  onClick={() => handleDeclareWinner('ai1')}
-                  className="w-full p-3 text-left rounded-lg border-2 border-blue-200 bg-blue-50 hover:border-blue-400 transition-colors"
+                  onClick={() => declareWinner({ winner: 'ai1' })}
+                  className="w-full p-4 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-left"
                 >
                   <div className="flex items-center space-x-3">
-                    <span className="text-xl">{getModelIcon(currentDebate?.ai1Model || '')}</span>
+                    <span className="text-2xl">{getModelIcon(currentDebate.ai1Model)}</span>
                     <div>
-                      <div className="font-medium text-blue-900">
-                        {AVAILABLE_MODELS.find(m => m.id === currentDebate?.ai1Model)?.name} (Government)
-                      </div>
-                      <div className="text-sm text-blue-600">{currentDebate?.ai1Position}</div>
+                      <div className="font-medium text-blue-900">Government Bench</div>
+                      <div className="text-sm text-blue-600">{getModelDisplayName(currentDebate.ai1Model)} - {currentDebate.ai1Position}</div>
                     </div>
                   </div>
                 </button>
                 
                 <button
-                  onClick={() => handleDeclareWinner('ai2')}
-                  className="w-full p-3 text-left rounded-lg border-2 border-red-200 bg-red-50 hover:border-red-400 transition-colors"
+                  onClick={() => declareWinner({ winner: 'ai2' })}
+                  className="w-full p-4 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-left"
                 >
                   <div className="flex items-center space-x-3">
-                    <span className="text-xl">{getModelIcon(currentDebate?.ai2Model || '')}</span>
+                    <span className="text-2xl">{getModelIcon(currentDebate.ai2Model)}</span>
                     <div>
-                      <div className="font-medium text-red-900">
-                        {AVAILABLE_MODELS.find(m => m.id === currentDebate?.ai2Model)?.name} (Opposition)
-                      </div>
-                      <div className="text-sm text-red-600">{currentDebate?.ai2Position}</div>
+                      <div className="font-medium text-red-900">Opposition Bench</div>
+                      <div className="text-sm text-red-600">{getModelDisplayName(currentDebate.ai2Model)} - {currentDebate.ai2Position}</div>
                     </div>
                   </div>
                 </button>
                 
                 <button
-                  onClick={() => handleDeclareWinner('tie')}
-                  className="w-full p-3 text-left rounded-lg border-2 border-gray-200 bg-gray-50 hover:border-gray-400 transition-colors"
+                  onClick={() => declareWinner({ winner: 'tie' })}
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-left"
                 >
                   <div className="flex items-center space-x-3">
-                    <span className="text-xl">🤝</span>
+                    <span className="text-2xl">⚖️</span>
                     <div>
                       <div className="font-medium text-gray-900">Honorable Tie</div>
-                      <div className="text-sm text-gray-600">Both sides presented compelling arguments</div>
+                      <div className="text-sm text-gray-600">Both sides presented equally compelling arguments</div>
                     </div>
                   </div>
                 </button>
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reason for decision (optional):
-                </label>
-                <textarea
-                  value={winnerReason}
-                  onChange={(e) => setWinnerReason(e.target.value)}
-                  placeholder="Explain why this side won the debate..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
-                  rows={3}
-                />
               </div>
               
               <div className="flex space-x-3">
@@ -1231,60 +992,65 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
         {/* Share Modal */}
         {showShareModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6 transform animate-slideUp">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Share2 className="text-green-600" size={20} />
+            <div className="bg-white rounded-xl max-w-md w-full p-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">🌐 Share This Debate</h3>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Share URL:</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={shareUrl}
+                      readOnly
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(shareUrl)}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      {copySuccess ? <CheckCircle size={16} /> : <Copy size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">🌐 Share Parliamentary Debate</h3>
-              </div>
-              
-              <p className="text-gray-600 mb-4">
-                Your debate is now public! Share it with the world:
-              </p>
-              
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={shareUrl}
-                    readOnly
-                    className="flex-1 bg-transparent text-sm text-gray-700"
-                  />
-                  <button
-                    onClick={handleCopyShareUrl}
-                    className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    {copySuccess ? <CheckCircle size={16} className="text-green-600" /> : <Copy size={16} />}
-                  </button>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Share on social media:</label>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => shareToSocial('twitter')}
+                      className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+                    >
+                      Twitter
+                    </button>
+                    <button
+                      onClick={() => shareToSocial('facebook')}
+                      className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors text-sm"
+                    >
+                      Facebook
+                    </button>
+                    <button
+                      onClick={() => shareToSocial('linkedin')}
+                      className="flex-1 px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm"
+                    >
+                      LinkedIn
+                    </button>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-3 mb-4">
+                
                 <button
-                  onClick={() => handleShareToSocial('twitter')}
-                  className="flex items-center justify-center space-x-2 p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  onClick={downloadDebate}
+                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 >
-                  <span className="text-sm font-medium">Twitter</span>
-                </button>
-                <button
-                  onClick={() => handleShareToSocial('facebook')}
-                  className="flex items-center justify-center space-x-2 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <span className="text-sm font-medium">Facebook</span>
-                </button>
-                <button
-                  onClick={() => handleShareToSocial('linkedin')}
-                  className="flex items-center justify-center space-x-2 p-3 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors"
-                >
-                  <span className="text-sm font-medium">LinkedIn</span>
+                  <Download size={16} />
+                  <span>Download Transcript</span>
                 </button>
               </div>
               
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowShareModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Close
                 </button>
