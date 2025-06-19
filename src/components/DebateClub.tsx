@@ -139,20 +139,26 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
 
       debate.messages.push(introMessage);
       debate.status = 'opening';
+      setCurrentDebate({ ...debate });
       
-      // Generate opening statements
-      await generateNextResponse(debate);
+      // Start the debate with a small delay for better UX
+      setTimeout(() => {
+        generateNextResponse(debate);
+      }, 1000);
       
     } catch (error) {
       console.error('Failed to start debate:', error);
-    } finally {
       setIsGenerating(false);
     }
   };
 
   const generateNextResponse = async (debate: DebateSession) => {
-    if (!debate || debate.status === 'finished') return;
+    if (!debate || debate.status === 'finished') {
+      setIsGenerating(false);
+      return;
+    }
 
+    console.log(`Generating response for ${debate.currentTurn}, turn ${debate.turnCount}`);
     setIsGenerating(true);
     
     try {
@@ -168,6 +174,8 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
         responseType = 'closing';
       }
 
+      console.log(`Calling AI service for ${model} with response type: ${responseType}`);
+      
       const response = await aiService.generateDebateResponse(
         debate.topic,
         position,
@@ -175,6 +183,8 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
         model,
         responseType
       );
+
+      console.log(`Got response from ${model}:`, response.substring(0, 100) + '...');
 
       const newMessage: DebateMessage = {
         id: `msg-${Date.now()}`,
@@ -185,50 +195,70 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
         reactions: {}
       };
 
-      debate.messages.push(newMessage);
-      debate.turnCount++;
+      const updatedDebate = { ...debate };
+      updatedDebate.messages.push(newMessage);
+      updatedDebate.turnCount++;
       
       // Switch turns
-      debate.currentTurn = isAI1Turn ? 'ai2' : 'ai1';
+      updatedDebate.currentTurn = isAI1Turn ? 'ai2' : 'ai1';
       
       // Check if debate should end
-      if (debate.turnCount >= 6) {
-        debate.status = 'finished';
+      if (updatedDebate.turnCount >= 6) {
+        updatedDebate.status = 'finished';
         
         // Determine winner based on votes
-        if (debate.votes.ai1 > debate.votes.ai2) {
-          debate.winner = 'ai1';
-        } else if (debate.votes.ai2 > debate.votes.ai1) {
-          debate.winner = 'ai2';
+        if (updatedDebate.votes.ai1 > updatedDebate.votes.ai2) {
+          updatedDebate.winner = 'ai1';
+        } else if (updatedDebate.votes.ai2 > updatedDebate.votes.ai1) {
+          updatedDebate.winner = 'ai2';
         } else {
-          debate.winner = 'tie';
+          updatedDebate.winner = 'tie';
         }
 
         // Add conclusion message
         const conclusionMessage: DebateMessage = {
           id: `msg-${Date.now()}-conclusion`,
           speaker: 'moderator',
-          content: `🏁 The debate has concluded!\n\n📊 Final Results:\n🤖 ${AVAILABLE_MODELS.find(m => m.id === debate.ai1Model)?.name}: ${debate.votes.ai1} votes\n🤖 ${AVAILABLE_MODELS.find(m => m.id === debate.ai2Model)?.name}: ${debate.votes.ai2} votes\n\n${debate.winner === 'tie' ? '🤝 It\'s a tie! Both AIs presented compelling arguments.' : `🏆 Winner: ${AVAILABLE_MODELS.find(m => m.id === (debate.winner === 'ai1' ? debate.ai1Model : debate.ai2Model))?.name}!`}\n\nThank you for participating! 👏`,
+          content: `🏁 The debate has concluded!\n\n📊 Final Results:\n🤖 ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai1Model)?.name}: ${updatedDebate.votes.ai1} votes\n🤖 ${AVAILABLE_MODELS.find(m => m.id === updatedDebate.ai2Model)?.name}: ${updatedDebate.votes.ai2} votes\n\n${updatedDebate.winner === 'tie' ? '🤝 It\'s a tie! Both AIs presented compelling arguments.' : `🏆 Winner: ${AVAILABLE_MODELS.find(m => m.id === (updatedDebate.winner === 'ai1' ? updatedDebate.ai1Model : updatedDebate.ai2Model))?.name}!`}\n\nThank you for participating! 👏`,
           timestamp: new Date()
         };
         
-        debate.messages.push(conclusionMessage);
+        updatedDebate.messages.push(conclusionMessage);
+        setIsGenerating(false);
+        await loadStats(); // Refresh stats after debate ends
       }
 
-      await debateService.updateDebate(debate);
-      setCurrentDebate({ ...debate });
+      await debateService.updateDebate(updatedDebate);
+      setCurrentDebate(updatedDebate);
       
       // Continue the debate if not finished
-      if (debate.status !== 'finished') {
-        setTimeout(() => generateNextResponse(debate), 2000);
-      } else {
-        await loadStats(); // Refresh stats after debate ends
+      if (updatedDebate.status !== 'finished') {
+        setTimeout(() => generateNextResponse(updatedDebate), 3000); // 3 second delay between responses
       }
       
     } catch (error) {
       console.error('Failed to generate debate response:', error);
-    } finally {
       setIsGenerating(false);
+      
+      // Add error message to debate
+      const errorMessage: DebateMessage = {
+        id: `msg-${Date.now()}-error`,
+        speaker: 'moderator',
+        content: `⚠️ ${AVAILABLE_MODELS.find(m => m.id === (debate.currentTurn === 'ai1' ? debate.ai1Model : debate.ai2Model))?.name} encountered an issue generating a response. The debate will continue with the next participant.`,
+        timestamp: new Date()
+      };
+      
+      const updatedDebate = { ...debate };
+      updatedDebate.messages.push(errorMessage);
+      updatedDebate.currentTurn = debate.currentTurn === 'ai1' ? 'ai2' : 'ai1';
+      
+      setCurrentDebate(updatedDebate);
+      await debateService.updateDebate(updatedDebate);
+      
+      // Continue with next AI if possible
+      if (updatedDebate.turnCount < 6) {
+        setTimeout(() => generateNextResponse(updatedDebate), 2000);
+      }
     }
   };
 
@@ -509,6 +539,10 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
                       </div>
                     )}
                   </button>
+                  
+                  {selectedAI1 === selectedAI2 && (
+                    <p className="text-red-600 text-sm mt-2">Please select different AI models for the debate!</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -530,6 +564,12 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
                         <Clock size={14} />
                         <span>Turn {currentDebate.turnCount}/6</span>
                       </span>
+                      {isGenerating && (
+                        <span className="flex items-center space-x-1 text-purple-600">
+                          <div className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span>AI thinking...</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                   
@@ -626,7 +666,9 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
                           <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                           <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
-                        <span className="text-sm text-gray-600">AI is crafting a response...</span>
+                        <span className="text-sm text-gray-600">
+                          {AVAILABLE_MODELS.find(m => m.id === (currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model))?.name} is crafting a response...
+                        </span>
                       </div>
                     </div>
                   </div>

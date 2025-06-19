@@ -156,7 +156,7 @@ class AIService {
     }
   }
 
-  private async callOpenAI(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  private async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     const { key: apiKey, isGlobal } = await this.getApiKey('openai', userTier || 'tier1');
     if (!apiKey) {
       throw new Error('OpenAI API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
@@ -209,36 +209,44 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  private async callGemini(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  private async callGemini(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     const { key: apiKey, isGlobal } = await this.getApiKey('gemini', userTier || 'tier1');
     if (!apiKey) {
       throw new Error('Gemini API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
     }
 
-    // Convert messages to Gemini format
-    const contents = messages.map((msg, index) => {
-      const parts: any[] = [{ text: msg.content }];
-      
-      // Add images to the last user message
-      if (msg.role === 'user' && index === messages.length - 1 && images.length > 0) {
-        images.forEach(image => {
-          // Extract base64 data from data URL
-          const base64Data = image.split(',')[1];
-          const mimeType = image.split(';')[0].split(':')[1];
-          parts.push({
-            inline_data: {
-              mime_type: mimeType,
-              data: base64Data
-            }
+    // Convert messages to Gemini format, handling system messages
+    const contents = messages
+      .filter(msg => msg.role !== 'system') // Gemini doesn't support system messages directly
+      .map((msg, index) => {
+        const parts: any[] = [{ text: msg.content }];
+        
+        // Add images to the last user message
+        if (msg.role === 'user' && index === messages.length - 1 && images.length > 0) {
+          images.forEach(image => {
+            // Extract base64 data from data URL
+            const base64Data = image.split(',')[1];
+            const mimeType = image.split(';')[0].split(':')[1];
+            parts.push({
+              inline_data: {
+                mime_type: mimeType,
+                data: base64Data
+              }
+            });
           });
-        });
-      }
+        }
 
-      return {
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts
-      };
-    });
+        return {
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts
+        };
+      });
+
+    // If there was a system message, prepend it to the first user message
+    const systemMessage = messages.find(msg => msg.role === 'system');
+    if (systemMessage && contents.length > 0 && contents[0].role === 'user') {
+      contents[0].parts[0].text = `${systemMessage.content}\n\n${contents[0].parts[0].text}`;
+    }
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
@@ -270,7 +278,7 @@ class AIService {
     return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
   }
 
-  private async callDeepSeek(messages: Array<{role: 'user' | 'assistant', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  private async callDeepSeek(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     const { key: apiKey, isGlobal } = await this.getApiKey('deepseek', userTier || 'tier1');
     if (!apiKey) {
       throw new Error('DeepSeek API key not available. Please configure your API key in settings or upgrade to Pro for guaranteed access.');
@@ -317,24 +325,36 @@ class AIService {
     const systemPrompt = this.getDebateSystemPrompt(topic, position, responseType);
     
     // Build conversation context
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...previousMessages.map(msg => ({
-        role: msg.speaker === 'user' ? 'user' as const : 'assistant' as const,
-        content: msg.content
-      }))
+    const messages: Array<{role: 'user' | 'assistant' | 'system', content: string}> = [
+      { role: 'system', content: systemPrompt }
     ];
+    
+    // Add previous debate messages as context
+    previousMessages.forEach(msg => {
+      if (msg.speaker === 'user') {
+        messages.push({ role: 'user', content: msg.content });
+      } else if (msg.speaker === 'ai1' || msg.speaker === 'ai2') {
+        messages.push({ role: 'assistant', content: msg.content });
+      }
+      // Skip moderator messages as they're not part of the debate flow
+    });
 
-    // Call the appropriate AI model
-    switch (model) {
-      case 'openai':
-        return await this.callOpenAI(messages);
-      case 'gemini':
-        return await this.callGemini(messages);
-      case 'deepseek':
-        return await this.callDeepSeek(messages);
-      default:
-        throw new Error(`Unsupported model for debate: ${model}`);
+    try {
+      // Call the appropriate AI model
+      switch (model) {
+        case 'openai':
+          return await this.callOpenAI(messages, [], undefined, 'tier1');
+        case 'gemini':
+          return await this.callGemini(messages, [], undefined, 'tier1');
+        case 'deepseek':
+          return await this.callDeepSeek(messages, [], undefined, 'tier1');
+        default:
+          throw new Error(`Unsupported model for debate: ${model}`);
+      }
+    } catch (error) {
+      console.error(`Error generating debate response for ${model}:`, error);
+      // Return a fallback response instead of throwing
+      return `I apologize, but I'm having trouble generating a response right now. ${error instanceof Error ? error.message : 'Please try again.'}`;
     }
   }
 
@@ -349,28 +369,29 @@ Guidelines:
 - Stay focused on your assigned position
 - Be respectful but assertive
 - Keep responses concise (2-3 paragraphs max)
-- Make your arguments engaging and memorable`;
+- Make your arguments engaging and memorable
+- Use a conversational but professional tone`;
 
     switch (responseType) {
       case 'opening':
         return `${basePrompt}
 
-This is your opening statement. Present your strongest arguments and set the tone for the debate.`;
+This is your opening statement. Present your strongest arguments and set the tone for the debate. Make a compelling case for your position.`;
 
       case 'rebuttal':
         return `${basePrompt}
 
-This is a rebuttal round. Address the opposing arguments while strengthening your own position.`;
+This is a rebuttal round. Address the opposing arguments while strengthening your own position. Counter their points with evidence and logic.`;
 
       case 'closing':
         return `${basePrompt}
 
-This is your closing statement. Summarize your key points and make a final compelling case.`;
+This is your closing statement. Summarize your key points and make a final compelling case. Leave the audience with a strong impression.`;
 
       case 'response_to_user':
         return `${basePrompt}
 
-A user has jumped into the debate with their own point. Respond to their argument while maintaining your position.`;
+A user has jumped into the debate with their own point. Respond to their argument while maintaining your position. Be engaging and acknowledge their input.`;
 
       default:
         return basePrompt;
@@ -429,21 +450,21 @@ A user has jumped into the debate with their own point. Respond to their argumen
     if (this.modelSettings.openai) {
       providers.push({
         name: 'OpenAI GPT-4o',
-        call: () => this.callOpenAI(enhancedHistory, images, signal, userTier)
+        call: () => this.callOpenAI(enhancedHistory as any, images, signal, userTier)
       });
     }
 
     if (this.modelSettings.gemini) {
       providers.push({
         name: 'Google Gemini 1.5 Pro',
-        call: () => this.callGemini(enhancedHistory, images, signal, userTier)
+        call: () => this.callGemini(enhancedHistory as any, images, signal, userTier)
       });
     }
 
     if (this.modelSettings.deepseek) {
       providers.push({
         name: 'DeepSeek Chat',
-        call: () => this.callDeepSeek(enhancedHistory, images, signal, userTier)
+        call: () => this.callDeepSeek(enhancedHistory as any, images, signal, userTier)
       });
     }
 
@@ -460,7 +481,7 @@ A user has jumped into the debate with their own point. Respond to their argumen
           providers.push({
             name: model.name,
             call: async () => {
-              const result = await openRouterService.callModel(modelId, enhancedHistory, openRouterKey, images, signal);
+              const result = await openRouterService.callModel(modelId, enhancedHistory as any, openRouterKey, images, signal);
               
               // Increment global usage if using global key
               if (isOpenRouterGlobal) {
