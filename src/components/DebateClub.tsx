@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, Users, Trophy, ThumbsUp, ThumbsDown, MessageCircle, Send, Zap, Crown, Fire, Brain, Laugh, Clock, Vote, TrendingUp, Shuffle, History, Sparkles } from 'lucide-react';
+import { X, Mic, Users, Trophy, ThumbsUp, ThumbsDown, MessageCircle, Send, Zap, Crown, Siren as Fire, Brain, Laugh, Clock, Vote, TrendingUp, Shuffle, History, Sparkles } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { debateService } from '../services/debateService';
 import { aiService } from '../services/aiService';
