@@ -90,6 +90,8 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen) {
       loadStats();
+      // CRITICAL: Load AI settings when debate club opens
+      initializeAIService();
     }
   }, [isOpen]);
 
@@ -99,6 +101,17 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const initializeAIService = async () => {
+    try {
+      // Load current API settings to ensure AI service has access to keys
+      await aiService.loadSettings();
+      await aiService.loadModelSettings();
+      console.log('AI service initialized for debate club');
+    } catch (error) {
+      console.error('Failed to initialize AI service:', error);
+    }
   };
 
   const loadStats = async () => {
@@ -118,6 +131,9 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
 
     try {
       setIsGenerating(true);
+      
+      // CRITICAL: Ensure AI service is ready
+      await initializeAIService();
       
       const debate = await debateService.createDebate({
         topic,
@@ -420,6 +436,22 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
           {activeTab === 'lobby' && (
             <div className="p-6 h-full overflow-y-auto">
               <div className="max-w-4xl mx-auto space-y-6">
+                {/* API Key Notice */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-1 bg-blue-100 rounded-lg">
+                      <Sparkles className="text-blue-600" size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-blue-800 mb-1">🔑 API Key Information</h4>
+                      <p className="text-sm text-blue-700">
+                        The debate will use your configured API keys from Settings, or fall back to free trial access if available. 
+                        Make sure you have at least one AI model configured to participate in debates!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Topic Selection */}
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">

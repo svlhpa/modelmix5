@@ -314,7 +314,7 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
-  // NEW: Generate debate responses
+  // NEW: Generate debate responses with proper API key handling
   async generateDebateResponse(
     topic: string,
     position: string,
@@ -322,6 +322,11 @@ class AIService {
     model: string,
     responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user'
   ): Promise<string> {
+    console.log(`Generating debate response for ${model}...`);
+    
+    // CRITICAL: Load current settings first to ensure we have the latest API keys
+    await this.loadSettings();
+    
     const systemPrompt = this.getDebateSystemPrompt(topic, position, responseType);
     
     // Build conversation context
@@ -340,7 +345,9 @@ class AIService {
     });
 
     try {
-      // Call the appropriate AI model
+      console.log(`Calling ${model} API...`);
+      
+      // Call the appropriate AI model with tier1 access (for free trial support)
       switch (model) {
         case 'openai':
           return await this.callOpenAI(messages, [], undefined, 'tier1');
@@ -353,8 +360,13 @@ class AIService {
       }
     } catch (error) {
       console.error(`Error generating debate response for ${model}:`, error);
-      // Return a fallback response instead of throwing
-      return `I apologize, but I'm having trouble generating a response right now. ${error instanceof Error ? error.message : 'Please try again.'}`;
+      
+      // Return a more helpful fallback response
+      const modelName = model === 'openai' ? 'GPT-4o' : 
+                       model === 'gemini' ? 'Gemini Pro' : 
+                       model === 'deepseek' ? 'DeepSeek' : model;
+      
+      return `I apologize, but I'm having trouble generating a response right now. ${error instanceof Error ? error.message : 'Please try again.'}\n\n💡 **Tip:** Make sure you have configured your API keys in Settings, or the debate will use free trial access if available.`;
     }
   }
 
