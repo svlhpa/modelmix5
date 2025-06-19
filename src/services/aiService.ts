@@ -306,6 +306,77 @@ class AIService {
     return data.choices[0]?.message?.content || 'No response generated';
   }
 
+  // NEW: Generate debate responses
+  async generateDebateResponse(
+    topic: string,
+    position: string,
+    previousMessages: any[],
+    model: string,
+    responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user'
+  ): Promise<string> {
+    const systemPrompt = this.getDebateSystemPrompt(topic, position, responseType);
+    
+    // Build conversation context
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...previousMessages.map(msg => ({
+        role: msg.speaker === 'user' ? 'user' as const : 'assistant' as const,
+        content: msg.content
+      }))
+    ];
+
+    // Call the appropriate AI model
+    switch (model) {
+      case 'openai':
+        return await this.callOpenAI(messages);
+      case 'gemini':
+        return await this.callGemini(messages);
+      case 'deepseek':
+        return await this.callDeepSeek(messages);
+      default:
+        throw new Error(`Unsupported model for debate: ${model}`);
+    }
+  }
+
+  private getDebateSystemPrompt(topic: string, position: string, responseType: string): string {
+    const basePrompt = `You are participating in a formal debate about: "${topic}"
+
+Your position: ${position}
+
+Guidelines:
+- Be persuasive and articulate
+- Use facts, logic, and compelling arguments
+- Stay focused on your assigned position
+- Be respectful but assertive
+- Keep responses concise (2-3 paragraphs max)
+- Make your arguments engaging and memorable`;
+
+    switch (responseType) {
+      case 'opening':
+        return `${basePrompt}
+
+This is your opening statement. Present your strongest arguments and set the tone for the debate.`;
+
+      case 'rebuttal':
+        return `${basePrompt}
+
+This is a rebuttal round. Address the opposing arguments while strengthening your own position.`;
+
+      case 'closing':
+        return `${basePrompt}
+
+This is your closing statement. Summarize your key points and make a final compelling case.`;
+
+      case 'response_to_user':
+        return `${basePrompt}
+
+A user has jumped into the debate with their own point. Respond to their argument while maintaining your position.`;
+
+      default:
+        return basePrompt;
+    }
+  }
+
   // CRITICAL: Completely rebuilt response generation system
   async getResponses(
     currentMessage: string, 

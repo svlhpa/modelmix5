@@ -6,6 +6,7 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TierUpgradeModal } from './components/TierUpgradeModal';
+import { DebateClub } from './components/DebateClub';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { aiService } from './services/aiService';
@@ -32,6 +33,7 @@ function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showTierUpgrade, setShowTierUpgrade] = useState(false);
+  const [showDebateClub, setShowDebateClub] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -136,6 +138,10 @@ function App() {
     }
   };
 
+  const handleOpenDebateClub = () => {
+    setShowDebateClub(true);
+  };
+
   const handleTierUpgradeClose = () => {
     setShowTierUpgrade(false);
     refreshProfile(); // Refresh profile to get updated tier info
@@ -155,6 +161,7 @@ function App() {
           onOpenAuth={() => setShowAuth(true)}
           onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
           onOpenTierUpgrade={() => setShowTierUpgrade(true)}
+          onOpenDebateClub={handleOpenDebateClub}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
@@ -175,6 +182,11 @@ function App() {
         <AuthModal
           isOpen={showAuth}
           onClose={() => setShowAuth(false)}
+        />
+
+        <DebateClub
+          isOpen={showDebateClub}
+          onClose={() => setShowDebateClub(false)}
         />
 
         <TierUpgradeModal
@@ -199,6 +211,7 @@ function App() {
         onOpenAuth={() => setShowAuth(true)}
         onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
+        onOpenDebateClub={handleOpenDebateClub}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -240,6 +253,11 @@ function App() {
           onClose={() => setShowAdmin(false)}
         />
       )}
+
+      <DebateClub
+        isOpen={showDebateClub}
+        onClose={() => setShowDebateClub(false)}
+      />
 
       <TierUpgradeModal
         isOpen={showTierUpgrade}
