@@ -136,7 +136,9 @@ class GlobalApiService {
       openai: 'OpenAI',
       openrouter: 'OpenRouter',
       gemini: 'Google Gemini',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      serper: 'Serper (Internet Search)',
+      imagerouter: 'Imagerouter (Image Generation)'
     };
     return names[provider] || provider;
   }
@@ -146,7 +148,9 @@ class GlobalApiService {
       openai: '🤖',
       openrouter: '🔀',
       gemini: '💎',
-      deepseek: '🔍'
+      deepseek: '🔍',
+      serper: '🌐',
+      imagerouter: '🎨'
     };
     return icons[provider] || '🔧';
   }

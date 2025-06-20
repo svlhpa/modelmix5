@@ -588,19 +588,20 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     }
   }
 
-  // CRITICAL: Image generation responses with tier-based filtering
+  // CRITICAL: Image generation responses with tier-based filtering and better error handling
   private async getImageResponses(
     prompt: string,
     onResponseUpdate?: (responses: APIResponse[]) => void,
     signal?: AbortSignal,
     userTier?: string
   ): Promise<APIResponse[]> {
+    // CRITICAL: Check for API key availability first
     const { key: apiKey, isGlobal } = await this.getApiKey('imagerouter', userTier || 'tier1');
     
     if (!apiKey) {
       return [{
         provider: 'Image Generation',
-        content: 'Imagerouter API key not configured. Please add your API key in settings to generate images.',
+        content: 'Image generation requires an Imagerouter API key. Please configure it in settings or contact support for global key access.',
         loading: false,
         error: 'API key not configured',
         isImageGeneration: true
