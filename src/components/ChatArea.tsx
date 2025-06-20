@@ -3,7 +3,7 @@ import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, 
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
-import { APIResponse, ConversationTurn, ModelSettings } from '../types';
+import { APIResponse, ConversationTurn, ModelSettings, CustomPrompt } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
@@ -12,7 +12,7 @@ import { imageRouterService } from '../services/imageRouterService';
 
 interface ChatAreaProps {
   messages: any[];
-  onSendMessage: (message: string, images?: string[], useInternetSearch?: boolean) => Promise<APIResponse[]>;
+  onSendMessage: (message: string, images?: string[], useInternetSearch?: boolean, customPrompt?: string) => Promise<APIResponse[]>;
   onSelectResponse: (response: APIResponse, userMessage: string, images?: string[]) => void;
   isLoading: boolean;
   onToggleSidebar: () => void;
@@ -20,6 +20,7 @@ interface ChatAreaProps {
   onSaveConversationTurn: (turn: ConversationTurn) => void;
   modelSettings: ModelSettings;
   onTierUpgrade: () => void;
+  activePrompt?: CustomPrompt | null;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -31,7 +32,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onToggleMobileSidebar,
   onSaveConversationTurn,
   modelSettings,
-  onTierUpgrade
+  onTierUpgrade,
+  activePrompt
 }) => {
   const { user, getCurrentTier, getUsageInfo } = useAuth();
   const [input, setInput] = useState('');
@@ -297,13 +299,19 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     const messageImages = [...images];
     const messageUseInternetSearch = useInternetSearch;
     
+    // Prepare the message with active prompt if available
+    let finalMessage = message;
+    if (activePrompt) {
+      finalMessage = `${activePrompt.content}\n\nUser request: ${message}`;
+    }
+    
     // Clear input immediately
     setInput('');
     setImages([]);
     setUseInternetSearch(false);
     
     // Store current generation context
-    setCurrentUserMessage(message);
+    setCurrentUserMessage(message); // Store original message for display
     setCurrentUserImages(messageImages);
     setCurrentUseInternetSearch(messageUseInternetSearch);
     setWaitingForSelection(false);
@@ -328,12 +336,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           content: msg.content 
         });
       });
-      // Add the current message to context for AI generation
-      contextMessages.push({ role: 'user', content: message });
+      // Add the current message to context for AI generation (with prompt if active)
+      contextMessages.push({ role: 'user', content: finalMessage });
 
       // Start real-time response generation with loading animations
       await aiService.getResponses(
-        message, 
+        finalMessage, // Use final message with prompt for AI generation
         contextMessages,
         messageImages,
         (updatedResponses) => {
@@ -373,7 +381,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     // CRITICAL: Create conversation turn with ALL responses for proper analytics
     const turn: ConversationTurn = {
       id: `turn-${Date.now()}`,
-      userMessage: currentUserMessage,
+      userMessage: currentUserMessage, // Use original message for display
       responses: currentResponses, // CRITICAL: Include ALL responses for analytics
       selectedResponse,
       timestamp: new Date(),
@@ -485,6 +493,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         <Logo variant="text" size="md" className="ml-2 flex-shrink-0" />
         <div className="ml-auto flex items-center space-x-2 sm:space-x-4 text-sm text-gray-500 min-w-0">
+          {/* Active Prompt Indicator */}
+          {activePrompt && (
+            <div className="hidden sm:flex items-center space-x-1 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-emerald-700 font-medium truncate max-w-[120px]">
+                {activePrompt.title}
+              </span>
+            </div>
+          )}
+          
           {/* Tier indicator */}
           <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
             {isProUser ? (
@@ -563,6 +581,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 {imageGenerationAvailable && (
                   <span className="block mt-2 text-purple-600 font-medium">
                     🎨 Image generation is available! Ask the AI to "generate an image of..." or "draw...".
+                  </span>
+                )}
+                {activePrompt && (
+                  <span className="block mt-2 text-emerald-600 font-medium">
+                    ✨ Custom prompt active: "{activePrompt.title}" - AI responses will follow this guidance.
                   </span>
                 )}
               </p>
@@ -658,6 +681,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         🎨 Image generation available! Just ask the AI to create images.
                       </span>
                     )}
+                    {activePrompt && (
+                      <span className="block mt-1 text-emerald-600">
+                        ✨ Custom prompt active: AI will follow "{activePrompt.title}" guidance.
+                      </span>
+                    )}
                   </p>
                   {hasAnyGlobalKeyAccess && !isProUser && (
                     <div className="mt-2 flex items-center justify-center space-x-1 text-xs text-green-600">
@@ -703,6 +731,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       <div className="mb-2 flex items-center space-x-2 text-emerald-200">
                         <Globe size={16} />
                         <span className="text-sm">Internet search enabled</span>
+                      </div>
+                    )}
+                    {activePrompt && (
+                      <div className="mb-2 flex items-center space-x-2 text-emerald-200">
+                        <span className="text-xs bg-emerald-700/50 px-2 py-0.5 rounded-full">
+                          Using prompt: {activePrompt.title}
+                        </span>
                       </div>
                     )}
                     <div className="leading-relaxed break-words">{currentUserMessage}</div>
@@ -843,6 +878,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+          
+          {/* Active Prompt Indicator */}
+          {activePrompt && (
+            <div className="mb-3 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-emerald-700">
+                  Using prompt: <span className="font-medium">{activePrompt.title}</span>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onPromptActivated && onPromptActivated(null)}
+                className="text-emerald-600 hover:text-emerald-800 p-1"
+              >
+                <X size={16} />
+              </button>
             </div>
           )}
           
@@ -1033,6 +1087,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               {imageGenerationAvailable && (
                 <span className="block mt-1">
                   🎨 Try asking "Generate an image of..." or "Draw..." to create AI images
+                </span>
+              )}
+              {activePrompt && (
+                <span className="block mt-1">
+                  ✨ Using custom prompt: "{activePrompt.title}" - AI responses will follow this guidance
                 </span>
               )}
             </p>

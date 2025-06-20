@@ -1,8 +1,9 @@
 import React from 'react';
 import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic } from 'lucide-react';
-import { ChatSession } from '../types';
+import { ChatSession, CustomPrompt } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { UsageIndicator } from './UsageIndicator';
+import { CustomPromptsPanel } from './CustomPromptsPanel';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -20,6 +21,7 @@ interface SidebarProps {
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
+  onPromptActivated?: (prompt: CustomPrompt | null) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -36,7 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDebateClub,
   isCollapsed,
   isMobileOpen,
-  onToggleMobile
+  onToggleMobile,
+  onPromptActivated
 }) => {
   const { user, userProfile, signOut, isSuperAdmin, getCurrentTier, getUsageInfo } = useAuth();
 
@@ -137,6 +140,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
                     />
                   </div>
+                </div>
+
+                {/* Custom Prompts Panel */}
+                <div className="px-4 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+                  <CustomPromptsPanel onPromptActivated={onPromptActivated} />
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-2">
@@ -403,6 +411,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
               />
             </div>
+          </div>
+
+          {/* Custom Prompts Panel */}
+          <div className="px-4 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+            <CustomPromptsPanel onPromptActivated={onPromptActivated} />
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
