@@ -20,6 +20,10 @@ export default defineConfig({
         },
       },
     },
+    // Ensure compatibility with Netlify
+    target: 'es2015',
+    minify: 'esbuild',
+    cssMinify: true,
   },
   resolve: {
     alias: {
@@ -29,4 +33,6 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  // Ensure proper base path for deployment
+  base: './',
 });
