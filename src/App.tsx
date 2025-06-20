@@ -47,7 +47,8 @@ function App() {
     openai: true,
     gemini: true,
     deepseek: true,
-    openrouter_models: {}
+    openrouter_models: {},
+    image_models: {}
   });
 
   useEffect(() => {
