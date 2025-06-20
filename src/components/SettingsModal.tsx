@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe, Image, Palette } from 'lucide-react';
+import { X, Key, Settings, Palette, Eye, EyeOff, Save, AlertTriangle, CheckCircle, Crown, Gift, Infinity, Globe } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 import { imageRouterService, ImageModel } from '../services/imageRouterService';
-import { globalApiService } from '../services/globalApiService';
 import { useAuth } from '../hooks/useAuth';
+import { globalApiService } from '../services/globalApiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,103 +22,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentModelSettings
 }) => {
   const { getCurrentTier } = useAuth();
+  const [activeTab, setActiveTab] = useState<'api-keys' | 'text-models' | 'image-models'>('api-keys');
   const [settings, setSettings] = useState<APISettings>(currentSettings);
   const [modelSettings, setModelSettings] = useState<ModelSettings>(currentModelSettings);
-  const [showKeys, setShowKeys] = useState({
-    openai: false,
-    openrouter: false,
-    gemini: false,
-    deepseek: false,
-    serper: false,
-    imagerouter: false
-  });
-  const [activeTab, setActiveTab] = useState<'api' | 'models' | 'images'>('api');
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
   const [imageModels, setImageModels] = useState<ImageModel[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [loadingImages, setLoadingImages] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [imageSearchTerm, setImageSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [selectedImageCategory, setSelectedImageCategory] = useState<string>('All');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [loading, setLoading] = useState(false);
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
-  const [globalSerperAvailable, setGlobalSerperAvailable] = useState(false);
 
   const currentTier = getCurrentTier();
+  const isProUser = currentTier === 'tier2';
 
   useEffect(() => {
-    setSettings(currentSettings);
-    
-    // For free tier users, ensure traditional models start unchecked
-    if (currentTier === 'tier1') {
-      setModelSettings({
-        ...currentModelSettings,
-        openai: false,
-        gemini: false,
-        deepseek: false
-      });
-    } else {
+    if (isOpen) {
+      setSettings(currentSettings);
       setModelSettings(currentModelSettings);
-    }
-  }, [currentSettings, currentModelSettings, currentTier]);
-
-  useEffect(() => {
-    if (isOpen && activeTab === 'models') {
-      loadOpenRouterModels();
+      loadModels();
       checkGlobalKeysAvailability();
     }
-    if (isOpen && activeTab === 'images') {
-      loadImageModels();
-    }
-  }, [isOpen, activeTab]);
+  }, [isOpen, currentSettings, currentModelSettings]);
 
   const checkGlobalKeysAvailability = async () => {
-    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'serper'];
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'imagerouter'];
     const availability: Record<string, boolean> = {};
     
     for (const provider of providers) {
       try {
         const globalKey = await globalApiService.getGlobalApiKey(provider, currentTier);
-        availability[provider] = !!globalKey;
+        availability[provider] = !!globalKey && globalKey !== 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN';
       } catch (error) {
         availability[provider] = false;
       }
     }
     
     setGlobalKeysAvailable(availability);
-    setGlobalSerperAvailable(availability.serper);
   };
 
-  const loadOpenRouterModels = async () => {
-    setLoadingModels(true);
+  const loadModels = async () => {
+    setLoading(true);
     try {
-      // CRITICAL: Use the new tier-based filtering method
-      const hasPersonalKey = hasPersonalApiKey('openrouter');
-      const hasGlobalAccess = hasGlobalKeyAccess('openrouter');
-      
-      const models = await openRouterService.getAvailableModelsForUser(
-        currentTier,
-        hasPersonalKey,
-        hasGlobalAccess
-      );
-      
-      setOpenRouterModels(models);
+      const [orModels, imgModels] = await Promise.all([
+        openRouterService.getAvailableModels(),
+        imageRouterService.getAvailableModels()
+      ]);
+      setOpenRouterModels(orModels);
+      setImageModels(imgModels);
     } catch (error) {
-      console.error('Failed to load OpenRouter models:', error);
+      console.error('Failed to load models:', error);
     } finally {
-      setLoadingModels(false);
-    }
-  };
-
-  const loadImageModels = async () => {
-    setLoadingImages(true);
-    try {
-      const models = await imageRouterService.getAvailableModels();
-      setImageModels(models);
-    } catch (error) {
-      console.error('Failed to load image models:', error);
-    } finally {
-      setLoadingImages(false);
+      setLoading(false);
     }
   };
 
@@ -127,15 +82,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
-  const toggleShowKey = (provider: keyof APISettings) => {
+  const toggleShowKey = (provider: string) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
   };
 
-  const toggleTraditionalModel = (model: 'openai' | 'gemini' | 'deepseek') => {
-    setModelSettings(prev => ({ ...prev, [model]: !prev[model] }));
+  const handleSettingChange = (provider: keyof APISettings, value: string) => {
+    setSettings(prev => ({ ...prev, [provider]: value }));
   };
 
-  const toggleOpenRouterModel = (modelId: string) => {
+  const handleTraditionalModelToggle = (model: 'openai' | 'gemini' | 'deepseek') => {
+    setModelSettings(prev => ({
+      ...prev,
+      [model]: !prev[model]
+    }));
+  };
+
+  const handleOpenRouterModelToggle = (modelId: string) => {
     setModelSettings(prev => ({
       ...prev,
       openrouter_models: {
@@ -145,7 +107,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }));
   };
 
-  const toggleImageModel = (modelId: string) => {
+  const handleImageModelToggle = (modelId: string) => {
     setModelSettings(prev => ({
       ...prev,
       image_models: {
@@ -155,153 +117,154 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }));
   };
 
-  const apiProviders = [
-    {
-      key: 'openai' as keyof APISettings,
-      name: 'OpenAI',
-      placeholder: 'sk-...',
-      description: 'GPT-4o model with vision support',
-      docsUrl: 'https://platform.openai.com/api-keys',
-      category: 'Primary Models'
-    },
-    {
-      key: 'openrouter' as keyof APISettings,
-      name: 'OpenRouter',
-      placeholder: 'sk-or-...',
-      description: 'Access to 400+ AI models including Claude, Llama, and free models',
-      docsUrl: 'https://openrouter.ai/keys',
-      category: 'Primary Models'
-    },
-    {
-      key: 'gemini' as keyof APISettings,
-      name: 'Google Gemini',
-      placeholder: 'AI...',
-      description: 'Gemini 1.5 Pro model with multimodal capabilities',
-      docsUrl: 'https://makersuite.google.com/app/apikey',
-      category: 'Primary Models'
-    },
-    {
-      key: 'deepseek' as keyof APISettings,
-      name: 'DeepSeek',
-      placeholder: 'sk-...',
-      description: 'DeepSeek Chat model for reasoning tasks',
-      docsUrl: 'https://platform.deepseek.com/api_keys',
-      category: 'Primary Models'
-    },
-    {
-      key: 'serper' as keyof APISettings,
-      name: 'Serper',
-      placeholder: 'Your Serper API Key',
-      description: 'Enables AI models to search the internet for real-time information',
-      docsUrl: 'https://serper.dev/api',
-      category: 'Internet Search'
-    },
-    {
-      key: 'imagerouter' as keyof APISettings,
-      name: 'Imagerouter',
-      placeholder: 'Your Imagerouter API Key',
-      description: 'AI-powered image generation and processing capabilities',
-      docsUrl: 'https://imagerouter.ai/api',
-      category: 'Image Generation'
+  const enableAllFreeModels = (type: 'openrouter' | 'image') => {
+    if (type === 'openrouter') {
+      const freeModels = openRouterModels.filter(model => openRouterService.isFreeModel(model));
+      const updates: Record<string, boolean> = {};
+      freeModels.forEach(model => {
+        updates[model.id] = true;
+      });
+      setModelSettings(prev => ({
+        ...prev,
+        openrouter_models: { ...prev.openrouter_models, ...updates }
+      }));
+    } else if (type === 'image') {
+      // CRITICAL: For free tier users without personal API key, only enable the 3 free models
+      const hasPersonalImageKey = settings.imagerouter && settings.imagerouter.trim() !== '';
+      const hasGlobalImageKey = globalKeysAvailable.imagerouter;
+      
+      let modelsToEnable: ImageModel[] = [];
+      
+      if (hasPersonalImageKey || isProUser) {
+        // User has personal key or is Pro - can access all free models
+        modelsToEnable = imageModels.filter(model => imageRouterService.isFreeModel(model));
+      } else if (hasGlobalImageKey && !isProUser) {
+        // Free tier user with global key access - only the 3 hardcoded free models
+        const freeModelIds = [
+          'stabilityai/sdxl-turbo:free',
+          'black-forest-labs/FLUX-1-schnell:free', 
+          'test/test'
+        ];
+        modelsToEnable = imageModels.filter(model => freeModelIds.includes(model.id));
+      }
+      
+      const updates: Record<string, boolean> = {};
+      modelsToEnable.forEach(model => {
+        updates[model.id] = true;
+      });
+      setModelSettings(prev => ({
+        ...prev,
+        image_models: { ...prev.image_models, ...updates }
+      }));
     }
-  ];
+  };
 
-  const traditionalModels = [
-    { key: 'openai' as keyof ModelSettings, name: 'OpenAI GPT-4o', icon: '🤖', description: 'Latest GPT model with vision support' },
-    { key: 'gemini' as keyof ModelSettings, name: 'Google Gemini 1.5 Pro', icon: '💎', description: 'Google\'s multimodal AI model' },
-    { key: 'deepseek' as keyof ModelSettings, name: 'DeepSeek Chat', icon: '🔍', description: 'Advanced reasoning model' }
-  ];
+  const clearAllModels = (type: 'openrouter' | 'image') => {
+    if (type === 'openrouter') {
+      setModelSettings(prev => ({
+        ...prev,
+        openrouter_models: {}
+      }));
+    } else if (type === 'image') {
+      setModelSettings(prev => ({
+        ...prev,
+        image_models: {}
+      }));
+    }
+  };
 
-  // Filter and categorize OpenRouter models
-  const filteredModels = openRouterModels.filter(model => {
+  // CRITICAL: Filter image models based on user tier and API key availability
+  const getAvailableImageModels = () => {
+    const hasPersonalImageKey = settings.imagerouter && settings.imagerouter.trim() !== '';
+    const hasGlobalImageKey = globalKeysAvailable.imagerouter;
+    
+    if (hasPersonalImageKey || isProUser) {
+      // User has personal key or is Pro - can access all models
+      return imageModels;
+    } else if (hasGlobalImageKey && !isProUser) {
+      // Free tier user with global key access - only the 3 hardcoded free models
+      const freeModelIds = [
+        'stabilityai/sdxl-turbo:free',
+        'black-forest-labs/FLUX-1-schnell:free', 
+        'test/test'
+      ];
+      return imageModels.filter(model => freeModelIds.includes(model.id));
+    } else {
+      // No access
+      return [];
+    }
+  };
+
+  // CRITICAL: Filter OpenRouter models based on user tier and API key availability
+  const getAvailableOpenRouterModels = () => {
+    const hasPersonalOpenRouterKey = settings.openrouter && settings.openrouter.trim() !== '';
+    const hasGlobalOpenRouterKey = globalKeysAvailable.openrouter;
+    
+    if (hasPersonalOpenRouterKey || isProUser) {
+      // User has personal key or is Pro - can access all models
+      return openRouterModels;
+    } else if (hasGlobalOpenRouterKey && !isProUser) {
+      // Free tier user with global key access - only free models
+      return openRouterModels.filter(model => openRouterService.isFreeModel(model));
+    } else {
+      // No access
+      return [];
+    }
+  };
+
+  const filteredImageModels = getAvailableImageModels().filter(model => {
     const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          model.id.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
-
-  const modelCategories = openRouterService.getModelCategories(filteredModels);
-  const categories = ['All', ...Object.keys(modelCategories)];
-
-  // Filter and categorize Image models
-  const filteredImageModels = imageModels.filter(model => {
-    const matchesSearch = model.name.toLowerCase().includes(imageSearchTerm.toLowerCase()) ||
-                         model.id.toLowerCase().includes(imageSearchTerm.toLowerCase());
-    return matchesSearch;
-  });
-
-  const imageModelCategories = imageRouterService.getModelCategories(filteredImageModels);
-  const imageCategories = ['All', ...Object.keys(imageModelCategories)];
-
-  const getDisplayedModels = () => {
-    if (selectedCategory === 'All') {
-      return filteredModels;
-    }
-    return modelCategories[selectedCategory] || [];
-  };
-
-  const getDisplayedImageModels = () => {
-    if (selectedImageCategory === 'All') {
-      return filteredImageModels;
-    }
-    return imageModelCategories[selectedImageCategory] || [];
-  };
-
-  const getEnabledTraditionalCount = () => {
-    return traditionalModels.filter(model => modelSettings[model.key]).length;
-  };
-
-  const getEnabledOpenRouterCount = () => {
-    return Object.values(modelSettings.openrouter_models).filter(Boolean).length;
-  };
-
-  const getEnabledImageCount = () => {
-    return Object.values(modelSettings.image_models).filter(Boolean).length;
-  };
-
-  const getTotalEnabledCount = () => {
-    return getEnabledTraditionalCount() + getEnabledOpenRouterCount();
-  };
-
-  const getModelIcon = (model: OpenRouterModel) => {
-    const modelId = model.id.toLowerCase();
-    const modelName = model.name.toLowerCase();
     
-    if (modelId.includes('claude') || modelId.includes('anthropic')) return '🔮';
-    if (modelId.includes('gpt') || modelId.includes('openai')) return '🤖';
-    if (modelId.includes('gemini') || modelId.includes('google')) return '💎';
-    if (modelId.includes('llama') || modelId.includes('meta')) return '🦙';
-    if (modelId.includes('deepseek')) return '🔍';
-    if (modelId.includes('mistral')) return '⚡';
-    if (modelId.includes('qwen')) return '🌟';
-    if (modelId.includes('gemma')) return '🔷';
-    return '🤖';
+    if (selectedCategory === 'All') return matchesSearch;
+    
+    const categories = imageRouterService.getModelCategories(getAvailableImageModels());
+    return categories[selectedCategory]?.some(m => m.id === model.id) && matchesSearch;
+  });
+
+  const filteredOpenRouterModels = getAvailableOpenRouterModels().filter(model => {
+    const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         model.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (selectedCategory === 'All') return matchesSearch;
+    
+    const categories = openRouterService.getModelCategories(getAvailableOpenRouterModels());
+    return categories[selectedCategory]?.some(m => m.id === model.id) && matchesSearch;
+  });
+
+  const getSelectedCount = (type: 'text' | 'openrouter' | 'image') => {
+    if (type === 'text') {
+      return [modelSettings.openai, modelSettings.gemini, modelSettings.deepseek].filter(Boolean).length;
+    } else if (type === 'openrouter') {
+      return Object.values(modelSettings.openrouter_models).filter(Boolean).length;
+    } else if (type === 'image') {
+      return Object.values(modelSettings.image_models).filter(Boolean).length;
+    }
+    return 0;
   };
 
-  const isFreeModel = (model: OpenRouterModel) => {
-    return openRouterService.isFreeModel(model);
-  };
-
-  const hasPersonalApiKey = (provider: string) => {
-    return settings[provider as keyof APISettings]?.trim() !== '';
-  };
-
-  const hasGlobalKeyAccess = (provider: string) => {
-    return globalKeysAvailable[provider] && !hasPersonalApiKey(provider);
-  };
-
-  const canUseModel = (provider: string) => {
-    return hasPersonalApiKey(provider) || hasGlobalKeyAccess(provider);
+  const getProviderStatus = (provider: keyof APISettings) => {
+    const hasPersonalKey = settings[provider] && settings[provider].trim() !== '';
+    const hasGlobalKey = globalKeysAvailable[provider];
+    
+    if (hasPersonalKey) {
+      return { status: 'personal', icon: Key, color: 'text-blue-600', bg: 'bg-blue-50' };
+    } else if (hasGlobalKey) {
+      return { status: 'global', icon: Gift, color: 'text-green-600', bg: 'bg-green-50' };
+    } else {
+      return { status: 'none', icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' };
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-6xl w-full p-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="bg-white rounded-xl max-w-6xl w-full p-6 max-h-[90vh] overflow-y-auto transform animate-slideUp">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Key size={20} className="text-blue-600" />
+            <div className="p-2 bg-blue-100 rounded-lg animate-bounceIn">
+              <Settings size={20} className="text-blue-600" />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">AI Model Settings</h2>
@@ -310,7 +273,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
           >
             <X size={20} className="text-gray-500" />
           </button>
@@ -318,278 +281,155 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Tab Navigation */}
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab('api')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'api' 
-                ? 'bg-white text-blue-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Key size={16} />
-            <span>API Keys</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('models')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'models' 
-                ? 'bg-white text-blue-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Settings size={16} />
-            <span>Text Models ({getTotalEnabledCount()} selected)</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('images')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'images' 
-                ? 'bg-white text-blue-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Palette size={16} />
-            <span>Image Models ({getEnabledImageCount()} selected)</span>
-          </button>
+          {[
+            { id: 'api-keys', label: 'API Keys', icon: Key },
+            { id: 'text-models', label: `Text Models (${getSelectedCount('text') + getSelectedCount('openrouter')} selected)`, icon: Settings },
+            { id: 'image-models', label: `Image Models (${getSelectedCount('image')} selected)`, icon: Palette }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                activeTab === tab.id 
+                  ? 'bg-white text-blue-600 shadow-sm' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <tab.icon size={16} />
+              <span className="font-medium">{tab.label}</span>
+            </button>
+          ))}
         </div>
 
-        {activeTab === 'api' ? (
-          <div className="space-y-6">
-            {/* Free Trial Notice */}
-            {currentTier === 'tier1' && (
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <Gift className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <h4 className="font-medium text-green-800 mb-1">🎉 Free Trial Active!</h4>
-                    <p className="text-sm text-green-700 mb-2">
-                      You're using our free trial with access to AI models through our global API keys. 
-                      No configuration needed!
-                    </p>
-                    <ul className="text-sm text-green-600 space-y-1">
-                      <li>• ✅ Free access to multiple AI models</li>
-                      <li>• ✅ 50 conversations per month</li>
-                      <li>• ✅ Compare up to 3 models simultaneously</li>
-                      <li>• 🆓 Access to free OpenRouter models (DeepSeek R1, Llama, Gemma, etc.)</li>
-                      {globalSerperAvailable && <li>• 🌐 Internet search enabled for all users</li>}
-                      <li>• 🎨 Image generation with Imagerouter API key</li>
-                      <li>• 🔧 Configure your own API keys for unlimited usage and premium models</li>
-                    </ul>
-                  </div>
+        {/* API Keys Tab */}
+        {activeTab === 'api-keys' && (
+          <div className="space-y-6 animate-fadeInUp">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <div className="p-1 bg-blue-100 rounded-lg flex-shrink-0">
+                  <CheckCircle className="text-blue-600" size={16} />
+                </div>
+                <div>
+                  <h4 className="font-medium text-blue-800 mb-1">API Key Priority</h4>
+                  <p className="text-sm text-blue-700">
+                    Personal API keys take priority over global keys. {isProUser ? 'As a Pro user, you have access to global keys as backup.' : 'Free trial users can access select models through global keys when available.'}
+                  </p>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Internet Search Notice */}
-            {globalSerperAvailable && (
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <Globe className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <h4 className="font-medium text-blue-800 mb-1">🌐 Internet Search Available!</h4>
-                    <p className="text-sm text-blue-700">
-                      Internet search is enabled for all users through our global Serper API. 
-                      Toggle the "Use Internet Search" button in the chat to get real-time information.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {apiProviders.map((provider) => {
-                const hasPersonalKey = hasPersonalApiKey(provider.key);
-                const hasGlobalAccess = hasGlobalKeyAccess(provider.key);
-                const isSerper = provider.key === 'serper';
-                const isImagerouter = provider.key === 'imagerouter';
-                
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[
+                { key: 'openai' as const, name: 'OpenAI', placeholder: 'sk-...', description: 'For GPT-4o and DALL-E models' },
+                { key: 'openrouter' as const, name: 'OpenRouter', placeholder: 'sk-or-...', description: 'Access to 400+ AI models' },
+                { key: 'gemini' as const, name: 'Google Gemini', placeholder: 'AI...', description: 'For Gemini Pro models' },
+                { key: 'deepseek' as const, name: 'DeepSeek', placeholder: 'sk-...', description: 'For DeepSeek Chat models' },
+                { key: 'serper' as const, name: 'Serper (Internet Search)', placeholder: 'your-serper-key', description: 'For real-time web search' },
+                { key: 'imagerouter' as const, name: 'Imagerouter (Image Generation)', placeholder: 'ir-...', description: 'For AI image generation models' }
+              ].map((provider, index) => {
+                const status = getProviderStatus(provider.key);
                 return (
-                  <div key={provider.key} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h4 className="font-medium text-gray-900">{provider.name}</h4>
-                          {isImagerouter && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                              <Image size={10} className="mr-1" />
-                              Image Generation
-                            </span>
-                          )}
-                          {hasGlobalAccess && !isSerper && !isImagerouter && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <Gift size={10} className="mr-1" />
-                              Free Trial
-                            </span>
-                          )}
-                          {isSerper && globalSerperAvailable && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              <Globe size={10} className="mr-1" />
-                              Available Globally
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-500">{provider.description}</p>
-                        {hasGlobalAccess && !isSerper && !isImagerouter && (
-                          <p className="text-xs text-green-600 mt-1">
-                            ✅ Available through free trial - no API key needed
-                          </p>
-                        )}
-                        {isSerper && globalSerperAvailable && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            🌐 Internet search is available for all users
-                          </p>
-                        )}
-                        {isImagerouter && (
-                          <p className="text-xs text-purple-600 mt-1">
-                            🎨 Configure your API key to enable image generation
-                          </p>
-                        )}
+                  <div 
+                    key={provider.key} 
+                    className="space-y-3 animate-fadeInUp"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {provider.name}
+                      </label>
+                      <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${status.bg}`}>
+                        <status.icon size={12} className={status.color} />
+                        <span className={status.color}>
+                          {status.status === 'personal' ? 'Personal Key' : 
+                           status.status === 'global' ? 'Global Available' : 'Not Available'}
+                        </span>
                       </div>
-                      <a
-                        href={provider.docsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 text-sm"
-                      >
-                        <span>Get Key</span>
-                        <ExternalLink size={14} />
-                      </a>
                     </div>
-                    
                     <div className="relative">
                       <input
                         type={showKeys[provider.key] ? 'text' : 'password'}
                         value={settings[provider.key]}
-                        onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
-                        placeholder={
-                          isSerper && globalSerperAvailable 
-                            ? `${provider.placeholder} (optional - available globally)`
-                            : hasGlobalAccess && !isSerper && !isImagerouter
-                              ? `${provider.placeholder} (optional - free trial active)` 
-                              : provider.placeholder
-                        }
-                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        onChange={(e) => handleSettingChange(provider.key, e.target.value)}
+                        placeholder={provider.placeholder}
+                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                       />
                       <button
                         type="button"
                         onClick={() => toggleShowKey(provider.key)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         {showKeys[provider.key] ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                    
-                    {hasPersonalKey && !isImagerouter && (
-                      <p className="text-xs text-blue-600 mt-2">
-                        🔑 Using your personal API key for unlimited access
-                      </p>
-                    )}
-                    {hasPersonalKey && isImagerouter && (
-                      <p className="text-xs text-purple-600 mt-2">
-                        🎨 Image generation enabled with your API key
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-500">{provider.description}</p>
                   </div>
                 );
               })}
             </div>
-
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start space-x-2">
-                <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-white text-xs font-bold">💡</span>
-                </div>
-                <div>
-                  <h4 className="font-medium text-green-800 mb-1">API Key Information</h4>
-                  <ul className="text-sm text-green-700 space-y-1">
-                    <li>• <strong>Free Trial:</strong> Use our global API keys with monthly limits</li>
-                    <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
-                    <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
-                    <li>• <strong>Free Tier Limitation:</strong> Only free OpenRouter models available with global keys</li>
-                    <li>• <strong>Pro Tier:</strong> Access to all OpenRouter models with global keys</li>
-                    <li>• <strong>Internet Search:</strong> {globalSerperAvailable ? 'Available globally for all users' : 'Requires personal Serper API key'}</li>
-                    <li>• <strong>Imagerouter:</strong> Configure your API key to enable AI image generation features</li>
-                    <li>• Personal API keys always take priority over free trial access</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
           </div>
-        ) : activeTab === 'models' ? (
-          <div className="space-y-6">
+        )}
+
+        {/* Text Models Tab */}
+        {activeTab === 'text-models' && (
+          <div className="space-y-6 animate-fadeInUp">
             {/* Traditional Models */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Traditional API Models</h3>
-              {currentTier === 'tier1' && (
-                <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-sm text-blue-700">
-                    💡 <strong>Free Tier:</strong> Models are disabled by default. Enable the ones you want to use through free trial or your own API keys.
-                  </p>
-                </div>
-              )}
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Traditional Models</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {traditionalModels.map((model) => {
+                {[
+                  { key: 'openai' as const, name: 'OpenAI GPT-4o', description: 'Advanced reasoning and multimodal capabilities', icon: '🤖' },
+                  { key: 'gemini' as const, name: 'Google Gemini 1.5 Pro', description: 'Large context window and strong performance', icon: '💎' },
+                  { key: 'deepseek' as const, name: 'DeepSeek Chat', description: 'Efficient and capable reasoning model', icon: '🔍' }
+                ].map((model, index) => {
+                  const status = getProviderStatus(model.key);
                   const isEnabled = modelSettings[model.key];
-                  const hasPersonalKey = hasPersonalApiKey(model.key);
-                  const hasGlobalAccess = hasGlobalKeyAccess(model.key);
-                  const canUse = canUseModel(model.key);
+                  const canUse = status.status !== 'none';
                   
                   return (
                     <div
                       key={model.key}
-                      className={`border-2 rounded-lg p-4 transition-all cursor-pointer ${
-                        isEnabled 
-                          ? 'border-green-300 bg-green-50' 
-                          : 'border-gray-200 bg-gray-50'
-                      } ${!canUse ? 'opacity-50' : 'hover:shadow-md'}`}
-                      onClick={() => canUse && toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek')}
+                      className={`p-4 border-2 rounded-lg transition-all duration-200 hover:shadow-md animate-fadeInUp ${
+                        isEnabled && canUse
+                          ? 'border-blue-300 bg-blue-50'
+                          : canUse
+                            ? 'border-gray-200 bg-white hover:border-gray-300'
+                            : 'border-gray-200 bg-gray-50 opacity-60'
+                      }`}
+                      style={{ animationDelay: `${index * 0.1}s` }}
                     >
-                      <div className="flex items-start space-x-3">
+                      <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center space-x-2">
-                          <span className="text-2xl">{model.icon}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (canUse) toggleTraditionalModel(model.key as 'openai' | 'gemini' | 'deepseek');
-                            }}
-                            className="p-1"
-                            disabled={!canUse}
-                          >
-                            {isEnabled ? (
-                              <CheckSquare size={20} className="text-green-600" />
-                            ) : (
-                              <Square size={20} className="text-gray-400" />
-                            )}
-                          </button>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-xl">{model.icon}</span>
+                          <div>
                             <h4 className="font-medium text-gray-900">{model.name}</h4>
-                            {hasGlobalAccess && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                <Gift size={10} className="mr-1" />
-                                Free
+                            <div className={`flex items-center space-x-1 mt-1 px-2 py-1 rounded-full text-xs ${status.bg}`}>
+                              <status.icon size={10} className={status.color} />
+                              <span className={status.color}>
+                                {status.status === 'personal' ? 'Personal Key' : 
+                                 status.status === 'global' ? 'Free Trial' : 'No Access'}
                               </span>
-                            )}
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600">{model.description}</p>
-                          {!canUse && (
-                            <p className="text-xs text-red-600 mt-1">
-                              ⚠️ API key required or not available in free trial
-                            </p>
-                          )}
-                          {hasPersonalKey && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              🔑 Using personal API key
-                            </p>
-                          )}
-                          {hasGlobalAccess && (
-                            <p className="text-xs text-green-600 mt-1">
-                              ✅ Available through free trial
-                            </p>
-                          )}
                         </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={() => handleTraditionalModelToggle(model.key)}
+                            disabled={!canUse}
+                            className="sr-only"
+                          />
+                          <div className={`w-11 h-6 rounded-full transition-colors ${
+                            isEnabled && canUse ? 'bg-blue-600' : 'bg-gray-300'
+                          } ${!canUse ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                              isEnabled && canUse ? 'translate-x-5' : 'translate-x-0'
+                            }`} />
+                          </div>
+                        </label>
                       </div>
+                      <p className="text-sm text-gray-600">{model.description}</p>
                     </div>
                   );
                 })}
@@ -599,42 +439,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* OpenRouter Models */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  OpenRouter Models ({getEnabledOpenRouterCount()} selected)
+                <h3 className="text-lg font-semibold text-gray-900">
+                  OpenRouter Models ({Object.values(modelSettings.openrouter_models).filter(Boolean).length} selected)
                 </h3>
-                {!hasPersonalApiKey('openrouter') && !hasGlobalKeyAccess('openrouter') && (
-                  <p className="text-sm text-amber-600">⚠️ OpenRouter API key required or not available in free trial</p>
-                )}
-                {hasGlobalKeyAccess('openrouter') && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    <Gift size={12} className="mr-1" />
-                    {currentTier === 'tier1' ? 'Free Models Only' : 'Free Trial Available'}
-                  </span>
-                )}
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => enableAllFreeModels('openrouter')}
+                    className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                  >
+                    <CheckCircle size={14} />
+                    <span>Enable All Free Models</span>
+                  </button>
+                  <button
+                    onClick={() => clearAllModels('openrouter')}
+                    className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                  >
+                    Clear All
+                  </button>
+                </div>
               </div>
 
-              {(hasPersonalApiKey('openrouter') || hasGlobalKeyAccess('openrouter')) ? (
+              {getAvailableOpenRouterModels().length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <Key size={48} className="text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">OpenRouter Access Required</h3>
+                  <p className="text-gray-500 mb-4">
+                    {!isProUser 
+                      ? 'Add your OpenRouter API key or upgrade to Pro for global key access'
+                      : 'Add your OpenRouter API key to access 400+ AI models'
+                    }
+                  </p>
+                </div>
+              ) : (
                 <>
-                  {/* Tier-based notice for free users */}
-                  {currentTier === 'tier1' && hasGlobalKeyAccess('openrouter') && !hasPersonalApiKey('openrouter') && (
-                    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <p className="text-sm text-amber-700">
-                        🆓 <strong>Free Tier:</strong> You can only access free OpenRouter models with the global API key. 
-                        Add your own OpenRouter API key to access premium models, or upgrade to Pro for full access.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Search and Filter */}
-                  <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                    <div className="relative flex-1">
-                      <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <div className="flex space-x-4 mb-4">
+                    <div className="flex-1">
                       <input
                         type="text"
                         placeholder="Search models..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <select
@@ -642,388 +487,241 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => setSelectedCategory(e.target.value)}
                       className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {categories.map(category => (
+                      <option value="All">All</option>
+                      {Object.keys(openRouterService.getModelCategories(getAvailableOpenRouterModels())).map(category => (
                         <option key={category} value={category}>{category}</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Quick Actions */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <button
-                      onClick={() => {
-                        const freeModels = openRouterModels.filter(isFreeModel);
-                        const newSettings = { ...modelSettings.openrouter_models };
-                        freeModels.forEach(model => {
-                          newSettings[model.id] = true;
-                        });
-                        setModelSettings(prev => ({ ...prev, openrouter_models: newSettings }));
-                      }}
-                      className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-1"
-                    >
-                      <Zap size={14} />
-                      <span>Enable All Free Models</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setModelSettings(prev => ({ ...prev, openrouter_models: {} }));
-                      }}
-                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-
-                  {/* Models Grid */}
-                  {loadingModels ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 size={32} className="animate-spin text-blue-600" />
-                      <span className="ml-3 text-gray-600">Loading models...</span>
-                    </div>
-                  ) : openRouterModels.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-gray-500 mb-2">No models available</p>
-                      {currentTier === 'tier1' && hasGlobalKeyAccess('openrouter') && (
-                        <p className="text-sm text-amber-600">
-                          Free tier users can only access free models. Add your own OpenRouter API key for premium models.
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
-                      {getDisplayedModels().map((model) => {
-                        const isEnabled = modelSettings.openrouter_models[model.id] || false;
-                        const isFree = isFreeModel(model);
-                        
-                        return (
-                          <div
-                            key={model.id}
-                            className={`border-2 rounded-lg p-3 transition-all cursor-pointer ${
-                              isEnabled 
-                                ? 'border-green-300 bg-green-50' 
-                                : 'border-gray-200 bg-white hover:shadow-md'
-                            }`}
-                            onClick={() => toggleOpenRouterModel(model.id)}
-                          >
-                            <div className="flex items-start space-x-3">
-                              <div className="flex items-center space-x-2">
-                                <span className="text-lg">{getModelIcon(model)}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOpenRouterModel(model.id);
-                                  }}
-                                  className="p-1"
-                                >
-                                  {isEnabled ? (
-                                    <CheckSquare size={16} className="text-green-600" />
-                                  ) : (
-                                    <Square size={16} className="text-gray-400" />
-                                  )}
-                                </button>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center space-x-2 mb-1">
-                                  <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
-                                  {isFree && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      <Zap size={10} className="mr-1" />
-                                      Free
-                                    </span>
-                                  )}
-                                  {!isFree && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                      <Crown size={10} className="mr-1" />
-                                      Premium
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-600 mb-2 line-clamp-2">{model.description}</p>
-                                <div className="flex items-center justify-between text-xs text-gray-500">
-                                  <span>{(model.context_length / 1000).toFixed(0)}k context</span>
-                                  {!isFree && (
-                                    <span className="flex items-center">
-                                      <DollarSign size={10} />
-                                      {parseFloat(model.pricing.prompt).toFixed(4)}
-                                    </span>
-                                  )}
-                                </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                    {filteredOpenRouterModels.map((model, index) => {
+                      const isSelected = modelSettings.openrouter_models[model.id];
+                      const isFree = openRouterService.isFreeModel(model);
+                      
+                      return (
+                        <div
+                          key={model.id}
+                          className={`p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md animate-fadeInUp ${
+                            isSelected
+                              ? 'border-purple-300 bg-purple-50'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                          onClick={() => handleOpenRouterModelToggle(model.id)}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
+                              <div className="flex items-center space-x-2 mt-1">
+                                {isFree && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Free
+                                  </span>
+                                )}
+                                <span className="text-xs text-gray-500">
+                                  {model.context_length.toLocaleString()} tokens
+                                </span>
                               </div>
                             </div>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                              isSelected ? 'border-purple-500 bg-purple-500' : 'border-gray-300'
+                            }`}>
+                              {isSelected && <CheckCircle size={12} className="text-white" />}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          {model.description && (
+                            <p className="text-xs text-gray-600 line-clamp-2">{model.description}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </>
-              ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <p className="text-amber-700">
-                    Configure your OpenRouter API key in the API Keys tab to access 400+ AI models, or upgrade to Pro for free trial access.
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Image Models Tab */}
+        {activeTab === 'image-models' && (
+          <div className="space-y-6 animate-fadeInUp">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Image Generation Models ({Object.values(modelSettings.image_models).filter(Boolean).length} selected)
+              </h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => enableAllFreeModels('image')}
+                  className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                >
+                  <CheckCircle size={14} />
+                  <span>Enable All Free Models</span>
+                </button>
+                <button
+                  onClick={() => clearAllModels('image')}
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            {/* Access Status */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <div className="p-1 bg-amber-100 rounded-lg flex-shrink-0">
+                  <AlertTriangle className="text-amber-600" size={16} />
+                </div>
+                <div>
+                  <h4 className="font-medium text-amber-800 mb-1">Imagerouter API key required for image generation</h4>
+                  <p className="text-sm text-amber-700">
+                    {!settings.imagerouter && !globalKeysAvailable.imagerouter ? (
+                      'Add your API key in the API Keys tab to enable AI image generation. Once configured, you can ask the AI to "generate an image of..." or "draw...".'
+                    ) : !settings.imagerouter && globalKeysAvailable.imagerouter && !isProUser ? (
+                      'You have access to free image models through global keys. Upgrade to Pro or add your own API key for access to all models.'
+                    ) : !settings.imagerouter && globalKeysAvailable.imagerouter && isProUser ? (
+                      'You have Pro access to all image models through global keys. Add your own API key for priority access.'
+                    ) : (
+                      'Image generation enabled! You can ask the AI to "generate an image of..." or "draw..." to create AI images.'
+                    )}
                   </p>
                 </div>
-              )}
+              </div>
             </div>
 
-            {getTotalEnabledCount() === 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-center space-x-2 text-amber-700">
-                  <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">!</span>
+            {getAvailableImageModels().length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <Palette size={48} className="text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Image Generation Access Required</h3>
+                <p className="text-gray-500 mb-4">
+                  {!isProUser 
+                    ? 'Add your Imagerouter API key or upgrade to Pro for global key access'
+                    : 'Add your Imagerouter API key to access all image generation models'
+                  }
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex space-x-4 mb-4">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Search image models..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                  <span className="font-medium">No models selected! Please select at least one model to enable comparisons.</span>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="All">All</option>
+                    {Object.keys(imageRouterService.getModelCategories(getAvailableImageModels())).map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Image Generation Models */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Image Generation Models ({getEnabledImageCount()} selected)
-                </h3>
-                {!hasPersonalApiKey('imagerouter') && (
-                  <p className="text-sm text-amber-600">⚠️ Imagerouter API key required for image generation</p>
-                )}
-                {hasPersonalApiKey('imagerouter') && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                    <Palette size={12} className="mr-1" />
-                    Image Generation Enabled
-                  </span>
-                )}
-              </div>
 
-              {hasPersonalApiKey('imagerouter') ? (
-                <>
-                  {/* Search and Filter */}
-                  <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                    <div className="relative flex-1">
-                      <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search image models..."
-                        value={imageSearchTerm}
-                        onChange={(e) => setImageSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-                    <select
-                      value={selectedImageCategory}
-                      onChange={(e) => setSelectedImageCategory(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    >
-                      {imageCategories.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Quick Actions */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <button
-                      onClick={() => {
-                        const freeModels = imageModels.filter(model => imageRouterService.isFreeModel(model));
-                        const newSettings = { ...modelSettings.image_models };
-                        freeModels.forEach(model => {
-                          newSettings[model.id] = true;
-                        });
-                        setModelSettings(prev => ({ ...prev, image_models: newSettings }));
-                      }}
-                      className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-1"
-                    >
-                      <Zap size={14} />
-                      <span>Enable All Free Models</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setModelSettings(prev => ({ ...prev, image_models: {} }));
-                      }}
-                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-
-                  {/* Image Models Grid */}
-                  {loadingImages ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 size={32} className="animate-spin text-purple-600" />
-                      <span className="ml-3 text-gray-600">Loading image models...</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
-                      {getDisplayedImageModels().map((model) => {
-                        const isEnabled = modelSettings.image_models[model.id] || false;
-                        const isFree = imageRouterService.isFreeModel(model);
-                        
-                        return (
-                          <div
-                            key={model.id}
-                            className={`border-2 rounded-lg p-3 transition-all cursor-pointer ${
-                              isEnabled 
-                                ? 'border-purple-300 bg-purple-50' 
-                                : 'border-gray-200 bg-white hover:shadow-md'
-                            }`}
-                            onClick={() => toggleImageModel(model.id)}
-                          >
-                            <div className="flex items-start space-x-3">
-                              <div className="flex items-center space-x-2">
-                                <span className="text-lg">{imageRouterService.getModelIcon(model)}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleImageModel(model.id);
-                                  }}
-                                  className="p-1"
-                                >
-                                  {isEnabled ? (
-                                    <CheckSquare size={16} className="text-purple-600" />
-                                  ) : (
-                                    <Square size={16} className="text-gray-400" />
-                                  )}
-                                </button>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center space-x-2 mb-1">
-                                  <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
-                                  {isFree && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      <Zap size={10} className="mr-1" />
-                                      Free
-                                    </span>
-                                  )}
-                                  {!isFree && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                      <Palette size={10} className="mr-1" />
-                                      Premium
-                                    </span>
-                                  )}
-                                  {model.arena_score && model.arena_score > 1050 && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                      <Crown size={10} className="mr-1" />
-                                      Top Rated
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-600 mb-2 line-clamp-2">{model.description}</p>
-                                <div className="flex items-center justify-between text-xs text-gray-500">
-                                  <span>Released: {new Date(model.release_date).toLocaleDateString()}</span>
-                                  {!isFree && model.pricing.value && (
-                                    <span className="flex items-center">
-                                      <DollarSign size={10} />
-                                      {model.pricing.value.toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                  {filteredImageModels.map((model, index) => {
+                    const isSelected = modelSettings.image_models[model.id];
+                    const isFree = imageRouterService.isFreeModel(model);
+                    const modelIcon = imageRouterService.getModelIcon(model);
+                    
+                    return (
+                      <div
+                        key={model.id}
+                        className={`p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md animate-fadeInUp ${
+                          isSelected
+                            ? 'border-purple-300 bg-purple-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                        onClick={() => handleImageModelToggle(model.id)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-start space-x-2 flex-1 min-w-0">
+                            <span className="text-lg flex-shrink-0">{modelIcon}</span>
+                            <div className="min-w-0">
+                              <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
+                              <div className="flex items-center space-x-2 mt-1">
+                                {isFree && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Free
+                                  </span>
+                                )}
+                                {model.arena_score && (
+                                  <span className="text-xs text-gray-500">
+                                    Score: {model.arena_score}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              ) : (
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            isSelected ? 'border-purple-500 bg-purple-500' : 'border-gray-300'
+                          }`}>
+                            {isSelected && <CheckCircle size={12} className="text-white" />}
+                          </div>
+                        </div>
+                        {model.description && (
+                          <p className="text-xs text-gray-600 line-clamp-2">{model.description}</p>
+                        )}
+                        <div className="text-xs text-gray-500 mt-1">
+                          Released: {new Date(model.release_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* How to Use Image Generation */}
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-3">
-                    <Image className="text-purple-600 flex-shrink-0 mt-0.5" size={20} />
-                    <div>
-                      <h4 className="font-medium text-purple-800 mb-1">🎨 Image Generation</h4>
-                      <p className="text-sm text-purple-700 mb-2">
-                        Configure your Imagerouter API key in the API Keys tab to enable AI image generation. 
-                        Once configured, you can ask the AI to generate images directly in the chat.
-                      </p>
-                      <ul className="text-sm text-purple-600 space-y-1">
-                        <li>• Generate images by asking "Create an image of..." or "Draw..."</li>
-                        <li>• Compare different image generation models side by side</li>
-                        <li>• Select your favorite result to add to the conversation</li>
-                        <li>• Access top models like FLUX, DALL-E, Ideogram, and more</li>
-                      </ul>
+                  <h4 className="font-medium text-purple-800 mb-3 flex items-center space-x-2">
+                    <Palette size={16} />
+                    <span>How to Use Image Generation</span>
+                  </h4>
+                  <div className="space-y-2 text-sm text-purple-700">
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-purple-800 flex-shrink-0">1</span>
+                      <span>Configure your Imagerouter API key in the API Keys tab to enable image generation</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-purple-800 flex-shrink-0">2</span>
+                      <span>Select image models to use</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-purple-800 flex-shrink-0">3</span>
+                      <span>Ask for images in the chat</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-purple-800 flex-shrink-0">4</span>
+                      <span>Compare and select your favorite</span>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Image Generation Instructions */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <h4 className="font-medium text-purple-800 mb-2">How to Use Image Generation</h4>
-              <div className="space-y-3">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">1</div>
-                  <div>
-                    <p className="text-sm text-purple-700 font-medium">Configure your Imagerouter API key</p>
-                    <p className="text-xs text-purple-600">Add your API key in the API Keys tab to enable image generation</p>
+                  <div className="mt-3 text-xs text-purple-600">
+                    💡 Try asking "Generate an image of..." or "Draw..." to create AI images
                   </div>
                 </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">2</div>
-                  <div>
-                    <p className="text-sm text-purple-700 font-medium">Select image models to use</p>
-                    <p className="text-xs text-purple-600">Enable the models you want to compare in this tab</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">3</div>
-                  <div>
-                    <p className="text-sm text-purple-700 font-medium">Ask for images in the chat</p>
-                    <p className="text-xs text-purple-600">Use phrases like "Generate an image of..." or "Draw a..."</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">4</div>
-                  <div>
-                    <p className="text-sm text-purple-700 font-medium">Compare and select your favorite</p>
-                    <p className="text-xs text-purple-600">Choose the best image to add to your conversation</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {getEnabledImageCount() === 0 && hasPersonalApiKey('imagerouter') && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-center space-x-2 text-amber-700">
-                  <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">!</span>
-                  </div>
-                  <span className="font-medium">No image models selected! Please select at least one model to enable image generation.</span>
-                </div>
-              </div>
+              </>
             )}
           </div>
         )}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-          <div className="flex items-start space-x-2">
-            <div className="w-5 h-5 rounded-full bg-blue-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-white text-xs font-bold">🔒</span>
-            </div>
-            <div>
-              <h4 className="font-medium text-blue-800 mb-1">Security & Privacy</h4>
-              <p className="text-sm text-blue-700">
-                {currentTier === 'tier1' 
-                  ? 'Free trial uses secure global API keys. Personal API keys are stored securely in your account and never shared. Free tier users can only access free OpenRouter models with global keys.'
-                  : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
-                }
-                {globalSerperAvailable && ' Internet search is powered by our global Serper API for all users.'}
-                {' Imagerouter features are powered by your personal API key for image generation capabilities.'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+        {/* Save Button */}
+        <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform"
           >
             <Save size={16} />
             <span>Save Settings</span>

@@ -456,6 +456,13 @@ class ImageRouterService {
     }
   };
 
+  // CRITICAL: Hardcoded free models for free tier users with global access
+  private readonly FREE_TIER_MODELS = [
+    'stabilityai/sdxl-turbo:free',
+    'black-forest-labs/FLUX-1-schnell:free', 
+    'test/test'
+  ];
+
   async getAvailableModels(): Promise<ImageModel[]> {
     const now = Date.now();
     
@@ -493,6 +500,26 @@ class ImageRouterService {
 
     this.lastFetch = now;
     return this.models;
+  }
+
+  // CRITICAL: New method to get models available for free tier users with global access
+  async getFreeTierModels(): Promise<ImageModel[]> {
+    const allModels = await this.getAvailableModels();
+    return allModels.filter(model => this.FREE_TIER_MODELS.includes(model.id));
+  }
+
+  // CRITICAL: Method to check if user can access a specific model
+  canAccessModel(modelId: string, hasPersonalKey: boolean, hasGlobalKey: boolean, isProUser: boolean): boolean {
+    if (hasPersonalKey || isProUser) {
+      // User has personal key or is Pro - can access all models
+      return true;
+    } else if (hasGlobalKey && !isProUser) {
+      // Free tier user with global key access - only the 3 hardcoded free models
+      return this.FREE_TIER_MODELS.includes(modelId);
+    } else {
+      // No access
+      return false;
+    }
   }
 
   private getDisplayName(id: string): string {

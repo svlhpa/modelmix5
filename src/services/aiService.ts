@@ -588,14 +588,14 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     }
   }
 
-  // CRITICAL: Image generation responses
+  // CRITICAL: Image generation responses with tier-based filtering
   private async getImageResponses(
     prompt: string,
     onResponseUpdate?: (responses: APIResponse[]) => void,
     signal?: AbortSignal,
     userTier?: string
   ): Promise<APIResponse[]> {
-    const { key: apiKey } = await this.getApiKey('imagerouter', userTier || 'tier1');
+    const { key: apiKey, isGlobal } = await this.getApiKey('imagerouter', userTier || 'tier1');
     
     if (!apiKey) {
       return [{
@@ -607,10 +607,28 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
       }];
     }
 
-    // Get enabled image models
-    const enabledImageModels = Object.entries(this.modelSettings.image_models)
-      .filter(([_, enabled]) => enabled)
-      .map(([modelId]) => modelId);
+    // CRITICAL: Filter enabled image models based on user tier and API key availability
+    const hasPersonalImageKey = this.settings.imagerouter && this.settings.imagerouter.trim() !== '';
+    const isProUser = userTier === 'tier2';
+    
+    let enabledImageModels: string[] = [];
+    
+    if (hasPersonalImageKey || isProUser) {
+      // User has personal key or is Pro - can access all enabled models
+      enabledImageModels = Object.entries(this.modelSettings.image_models)
+        .filter(([_, enabled]) => enabled)
+        .map(([modelId]) => modelId);
+    } else if (isGlobal && !isProUser) {
+      // Free tier user with global key access - only the 3 hardcoded free models
+      const freeModelIds = [
+        'stabilityai/sdxl-turbo:free',
+        'black-forest-labs/FLUX-1-schnell:free', 
+        'test/test'
+      ];
+      enabledImageModels = Object.entries(this.modelSettings.image_models)
+        .filter(([modelId, enabled]) => enabled && freeModelIds.includes(modelId))
+        .map(([modelId]) => modelId);
+    }
 
     if (enabledImageModels.length === 0) {
       return [{
@@ -655,6 +673,11 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
           loading: false,
           generatedImages: imageUrls
         };
+        
+        // Increment global usage if using global key
+        if (isGlobal) {
+          await globalApiService.incrementGlobalUsage('imagerouter');
+        }
         
         // Call update callback each time an image completes
         if (onResponseUpdate && !signal?.aborted) {
