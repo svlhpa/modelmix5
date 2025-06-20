@@ -71,6 +71,8 @@ class AIService {
 
   // CRITICAL: Updated API key access to prioritize Pro users for global keys
   private async getApiKey(provider: string, userTier: string): Promise<{ key: string | null; isGlobal: boolean }> {
+    console.log(`Getting API key for provider: ${provider}, userTier: ${userTier}`);
+    
     // First try user's personal API key
     const userKey = this.settings[provider as keyof APISettings];
     if (userKey && userKey.trim() !== '') {
@@ -84,9 +86,13 @@ class AIService {
     
     try {
       const globalKey = await globalApiService.getGlobalApiKey(provider, userTier as any);
+      console.log(`Global key check result for ${provider}:`, { hasKey: !!globalKey, key: globalKey ? 'present' : 'null' });
+      
       if (globalKey && globalKey !== 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN') {
         // Check if global key is within usage limits
         const canUse = await globalApiService.checkGlobalUsageLimit(provider);
+        console.log(`Global usage limit check for ${provider}:`, canUse);
+        
         if (canUse) {
           console.log(`Using global API key for ${provider} (tier: ${userTier})`);
           return { key: globalKey, isGlobal: true };
@@ -588,22 +594,29 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     }
   }
 
-  // CRITICAL: Image generation responses with proper tier-based filtering
+  // CRITICAL: Image generation responses with enhanced debugging
   private async getImageResponses(
     prompt: string,
     onResponseUpdate?: (responses: APIResponse[]) => void,
     signal?: AbortSignal,
     userTier?: string
   ): Promise<APIResponse[]> {
+    console.log('=== IMAGE GENERATION DEBUG ===');
     console.log('Starting image generation for prompt:', prompt);
     console.log('User tier:', userTier);
     
     // CRITICAL: Check for API key availability first with detailed logging
     const { key: apiKey, isGlobal } = await this.getApiKey('imagerouter', userTier || 'tier1');
-    console.log('Imagerouter API key check:', { hasKey: !!apiKey, isGlobal, userTier });
+    console.log('Imagerouter API key check:', { 
+      hasKey: !!apiKey, 
+      isGlobal, 
+      userTier,
+      keyLength: apiKey ? apiKey.length : 0,
+      keyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none'
+    });
     
     if (!apiKey) {
-      console.log('No Imagerouter API key available');
+      console.log('❌ No Imagerouter API key available');
       return [{
         provider: 'Image Generation',
         content: 'Image generation requires an Imagerouter API key. Please configure it in settings or contact support for global key access.',
@@ -612,6 +625,8 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
         isImageGeneration: true
       }];
     }
+
+    console.log('✅ API key found, proceeding with image generation');
 
     // CRITICAL: Filter enabled image models based on user tier and API key availability
     const hasPersonalImageKey = this.settings.imagerouter && this.settings.imagerouter.trim() !== '';
@@ -626,7 +641,7 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
       enabledImageModels = Object.entries(this.modelSettings.image_models)
         .filter(([_, enabled]) => enabled)
         .map(([modelId]) => modelId);
-      console.log('Pro/Personal key access - enabled models:', enabledImageModels);
+      console.log('✅ Pro/Personal key access - enabled models:', enabledImageModels);
     } else if (isGlobal && !isProUser) {
       // Free tier user with global key access - only the 3 hardcoded free models
       const freeModelIds = [
@@ -637,11 +652,14 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
       enabledImageModels = Object.entries(this.modelSettings.image_models)
         .filter(([modelId, enabled]) => enabled && freeModelIds.includes(modelId))
         .map(([modelId]) => modelId);
-      console.log('Free tier global access - enabled models:', enabledImageModels);
+      console.log('✅ Free tier global access - enabled models:', enabledImageModels);
+      console.log('Available free models:', freeModelIds);
+      console.log('User enabled models:', Object.entries(this.modelSettings.image_models).filter(([_, enabled]) => enabled).map(([modelId]) => modelId));
     }
 
     if (enabledImageModels.length === 0) {
-      console.log('No enabled image models found');
+      console.log('❌ No enabled image models found');
+      console.log('Model settings:', this.modelSettings.image_models);
       return [{
         provider: 'Image Generation',
         content: 'No image models selected. Please enable image models in settings.',
@@ -673,7 +691,7 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     // Generate images concurrently
     const promises = enabledImageModels.map(async (modelId, index) => {
       try {
-        console.log(`Generating image with model ${modelId}...`);
+        console.log(`🎨 Generating image with model ${modelId}...`);
         const imageUrls = await imageRouterService.generateImage(prompt, modelId, apiKey, signal);
         
         // Check if aborted before updating
@@ -681,7 +699,7 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
           return;
         }
         
-        console.log(`Image generated successfully for ${modelId}:`, imageUrls);
+        console.log(`✅ Image generated successfully for ${modelId}:`, imageUrls);
         
         responses[index] = {
           ...responses[index],
@@ -692,7 +710,7 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
         
         // Increment global usage if using global key
         if (isGlobal) {
-          console.log('Incrementing global usage for imagerouter');
+          console.log('📊 Incrementing global usage for imagerouter');
           await globalApiService.incrementGlobalUsage('imagerouter');
         }
         
@@ -706,7 +724,7 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
           return;
         }
         
-        console.error(`Error generating image with ${modelId}:`, error);
+        console.error(`❌ Error generating image with ${modelId}:`, error);
         
         responses[index] = {
           ...responses[index],
@@ -723,7 +741,8 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     });
 
     await Promise.all(promises);
-    console.log('All image generation promises completed');
+    console.log('🏁 All image generation promises completed');
+    console.log('=== END IMAGE GENERATION DEBUG ===');
     return responses;
   }
 

@@ -71,18 +71,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const checkGlobalKeysAvailability = async () => {
-    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'serper'];
+    console.log('🔍 Checking global keys availability...');
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'serper', 'imagerouter'];
     const availability: Record<string, boolean> = {};
     
     for (const provider of providers) {
       try {
         const globalKey = await globalApiService.getGlobalApiKey(provider, currentTier);
         availability[provider] = !!globalKey && globalKey !== 'PLACEHOLDER_SERPER_KEY_UPDATE_IN_ADMIN';
+        console.log(`Global key for ${provider}:`, { available: availability[provider], tier: currentTier });
       } catch (error) {
         availability[provider] = false;
+        console.error(`Error checking global key for ${provider}:`, error);
       }
     }
     
+    console.log('🔑 Global keys availability:', availability);
     setGlobalKeysAvailable(availability);
     setInternetSearchAvailable(availability.serper);
   };
@@ -90,12 +94,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const checkImageGenerationAvailability = async () => {
     try {
       const settings = await aiService.loadSettings();
-      setImageGenerationAvailable(!!settings.imagerouter && settings.imagerouter.trim() !== '');
+      const hasPersonalKey = !!settings.imagerouter && settings.imagerouter.trim() !== '';
+      const hasGlobalKey = globalKeysAvailable.imagerouter;
+      
+      console.log('🎨 Image generation availability check:', {
+        hasPersonalKey,
+        hasGlobalKey,
+        currentTier
+      });
+      
+      setImageGenerationAvailable(hasPersonalKey || hasGlobalKey);
     } catch (error) {
       console.error('Failed to check image generation availability:', error);
       setImageGenerationAvailable(false);
     }
   };
+
+  // Re-check image generation availability when global keys change
+  useEffect(() => {
+    checkImageGenerationAvailability();
+  }, [globalKeysAvailable.imagerouter]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -266,7 +284,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     // If it's an image request, check if image generation is available
     if (isImageRequest && !imageGenerationAvailable) {
-      alert('Image generation requires an Imagerouter API key. Please configure it in settings.');
+      alert('Image generation requires an Imagerouter API key. Please configure it in settings or contact support for global key access.');
       return;
     }
 
