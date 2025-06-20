@@ -52,30 +52,6 @@ function App() {
     image_models: {}
   });
 
-  // Add error boundary for production
-  const [hasError, setHasError] = useState(false);
-
-  useEffect(() => {
-    // Global error handler for production
-    const handleError = (error: ErrorEvent) => {
-      console.error('Global error:', error);
-      setHasError(true);
-    };
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      console.error('Unhandled promise rejection:', event.reason);
-      // Don't set error state for promise rejections to avoid breaking the app
-    };
-
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
-
-    return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-    };
-  }, []);
-
   useEffect(() => {
     if (user) {
       loadSettings();
@@ -173,23 +149,53 @@ function App() {
     refreshProfile(); // Refresh profile to get updated tier info
   };
 
-  // Error boundary fallback
-  if (hasError) {
+  if (!user) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl p-8 max-w-md w-full text-center shadow-lg">
-          <div className="text-6xl mb-4">🔧</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Something went wrong</h1>
-          <p className="text-gray-600 mb-6">
-            We're experiencing some technical difficulties. Please refresh the page to try again.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-emerald-600 text-white px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
-          >
-            Refresh Page
-          </button>
-        </div>
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onNewChat={handleNewChat}
+          onSelectSession={setCurrentSessionId}
+          onDeleteSession={deleteSession}
+          onOpenSettings={handleOpenSettings}
+          onOpenAnalytics={handleOpenAnalytics}
+          onOpenAuth={() => setShowAuth(true)}
+          onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
+          onOpenTierUpgrade={() => setShowTierUpgrade(true)}
+          onOpenDebateClub={handleOpenDebateClub}
+          isCollapsed={sidebarCollapsed}
+          isMobileOpen={mobileSidebarOpen}
+          onToggleMobile={toggleMobileSidebar}
+        />
+        
+        <ChatArea
+          messages={currentSession?.messages || []}
+          onSendMessage={sendMessage}
+          onSelectResponse={selectResponse}
+          isLoading={isLoading}
+          onToggleSidebar={toggleSidebar}
+          onToggleMobileSidebar={toggleMobileSidebar}
+          onSaveConversationTurn={saveConversationTurn}
+          modelSettings={modelSettings}
+          onTierUpgrade={() => setShowTierUpgrade(true)}
+        />
+
+        <AuthModal
+          isOpen={showAuth}
+          onClose={() => setShowAuth(false)}
+        />
+
+        <DebateClub
+          isOpen={showDebateClub}
+          onClose={() => setShowDebateClub(false)}
+        />
+
+        <TierUpgradeModal
+          isOpen={showTierUpgrade}
+          onClose={handleTierUpgradeClose}
+          currentTier={getCurrentTier()}
+        />
       </div>
     );
   }
