@@ -157,7 +157,7 @@ export const DebateClub: React.FC<DebateClubProps> = ({ isOpen, onClose }) => {
     parsed = parsed.replace(/\n/g, '<br>');
     
     // Parse quotes (> text)
-    parsed = parsed.replace(/^&gt;\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
+    parsed = parsed.replace(/^>\s+(.*$)/gm, '<blockquote class="border-l-4 border-white/30 pl-4 italic opacity-90 my-2">$1</blockquote>');
     
     return parsed;
   };
@@ -490,95 +490,97 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-xl max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fadeIn">
+      <div className="bg-white rounded-xl w-full h-full md:max-w-6xl md:w-full md:h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
+        {/* Compact Header for Mobile */}
+        <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 md:p-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
-                <Mic size={24} />
+            <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
+              <div className="p-1 md:p-2 bg-white/20 rounded-lg animate-bounceIn">
+                <Mic size={16} className="md:hidden" />
+                <Mic size={24} className="hidden md:block" />
               </div>
-              <div>
-                <h2 className="text-2xl font-bold">AI Debate Club 🏛️🎤</h2>
-                <p className="text-purple-100">Parliamentary-style AI debates with formal proceedings!</p>
+              <div className="min-w-0">
+                <h2 className="text-lg md:text-2xl font-bold truncate">AI Debate Club 🏛️</h2>
+                <p className="text-xs md:text-sm text-purple-100 hidden md:block">Parliamentary-style AI debates with formal proceedings!</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
+              className="p-1 md:p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110 flex-shrink-0"
             >
-              <X size={24} />
+              <X size={20} className="md:hidden" />
+              <X size={24} className="hidden md:block" />
             </button>
           </div>
 
-          {/* Tab Navigation */}
-          <div className="flex space-x-1 mt-4 bg-white/10 p-1 rounded-lg">
+          {/* Compact Tab Navigation for Mobile */}
+          <div className="flex space-x-1 mt-2 md:mt-4 bg-white/10 p-1 rounded-lg">
             {[
-              { id: 'lobby', label: 'Debate Lobby', icon: Users },
-              { id: 'debate', label: 'Live Debate', icon: Mic },
-              { id: 'leaderboard', label: 'Leaderboard', icon: Trophy }
+              { id: 'lobby', label: 'Lobby', icon: Users },
+              { id: 'debate', label: 'Live', icon: Mic },
+              { id: 'leaderboard', label: 'Stats', icon: Trophy }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-all duration-200 ${
+                className={`flex-1 flex items-center justify-center space-x-1 md:space-x-2 px-2 md:px-4 py-1.5 md:py-2 rounded-md transition-all duration-200 text-xs md:text-sm ${
                   activeTab === tab.id 
                     ? 'bg-white text-purple-600 shadow-sm transform scale-105' 
                     : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <tab.icon size={16} />
+                <tab.icon size={14} className="md:hidden" />
+                <tab.icon size={16} className="hidden md:block" />
                 <span className="font-medium">{tab.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Content */}
+        {/* Content - Optimized for Mobile */}
         <div className="flex-1 overflow-hidden">
           {activeTab === 'lobby' && (
-            <div className="p-6 h-full overflow-y-auto">
-              <div className="max-w-4xl mx-auto space-y-6">
-                {/* API Key Notice */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-1 bg-blue-100 rounded-lg">
-                      <Sparkles className="text-blue-600" size={16} />
+            <div className="p-3 md:p-6 h-full overflow-y-auto">
+              <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+                {/* Compact API Key Notice for Mobile */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 md:p-4">
+                  <div className="flex items-start space-x-2 md:space-x-3">
+                    <div className="p-1 bg-blue-100 rounded-lg flex-shrink-0">
+                      <Sparkles className="text-blue-600" size={14} />
                     </div>
-                    <div>
-                      <h4 className="font-medium text-blue-800 mb-1">🏛️ Parliamentary Debate Rules</h4>
-                      <p className="text-sm text-blue-700">
-                        AIs will address each other formally in Parliament style! They'll reference previous arguments, 
-                        use formal language, and engage in proper debate flow. After 6 turns, you can start a new round 
-                        to strengthen arguments!
+                    <div className="min-w-0">
+                      <h4 className="font-medium text-blue-800 mb-1 text-sm md:text-base">🏛️ Parliamentary Rules</h4>
+                      <p className="text-xs md:text-sm text-blue-700">
+                        AIs address each other formally in Parliament style! They reference previous arguments and engage in proper debate flow.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Topic Selection */}
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                    <Sparkles className="text-purple-600" size={20} />
-                    <span>Choose Your Parliamentary Motion</span>
+                {/* Compact Topic Selection for Mobile */}
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-3 md:p-6">
+                  <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4 flex items-center space-x-2">
+                    <Sparkles className="text-purple-600" size={16} />
+                    <span>Choose Your Motion</span>
                   </h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    {DEBATE_TOPICS.map((topic, index) => (
+                  {/* Mobile-optimized topic grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 mb-3 md:mb-4">
+                    {DEBATE_TOPICS.slice(0, 6).map((topic, index) => (
                       <button
                         key={index}
                         onClick={() => {
                           setSelectedTopic(topic);
                           setCustomTopic('');
                         }}
-                        className={`p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
+                        className={`p-2 md:p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 text-xs md:text-sm ${
                           selectedTopic === topic
                             ? 'border-purple-500 bg-purple-50 text-purple-900'
                             : 'border-gray-200 bg-white hover:border-purple-300'
                         }`}
                       >
-                        <span className="text-sm font-medium">{topic}</span>
+                        <span className="font-medium">{topic}</span>
                       </button>
                     ))}
                   </div>
@@ -591,37 +593,36 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                         setCustomTopic(e.target.value);
                         setSelectedTopic('');
                       }}
-                      placeholder="Or propose your own motion for debate..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Or propose your own motion..."
+                      className="w-full px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm md:text-base"
                     />
-                    <Shuffle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                    <Shuffle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   </div>
                 </div>
 
-                {/* AI Model Selection - Parliament Style */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                    <h4 className="font-semibold text-blue-900 mb-4 flex items-center space-x-2">
-                      <Brain className="text-blue-600" size={20} />
-                      <span>🏛️ Government Bench (Left Side)</span>
+                {/* Compact AI Model Selection for Mobile */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 md:p-6">
+                    <h4 className="font-semibold text-blue-900 mb-2 md:mb-4 flex items-center space-x-2 text-sm md:text-base">
+                      <Brain className="text-blue-600" size={16} />
+                      <span>🏛️ Government (Pro)</span>
                     </h4>
-                    <p className="text-xs text-blue-600 mb-3">Will argue in favor of the motion</p>
-                    <div className="space-y-3">
+                    <div className="space-y-2 md:space-y-3">
                       {AVAILABLE_MODELS.map((model) => (
                         <button
                           key={model.id}
                           onClick={() => setSelectedAI1(model.id)}
-                          className={`w-full p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
+                          className={`w-full p-2 md:p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
                             selectedAI1 === model.id
                               ? 'border-blue-500 bg-blue-100'
                               : 'border-gray-200 bg-white hover:border-blue-300'
                           }`}
                         >
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xl">{getModelIcon(model.id)}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{model.name}</div>
-                              <div className="text-xs text-gray-500">{model.personality}</div>
+                          <div className="flex items-center space-x-2 md:space-x-3">
+                            <span className="text-lg md:text-xl">{getModelIcon(model.id)}</span>
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900 text-sm md:text-base">{model.name}</div>
+                              <div className="text-xs text-gray-500 hidden md:block">{model.personality}</div>
                             </div>
                           </div>
                         </button>
@@ -629,28 +630,27 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                     </div>
                   </div>
 
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <h4 className="font-semibold text-red-900 mb-4 flex items-center space-x-2">
-                      <Brain className="text-red-600" size={20} />
-                      <span>⚖️ Opposition Bench (Right Side)</span>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 md:p-6">
+                    <h4 className="font-semibold text-red-900 mb-2 md:mb-4 flex items-center space-x-2 text-sm md:text-base">
+                      <Brain className="text-red-600" size={16} />
+                      <span>⚖️ Opposition (Con)</span>
                     </h4>
-                    <p className="text-xs text-red-600 mb-3">Will argue against the motion</p>
-                    <div className="space-y-3">
+                    <div className="space-y-2 md:space-y-3">
                       {AVAILABLE_MODELS.map((model) => (
                         <button
                           key={model.id}
                           onClick={() => setSelectedAI2(model.id)}
-                          className={`w-full p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
+                          className={`w-full p-2 md:p-3 text-left rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
                             selectedAI2 === model.id
                               ? 'border-red-500 bg-red-100'
                               : 'border-gray-200 bg-white hover:border-red-300'
                           }`}
                         >
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xl">{getModelIcon(model.id)}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{model.name}</div>
-                              <div className="text-xs text-gray-500">{model.personality}</div>
+                          <div className="flex items-center space-x-2 md:space-x-3">
+                            <span className="text-lg md:text-xl">{getModelIcon(model.id)}</span>
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900 text-sm md:text-base">{model.name}</div>
+                              <div className="text-xs text-gray-500 hidden md:block">{model.personality}</div>
                             </div>
                           </div>
                         </button>
@@ -664,23 +664,24 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                   <button
                     onClick={startDebate}
                     disabled={(!selectedTopic && !customTopic.trim()) || selectedAI1 === selectedAI2 || isGenerating}
-                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold text-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 transform shadow-lg"
+                    className="w-full md:w-auto px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold text-sm md:text-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 transform shadow-lg"
                   >
                     {isGenerating ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Convening Parliament...</span>
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Convening...</span>
                       </div>
                     ) : (
-                      <div className="flex items-center space-x-2">
-                        <Zap size={20} />
-                        <span>🏛️ Convene Parliamentary Debate!</span>
+                      <div className="flex items-center justify-center space-x-2">
+                        <Zap size={16} className="md:hidden" />
+                        <Zap size={20} className="hidden md:block" />
+                        <span>🏛️ Start Debate!</span>
                       </div>
                     )}
                   </button>
                   
                   {selectedAI1 === selectedAI2 && (
-                    <p className="text-red-600 text-sm mt-2">Please select different AI models for the debate!</p>
+                    <p className="text-red-600 text-xs md:text-sm mt-2">Please select different AI models!</p>
                   )}
                 </div>
               </div>
@@ -689,63 +690,63 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
 
           {activeTab === 'debate' && currentDebate && (
             <div className="h-full flex flex-col">
-              {/* Debate Header */}
-              <div className="bg-gray-50 border-b border-gray-200 p-4">
+              {/* Compact Debate Header for Mobile */}
+              <div className="bg-gray-50 border-b border-gray-200 p-2 md:p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">🏛️ {currentDebate.topic}</h3>
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-gray-900 text-sm md:text-base truncate">🏛️ {currentDebate.topic}</h3>
+                    <div className="flex items-center space-x-2 md:space-x-4 mt-1 text-xs md:text-sm text-gray-600">
                       <span className="flex items-center space-x-1">
-                        <Vote size={14} />
+                        <Vote size={12} />
                         <span>{currentDebate.votes.ai1 + currentDebate.votes.ai2} votes</span>
                       </span>
                       <span className="flex items-center space-x-1">
-                        <Clock size={14} />
-                        <span>Round {currentDebate.round || 1} - Turn {currentDebate.turnCount}/6</span>
+                        <Clock size={12} />
+                        <span>R{currentDebate.round || 1} - T{currentDebate.turnCount}/6</span>
                       </span>
                       {isGenerating && (
                         <span className="flex items-center space-x-1 text-purple-600">
-                          <div className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                          <span>AI debating...</span>
+                          <div className="w-2 h-2 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="hidden md:inline">AI debating...</span>
                         </span>
                       )}
                     </div>
                   </div>
                   
-                  {/* Vote Buttons */}
+                  {/* Compact Vote Buttons for Mobile */}
                   {currentDebate.status !== 'finished' && !currentDebate.userVote && (
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-1 md:space-x-2 flex-shrink-0">
                       <button
                         onClick={() => handleVote('ai1')}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                        className="flex items-center space-x-1 px-2 md:px-4 py-1 md:py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-xs md:text-sm"
                       >
-                        <ThumbsUp size={16} />
-                        <span>Government</span>
-                        <span className="bg-blue-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai1}</span>
+                        <ThumbsUp size={12} />
+                        <span className="hidden md:inline">Gov</span>
+                        <span className="bg-blue-200 px-1 md:px-2 py-0.5 md:py-1 rounded-full text-xs">{currentDebate.votes.ai1}</span>
                       </button>
                       <button
                         onClick={() => handleVote('ai2')}
-                        className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                        className="flex items-center space-x-1 px-2 md:px-4 py-1 md:py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-xs md:text-sm"
                       >
-                        <ThumbsUp size={16} />
-                        <span>Opposition</span>
-                        <span className="bg-red-200 px-2 py-1 rounded-full text-xs">{currentDebate.votes.ai2}</span>
+                        <ThumbsUp size={12} />
+                        <span className="hidden md:inline">Opp</span>
+                        <span className="bg-red-200 px-1 md:px-2 py-0.5 md:py-1 rounded-full text-xs">{currentDebate.votes.ai2}</span>
                       </button>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Messages - Parliament Layout */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Messages - Optimized for Mobile Reading */}
+              <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4">
                 {currentDebate.messages.map((message) => (
                   <div
                     key={message.id}
                     className={`flex ${getSpeakerAlignment(message.speaker)}`}
                   >
-                    <div className={`max-w-2xl ${message.speaker === 'moderator' || message.speaker === 'user' ? 'w-full max-w-4xl' : ''}`}>
+                    <div className={`max-w-full ${message.speaker === 'moderator' || message.speaker === 'user' ? 'w-full' : 'max-w-[85%] md:max-w-2xl'}`}>
                       <div
-                        className={`p-4 rounded-lg ${
+                        className={`p-2 md:p-4 rounded-lg text-sm md:text-base ${
                           message.speaker === 'moderator'
                             ? 'bg-gray-100 border border-gray-200 text-center'
                             : message.speaker === 'user'
@@ -754,13 +755,13 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                         }`}
                       >
                         {message.speaker !== 'moderator' && (
-                          <div className="flex items-center space-x-2 mb-2 text-white/80">
-                            <span className="text-lg">{getModelIcon(message.speaker === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model)}</span>
-                            <span className="font-medium text-sm">{getSpeakerLabel(message.speaker, currentDebate)}</span>
+                          <div className="flex items-center space-x-1 md:space-x-2 mb-1 md:mb-2 text-white/80">
+                            <span className="text-sm md:text-lg">{getModelIcon(message.speaker === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model)}</span>
+                            <span className="font-medium text-xs md:text-sm truncate">{getSpeakerLabel(message.speaker, currentDebate)}</span>
                           </div>
                         )}
                         
-                        {/* CRITICAL: Enhanced message content with markdown parsing */}
+                        {/* Enhanced message content with markdown parsing */}
                         <div 
                           className="leading-relaxed"
                           dangerouslySetInnerHTML={{ 
@@ -768,14 +769,14 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                           }}
                         />
                         
-                        <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center justify-between mt-2 md:mt-3">
                           <span className={`text-xs ${message.speaker === 'moderator' ? 'text-gray-500' : 'text-white/70'}`}>
                             {message.timestamp.toLocaleTimeString()}
                           </span>
                           
                           {message.speaker !== 'moderator' && message.speaker !== 'user' && (
                             <div className="flex items-center space-x-1">
-                              {REACTION_EMOJIS.map((emoji) => (
+                              {REACTION_EMOJIS.slice(0, 4).map((emoji) => (
                                 <button
                                   key={emoji}
                                   onClick={() => handleReaction(message.id, emoji)}
@@ -783,7 +784,7 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                                     message.userReaction === emoji ? 'bg-white/20' : ''
                                   }`}
                                 >
-                                  <span className="text-sm">{emoji}</span>
+                                  <span className="text-xs md:text-sm">{emoji}</span>
                                   {message.reactions?.[emoji] && (
                                     <span className="text-xs ml-1">{message.reactions[emoji]}</span>
                                   )}
@@ -799,15 +800,15 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                 
                 {isGenerating && (
                   <div className="flex justify-center">
-                    <div className="bg-gray-100 p-4 rounded-lg">
-                      <div className="flex items-center space-x-3">
+                    <div className="bg-gray-100 p-2 md:p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 md:space-x-3">
                         <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
-                        <span className="text-sm text-gray-600">
-                          The Honorable {AVAILABLE_MODELS.find(m => m.id === (currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model))?.name} is preparing their argument...
+                        <span className="text-xs md:text-sm text-gray-600">
+                          {AVAILABLE_MODELS.find(m => m.id === (currentDebate.currentTurn === 'ai1' ? currentDebate.ai1Model : currentDebate.ai2Model))?.name} is preparing...
                         </span>
                       </div>
                     </div>
@@ -820,10 +821,11 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                     <button
                       onClick={startNewRound}
                       disabled={isGenerating}
-                      className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition-all duration-200 hover:scale-105 transform shadow-lg"
+                      className="flex items-center space-x-2 px-4 md:px-6 py-2 md:py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition-all duration-200 hover:scale-105 transform shadow-lg text-sm md:text-base"
                     >
-                      <RotateCcw size={18} />
-                      <span>🏛️ Call for Another Round!</span>
+                      <RotateCcw size={14} className="md:hidden" />
+                      <RotateCcw size={18} className="hidden md:block" />
+                      <span>🏛️ New Round!</span>
                     </button>
                   </div>
                 )}
@@ -831,29 +833,30 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* User Input - Gallery Intervention */}
+              {/* Compact User Input for Mobile */}
               {currentDebate.status !== 'finished' && (
-                <div className="border-t border-gray-200 p-4">
-                  <div className="flex space-x-3">
+                <div className="border-t border-gray-200 p-2 md:p-4">
+                  <div className="flex space-x-2 md:space-x-3">
                     <input
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleUserInput()}
-                      placeholder="🎤 Interrupt from the gallery with your point..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="🎤 Interrupt from the gallery..."
+                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm md:text-base"
                       disabled={isGenerating}
                     />
                     <button
                       onClick={handleUserInput}
                       disabled={!userInput.trim() || isGenerating}
-                      className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="px-3 md:px-6 py-1.5 md:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      <Send size={18} />
+                      <Send size={14} className="md:hidden" />
+                      <Send size={18} className="hidden md:block" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    💡 Your input will appear in the center as a "Point of Order from the Gallery"
+                  <p className="text-xs text-gray-500 mt-1 md:mt-2 text-center">
+                    💡 Your input appears as a "Point of Order from the Gallery"
                   </p>
                 </div>
               )}
@@ -861,97 +864,84 @@ This is ${responseType === 'opening' ? 'your opening statement' : responseType =
           )}
 
           {activeTab === 'leaderboard' && (
-            <div className="p-6 h-full overflow-y-auto">
-              <div className="max-w-4xl mx-auto space-y-6">
-                {/* Stats Overview */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                    <div className="flex items-center space-x-3">
-                      <Trophy className="text-blue-600" size={24} />
-                      <div>
-                        <p className="text-sm text-blue-600 font-medium">Total Debates</p>
-                        <p className="text-2xl font-bold text-blue-900">{stats.totalDebates}</p>
+            <div className="p-3 md:p-6 h-full overflow-y-auto">
+              <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+                {/* Compact Stats Overview for Mobile */}
+                <div className="grid grid-cols-3 gap-2 md:gap-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-2 md:p-4 rounded-lg border border-blue-200">
+                    <div className="flex items-center space-x-1 md:space-x-3">
+                      <Trophy className="text-blue-600" size={16} className="md:hidden" />
+                      <Trophy className="text-blue-600" size={24} className="hidden md:block" />
+                      <div className="min-w-0">
+                        <p className="text-xs md:text-sm text-blue-600 font-medium">Debates</p>
+                        <p className="text-lg md:text-2xl font-bold text-blue-900">{stats.totalDebates}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-                    <div className="flex items-center space-x-3">
-                      <Users className="text-green-600" size={24} />
-                      <div>
-                        <p className="text-sm text-green-600 font-medium">User Participation</p>
-                        <p className="text-2xl font-bold text-green-900">{stats.userParticipation}</p>
+                  <div className="bg-gradient-to-r from-green-50 to-green-100 p-2 md:p-4 rounded-lg border border-green-200">
+                    <div className="flex items-center space-x-1 md:space-x-3">
+                      <Users className="text-green-600" size={16} className="md:hidden" />
+                      <Users className="text-green-600" size={24} className="hidden md:block" />
+                      <div className="min-w-0">
+                        <p className="text-xs md:text-sm text-green-600 font-medium">Users</p>
+                        <p className="text-lg md:text-2xl font-bold text-green-900">{stats.userParticipation}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-                    <div className="flex items-center space-x-3">
-                      <TrendingUp className="text-purple-600" size={24} />
-                      <div>
-                        <p className="text-sm text-purple-600 font-medium">Top Topics</p>
-                        <p className="text-2xl font-bold text-purple-900">{stats.topTopics.length}</p>
+                  <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-2 md:p-4 rounded-lg border border-purple-200">
+                    <div className="flex items-center space-x-1 md:space-x-3">
+                      <TrendingUp className="text-purple-600" size={16} className="md:hidden" />
+                      <TrendingUp className="text-purple-600" size={24} className="hidden md:block" />
+                      <div className="min-w-0">
+                        <p className="text-xs md:text-sm text-purple-600 font-medium">Topics</p>
+                        <p className="text-lg md:text-2xl font-bold text-purple-900">{stats.topTopics.length}</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Model Leaderboard */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                    <Crown className="text-yellow-500" size={20} />
-                    <span>🏛️ Parliamentary Champions</span>
+                {/* Compact Model Leaderboard for Mobile */}
+                <div className="bg-white border border-gray-200 rounded-lg p-3 md:p-6">
+                  <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4 flex items-center space-x-2">
+                    <Crown className="text-yellow-500" size={16} />
+                    <span>🏛️ Champions</span>
                   </h3>
                   
                   {Object.keys(stats.modelWins).length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="space-y-2 md:space-y-3">
                       {Object.entries(stats.modelWins)
                         .sort(([,a], [,b]) => b - a)
                         .map(([model, wins], index) => (
-                          <div key={model} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          <div key={model} className="flex items-center justify-between p-2 md:p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
+                              <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs md:text-sm ${
                                 index === 0 ? 'bg-yellow-100 text-yellow-600' :
                                 index === 1 ? 'bg-gray-100 text-gray-600' :
                                 'bg-orange-100 text-orange-600'
                               }`}>
                                 {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
                               </div>
-                              <span className="text-xl">{getModelIcon(model)}</span>
-                              <span className="font-medium">{AVAILABLE_MODELS.find(m => m.id === model)?.name || model}</span>
+                              <span className="text-lg md:text-xl">{getModelIcon(model)}</span>
+                              <span className="font-medium text-sm md:text-base truncate">{AVAILABLE_MODELS.find(m => m.id === model)?.name || model}</span>
                             </div>
-                            <div className="text-right">
-                              <div className="font-bold text-lg">{wins}</div>
-                              <div className="text-xs text-gray-500">parliamentary victories</div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-bold text-sm md:text-lg">{wins}</div>
+                              <div className="text-xs text-gray-500">wins</div>
                             </div>
                           </div>
                         ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Trophy size={48} className="mx-auto mb-4 opacity-50" />
-                      <p>No parliamentary debates completed yet!</p>
-                      <p className="text-sm">Convene a debate to see the champions.</p>
+                    <div className="text-center py-6 md:py-8 text-gray-500">
+                      <Trophy size={32} className="mx-auto mb-4 opacity-50 md:hidden" />
+                      <Trophy size={48} className="mx-auto mb-4 opacity-50 hidden md:block" />
+                      <p className="text-sm md:text-base">No debates completed yet!</p>
+                      <p className="text-xs md:text-sm">Start a debate to see champions.</p>
                     </div>
                   )}
                 </div>
-
-                {/* Popular Topics */}
-                {stats.topTopics.length > 0 && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                      <Fire className="text-red-500" size={20} />
-                      <span>🔥 Trending Parliamentary Motions</span>
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {stats.topTopics.map((topic, index) => (
-                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                          <span className="text-sm font-medium text-gray-900">{topic}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
