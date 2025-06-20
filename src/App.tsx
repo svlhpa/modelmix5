@@ -41,8 +41,7 @@ function App() {
     openrouter: '',
     gemini: '',
     deepseek: '',
-    serper: '',
-    imagerouter: ''
+    serper: ''
   });
   const [modelSettings, setModelSettings] = useState<ModelSettings>({
     openai: true,
