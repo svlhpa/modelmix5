@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe, Palette } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
 import { Logo } from './Logo';
@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { tierService } from '../services/tierService';
 import { aiService } from '../services/aiService';
 import { globalApiService } from '../services/globalApiService';
+import { imageRouterService } from '../services/imageRouterService';
 
 interface ChatAreaProps {
   messages: any[];
@@ -49,6 +50,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [usageCheck, setUsageCheck] = useState<{ canUse: boolean; usage: number; limit: number }>({ canUse: true, usage: 0, limit: 50 });
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
   const [internetSearchAvailable, setInternetSearchAvailable] = useState(false);
+  const [imageGenerationAvailable, setImageGenerationAvailable] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +61,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     if (user) {
       checkUsageLimit();
       checkGlobalKeysAvailability();
+      checkImageGenerationAvailability();
     }
   }, [user, messages.length]);
 
@@ -82,6 +85,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     
     setGlobalKeysAvailable(availability);
     setInternetSearchAvailable(availability.serper);
+  };
+
+  const checkImageGenerationAvailability = async () => {
+    try {
+      const settings = await aiService.loadSettings();
+      setImageGenerationAvailable(!!settings.imagerouter && settings.imagerouter.trim() !== '');
+    } catch (error) {
+      console.error('Failed to check image generation availability:', error);
+      setImageGenerationAvailable(false);
+    }
   };
 
   const scrollToBottom = () => {
@@ -136,6 +149,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       .filter(Boolean).length;
     const openRouterCount = Object.values(modelSettings.openrouter_models).filter(Boolean).length;
     return traditionalCount + openRouterCount;
+  };
+
+  const getEnabledImageModelsCount = () => {
+    return Object.values(modelSettings.image_models).filter(Boolean).length;
   };
 
   const getTierLimits = () => {
@@ -244,18 +261,36 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       return;
     }
 
-    const enabledCount = getEnabledModelsCount();
-    const maxAllowed = getMaxAllowedModels();
+    // Check if this is an image generation request
+    const isImageRequest = imageRouterService.isImageGenerationRequest(input);
     
-    if (enabledCount === 0) {
-      alert('Please enable at least one AI model in settings before sending a message.');
+    // If it's an image request, check if image generation is available
+    if (isImageRequest && !imageGenerationAvailable) {
+      alert('Image generation requires an Imagerouter API key. Please configure it in settings.');
       return;
     }
 
-    // Pro users can use unlimited models
-    if (currentTier !== 'tier2' && enabledCount > maxAllowed) {
-      alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
+    // If it's an image request, check if any image models are enabled
+    if (isImageRequest && getEnabledImageModelsCount() === 0) {
+      alert('Please enable at least one image model in settings before generating images.');
       return;
+    }
+
+    // For text generation, check enabled models
+    if (!isImageRequest) {
+      const enabledCount = getEnabledModelsCount();
+      const maxAllowed = getMaxAllowedModels();
+      
+      if (enabledCount === 0) {
+        alert('Please enable at least one AI model in settings before sending a message.');
+        return;
+      }
+
+      // Pro users can use unlimited models
+      if (currentTier !== 'tier2' && enabledCount > maxAllowed) {
+        alert(`Your ${getTierLimits().name} plan allows up to ${maxAllowed} models per comparison. Please disable some models or upgrade your plan.`);
+        return;
+      }
     }
 
     const message = input.trim();
@@ -424,6 +459,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const showWelcome = messages.length === 0 && currentResponses.length === 0;
   const canSendMessage = !isLoading && !waitingForSelection && !isGenerating && usageCheck.canUse;
   const enabledCount = getEnabledModelsCount();
+  const enabledImageCount = getEnabledImageModelsCount();
   const maxAllowed = getMaxAllowedModels();
   const tierLimits = getTierLimits();
   const isProUser = currentTier === 'tier2';
@@ -492,6 +528,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </span>
             </div>
           )}
+          {imageGenerationAvailable && enabledImageCount > 0 && (
+            <div className="flex items-center space-x-1 flex-shrink-0">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span className="text-xs">
+                {enabledImageCount} image{enabledImageCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
           {messages.length > 0 && (
             <div className="hidden sm:flex items-center space-x-2">
               <MessageSquare size={16} />
@@ -516,6 +560,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     🌐 Internet search is available! Toggle it on to get real-time information.
                   </span>
                 )}
+                {imageGenerationAvailable && (
+                  <span className="block mt-2 text-purple-600 font-medium">
+                    🎨 Image generation is available! Ask the AI to "generate an image of..." or "draw...".
+                  </span>
+                )}
               </p>
               
               {!usageCheck.canUse ? (
@@ -537,7 +586,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <span>Upgrade to Pro</span>
                   </button>
                 </div>
-              ) : enabledCount === 0 ? (
+              ) : enabledCount === 0 && enabledImageCount === 0 ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-center space-x-2 text-amber-700">
                     <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
@@ -580,8 +629,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       <span className="text-white text-xs font-bold">✓</span>
                     </div>
                     <span className="font-medium">
-                      {enabledCount} AI model{enabledCount !== 1 ? 's' : ''} ready for comparison!
-                      {isProUser && enabledCount > 3 && (
+                      {enabledCount > 0 && `${enabledCount} AI model${enabledCount !== 1 ? 's' : ''}`}
+                      {enabledCount > 0 && enabledImageCount > 0 && ' and '}
+                      {enabledImageCount > 0 && `${enabledImageCount} image model${enabledImageCount !== 1 ? 's' : ''}`}
+                      {' ready for comparison!'}
+                      {isProUser && (enabledCount > 3 || enabledImageCount > 3) && (
                         <span className="ml-2 inline-flex items-center space-x-1 text-yellow-700">
                           <Crown size={14} />
                           <span className="text-xs">Pro Power</span>
@@ -599,6 +651,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     {internetSearchAvailable && (
                       <span className="block mt-1 text-blue-600">
                         🌐 Internet search available for real-time information!
+                      </span>
+                    )}
+                    {imageGenerationAvailable && (
+                      <span className="block mt-1 text-purple-600">
+                        🎨 Image generation available! Just ask the AI to create images.
                       </span>
                     )}
                   </p>
@@ -674,15 +731,27 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         </div>
                         <span className="font-medium min-w-0">
                           <span className="hidden sm:inline">
-                            AI models are mixing responses{currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)
+                            {currentResponses[0]?.isImageGeneration 
+                              ? `AI models are generating images${currentUseInternetSearch && ' with internet search'}... (images appear as they complete)` 
+                              : `AI models are mixing responses${currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)`}
                           </span>
                           <span className="sm:hidden">
-                            AI models mixing{currentUseInternetSearch && ' + web'}...
+                            {currentResponses[0]?.isImageGeneration 
+                              ? `Generating images${currentUseInternetSearch && ' + web'}...` 
+                              : `AI models mixing${currentUseInternetSearch && ' + web'}...`}
                           </span>
-                          {isProUser && enabledCount > 3 && (
-                            <span className="ml-2 text-yellow-600">
-                              <Crown size={14} className="inline" /> <span className="hidden sm:inline">Pro Power</span>
-                            </span>
+                          {isProUser && (
+                            currentResponses[0]?.isImageGeneration 
+                              ? enabledImageCount > 3 && (
+                                <span className="ml-2 text-yellow-600">
+                                  <Crown size={14} className="inline" /> <span className="hidden sm:inline">Pro Power</span>
+                                </span>
+                              )
+                              : enabledCount > 3 && (
+                                <span className="ml-2 text-yellow-600">
+                                  <Crown size={14} className="inline" /> <span className="hidden sm:inline">Pro Power</span>
+                                </span>
+                              )
                           )}
                         </span>
                       </div>
@@ -702,7 +771,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-center space-x-2 text-amber-700">
                       <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse flex-shrink-0"></div>
-                      <span className="font-medium">Select the best response to continue the conversation</span>
+                      <span className="font-medium">
+                        {currentResponses[0]?.isImageGeneration 
+                          ? "Select the best image to continue the conversation" 
+                          : "Select the best response to continue the conversation"}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -713,7 +786,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2 text-red-700 min-w-0">
                         <div className="w-3 h-3 bg-red-400 rounded-full flex-shrink-0"></div>
-                        <span className="font-medium">All AI models failed to generate responses</span>
+                        <span className="font-medium">
+                          {currentResponses[0]?.isImageGeneration 
+                            ? "All image models failed to generate images" 
+                            : "All AI models failed to generate responses"}
+                        </span>
                       </div>
                       <div className="flex items-center space-x-2 flex-shrink-0">
                         <button
@@ -805,30 +882,36 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 placeholder={
                   !usageCheck.canUse
                     ? "Monthly limit reached - upgrade to continue..."
-                    : enabledCount === 0
+                    : enabledCount === 0 && enabledImageCount === 0
                       ? "Please enable AI models in settings first..."
                       : !isProUser && enabledCount > maxAllowed
                         ? `Too many models selected (max ${maxAllowed} for ${tierLimits.name} plan)...`
                         : isGenerating
-                          ? "AI models are mixing responses..."
+                          ? currentResponses[0]?.isImageGeneration 
+                            ? "AI models are generating images..." 
+                            : "AI models are mixing responses..."
                           : waitingForSelection 
-                            ? "Select a response above to continue..." 
+                            ? currentResponses[0]?.isImageGeneration 
+                              ? "Select an image above to continue..." 
+                              : "Select a response above to continue..." 
                             : messages.length === 0
                               ? hasAnyGlobalKeyAccess && !isProUser
                                 ? `Ask anything - free trial with ${enabledCount} AI models active!`
                                 : isProUser
                                   ? `Ask anything - Pro plan with ${enabledCount} AI models ready!`
-                                  : `Ask anything or upload images to mix ${enabledCount} AI responses...`
+                                  : imageGenerationAvailable
+                                    ? `Ask anything, upload images, or try "Generate an image of..."` 
+                                    : `Ask anything or upload images to mix ${enabledCount} AI responses...`
                               : "Continue the conversation..."
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
-                disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
+                disabled={!canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-100 transition-colors"
-                disabled={!canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
+                disabled={!canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
               >
                 <Paperclip size={18} className="text-gray-400" />
               </button>
@@ -859,7 +942,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             ) : (
               <button
                 type="submit"
-                disabled={!input.trim() || !canSendMessage || enabledCount === 0 || (!isProUser && enabledCount > maxAllowed)}
+                disabled={!input.trim() || !canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
                 className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 flex-shrink-0"
               >
                 <Send size={18} />
@@ -885,7 +968,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          {enabledCount === 0 && usageCheck.canUse && (
+          {enabledCount === 0 && enabledImageCount === 0 && usageCheck.canUse && (
             <p className="text-xs text-red-600 mt-2 text-center">
               ⚠️ No AI models enabled - please configure models in settings
             </p>
@@ -906,9 +989,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
           
-          {waitingForSelection && !isGenerating && enabledCount > 0 && !allResponsesHaveErrors && usageCheck.canUse && (
+          {waitingForSelection && !isGenerating && ((enabledCount > 0 && !currentResponses[0]?.isImageGeneration) || (enabledImageCount > 0 && currentResponses[0]?.isImageGeneration)) && !allResponsesHaveErrors && usageCheck.canUse && (
             <p className="text-xs text-amber-600 mt-2 text-center">
-              💡 Click on your preferred response above to add it to the conversation context
+              💡 Click on your preferred {currentResponses[0]?.isImageGeneration ? 'image' : 'response'} above to add it to the conversation context
             </p>
           )}
 
@@ -918,18 +1001,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </p>
           )}
           
-          {isGenerating && enabledCount > 0 && usageCheck.canUse && (
+          {isGenerating && ((enabledCount > 0 && !currentResponses[0]?.isImageGeneration) || (enabledImageCount > 0 && currentResponses[0]?.isImageGeneration)) && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
-              🤖 Mixing responses from {enabledCount} AI model{enabledCount !== 1 ? 's' : ''}{currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation
-              {isProUser && enabledCount > 3 && (
-                <span className="ml-2 text-yellow-600">
-                  <Crown size={12} className="inline" /> Pro Power
-                </span>
+              {currentResponses[0]?.isImageGeneration 
+                ? `🎨 Generating images from ${enabledImageCount} model${enabledImageCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation` 
+                : `🤖 Mixing responses from ${enabledCount} AI model${enabledCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation`}
+              {isProUser && (
+                currentResponses[0]?.isImageGeneration 
+                  ? enabledImageCount > 3 && (
+                    <span className="ml-2 text-yellow-600">
+                      <Crown size={12} className="inline" /> Pro Power
+                    </span>
+                  )
+                  : enabledCount > 3 && (
+                    <span className="ml-2 text-yellow-600">
+                      <Crown size={12} className="inline" /> Pro Power
+                    </span>
+                  )
               )}
             </p>
           )}
           
-          {enabledCount > 0 && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
+          {((enabledCount > 0 && !currentResponses[0]?.isImageGeneration) || (enabledImageCount > 0 && currentResponses[0]?.isImageGeneration) || (enabledCount > 0 && enabledImageCount > 0 && currentResponses.length === 0)) && (isProUser || enabledCount <= maxAllowed) && !isGenerating && !waitingForSelection && usageCheck.canUse && (
             <p className="text-xs text-gray-500 mt-2 text-center">
               {hasAnyGlobalKeyAccess && !isProUser 
                 ? `🎉 Free trial active • ${usage}/${limit} conversations used this month • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
@@ -937,6 +1030,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   ? `👑 Pro plan active • Unlimited conversations • Upload images for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''}`
                   : `📎 Upload images or paste screenshots for visual context${internetSearchAvailable ? ' • Toggle internet search for real-time info' : ''} • ${usage}/${limit} conversations used this month`
               }
+              {imageGenerationAvailable && (
+                <span className="block mt-1">
+                  🎨 Try asking "Generate an image of..." or "Draw..." to create AI images
+                </span>
+              )}
             </p>
           )}
         </form>

@@ -2,6 +2,7 @@ import { APIResponse, APISettings, ModelSettings } from '../types';
 import { databaseService } from './databaseService';
 import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
+import { imageRouterService, ImageModel } from './imageRouterService';
 
 class AIService {
   private settings: APISettings = {
@@ -17,10 +18,12 @@ class AIService {
     openai: false,
     gemini: false,
     deepseek: false,
-    openrouter_models: {}
+    openrouter_models: {},
+    image_models: {}
   };
 
   private openRouterModels: OpenRouterModel[] = [];
+  private imageModels: ImageModel[] = [];
 
   async updateSettings(settings: APISettings) {
     this.settings = { ...settings };
@@ -57,6 +60,13 @@ class AIService {
       this.openRouterModels = await openRouterService.getAvailableModels();
     }
     return this.openRouterModels;
+  }
+
+  async loadImageModels(): Promise<ImageModel[]> {
+    if (this.imageModels.length === 0) {
+      this.imageModels = await imageRouterService.getAvailableModels();
+    }
+    return this.imageModels;
   }
 
   // CRITICAL: Updated API key access to prioritize Pro users for global keys
@@ -558,8 +568,124 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
     return basePrompt + specificInstructions;
   }
 
-  // CRITICAL: Completely rebuilt response generation system
+  // CRITICAL: New method to handle both text and image generation
   async getResponses(
+    currentMessage: string, 
+    conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [], 
+    images: string[] = [],
+    onResponseUpdate?: (responses: APIResponse[]) => void,
+    signal?: AbortSignal,
+    userTier?: string,
+    useInternetSearch: boolean = false
+  ): Promise<APIResponse[]> {
+    // CRITICAL: Detect if this is an image generation request
+    const isImageRequest = imageRouterService.isImageGenerationRequest(currentMessage);
+    
+    if (isImageRequest) {
+      return this.getImageResponses(currentMessage, onResponseUpdate, signal, userTier);
+    } else {
+      return this.getTextResponses(currentMessage, conversationHistory, images, onResponseUpdate, signal, userTier, useInternetSearch);
+    }
+  }
+
+  // CRITICAL: Image generation responses
+  private async getImageResponses(
+    prompt: string,
+    onResponseUpdate?: (responses: APIResponse[]) => void,
+    signal?: AbortSignal,
+    userTier?: string
+  ): Promise<APIResponse[]> {
+    const { key: apiKey } = await this.getApiKey('imagerouter', userTier || 'tier1');
+    
+    if (!apiKey) {
+      return [{
+        provider: 'Image Generation',
+        content: 'Imagerouter API key not configured. Please add your API key in settings to generate images.',
+        loading: false,
+        error: 'API key not configured',
+        isImageGeneration: true
+      }];
+    }
+
+    // Get enabled image models
+    const enabledImageModels = Object.entries(this.modelSettings.image_models)
+      .filter(([_, enabled]) => enabled)
+      .map(([modelId]) => modelId);
+
+    if (enabledImageModels.length === 0) {
+      return [{
+        provider: 'Image Generation',
+        content: 'No image models selected. Please enable image models in settings.',
+        loading: false,
+        error: 'No models enabled',
+        isImageGeneration: true
+      }];
+    }
+
+    // Initialize responses with loading state
+    const responses: APIResponse[] = enabledImageModels.map(modelId => {
+      const model = this.imageModels.find(m => m.id === modelId);
+      return {
+        provider: model?.name || modelId,
+        content: '',
+        loading: true,
+        isImageGeneration: true,
+        generatedImages: []
+      };
+    });
+
+    // Call the update callback immediately with loading states
+    if (onResponseUpdate) {
+      onResponseUpdate([...responses]);
+    }
+
+    // Generate images concurrently
+    const promises = enabledImageModels.map(async (modelId, index) => {
+      try {
+        const imageUrls = await imageRouterService.generateImage(prompt, modelId, apiKey, signal);
+        
+        // Check if aborted before updating
+        if (signal?.aborted) {
+          return;
+        }
+        
+        responses[index] = {
+          ...responses[index],
+          content: `Generated image for: "${prompt}"`,
+          loading: false,
+          generatedImages: imageUrls
+        };
+        
+        // Call update callback each time an image completes
+        if (onResponseUpdate && !signal?.aborted) {
+          onResponseUpdate([...responses]);
+        }
+      } catch (error) {
+        // Don't update if aborted
+        if (signal?.aborted) {
+          return;
+        }
+        
+        responses[index] = {
+          ...responses[index],
+          content: '',
+          loading: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+        
+        // Call update callback for errors too
+        if (onResponseUpdate && !signal?.aborted) {
+          onResponseUpdate([...responses]);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+    return responses;
+  }
+
+  // CRITICAL: Text generation responses (existing logic)
+  private async getTextResponses(
     currentMessage: string, 
     conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [], 
     images: string[] = [],
@@ -664,7 +790,8 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
       provider: provider.name,
       content: '',
       loading: true,
-      error: undefined
+      error: undefined,
+      isImageGeneration: false
     }));
 
     // Call the update callback immediately with loading states

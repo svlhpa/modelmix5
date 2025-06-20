@@ -5,6 +5,8 @@ export interface Message {
   timestamp: Date;
   provider?: string;
   images?: string[]; // Base64 encoded images
+  generatedImages?: string[]; // URLs to generated images
+  isImageGeneration?: boolean; // Flag to indicate this is an image generation response
 }
 
 export interface APIResponse {
@@ -13,6 +15,8 @@ export interface APIResponse {
   loading: boolean;
   error?: string;
   selected?: boolean;
+  generatedImages?: string[]; // URLs to generated images
+  isImageGeneration?: boolean; // Flag to indicate this is an image generation response
 }
 
 export interface APISettings {
@@ -28,11 +32,16 @@ export interface OpenRouterModelSettings {
   [modelId: string]: boolean;
 }
 
+export interface ImageModelSettings {
+  [modelId: string]: boolean;
+}
+
 export interface ModelSettings {
   openai: boolean;
   gemini: boolean;
   deepseek: boolean;
   openrouter_models: OpenRouterModelSettings;
+  image_models: ImageModelSettings;
 }
 
 export interface ChatSession {
@@ -94,4 +103,45 @@ export interface UserProfile {
   last_reset_date: string;
   created_at: string;
   updated_at: string;
+}
+
+// Image generation model interface
+export interface ImageModel {
+  id: string;
+  name: string;
+  description?: string;
+  pricing: {
+    type: string;
+    value?: number;
+    range?: {
+      min: number;
+      average: number;
+      max: number;
+    };
+  };
+  arena_score?: number;
+  release_date: string;
+  examples?: Array<{
+    image?: string;
+    video?: string;
+  }>;
+  output: string[];
+  supported_params: {
+    quality: boolean;
+    edit: boolean;
+    mask: boolean;
+  };
+  providers: Array<{
+    id: string;
+    model_name: string;
+    pricing: {
+      type: string;
+      value?: number;
+      range?: {
+        min: number;
+        average: number;
+        max: number;
+      };
+    };
+  }>;
 }

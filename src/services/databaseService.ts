@@ -91,7 +91,8 @@ class DatabaseService {
       openai: false,
       gemini: false,
       deepseek: false,
-      openrouter_models: {}
+      openrouter_models: {},
+      image_models: {}
     };
 
     if (!user) return defaultSettings;
@@ -116,7 +117,8 @@ class DatabaseService {
         openai: parsedSettings.openai ?? false,
         gemini: parsedSettings.gemini ?? false,
         deepseek: parsedSettings.deepseek ?? false,
-        openrouter_models: parsedSettings.openrouter_models ?? {}
+        openrouter_models: parsedSettings.openrouter_models ?? {},
+        image_models: parsedSettings.image_models ?? {}
       };
     } catch {
       // Return default settings if JSON parsing fails
@@ -189,12 +191,18 @@ class DatabaseService {
 
       // Add selected AI response if available
       if (turn.selected_response && turn.selected_provider) {
+        // Check if this is an image generation response
+        const isImageGeneration = turn.selected_response.includes('Generated image for:');
+        
         messages.push({
           id: `ai-${turn.id}`,
           content: turn.selected_response,
           role: 'assistant',
           timestamp: new Date(turn.created_at),
           provider: turn.selected_provider,
+          isImageGeneration,
+          // Note: Generated image URLs would need to be stored separately in the database
+          // For now, we'll handle this in the UI layer
         });
       }
     });

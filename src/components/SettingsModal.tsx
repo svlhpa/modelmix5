@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe, Image } from 'lucide-react';
+import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe, Image, Palette } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
+import { imageRouterService, ImageModel } from '../services/imageRouterService';
 import { globalApiService } from '../services/globalApiService';
 import { useAuth } from '../hooks/useAuth';
 
@@ -31,11 +32,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     serper: false,
     imagerouter: false
   });
-  const [activeTab, setActiveTab] = useState<'api' | 'models'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'models' | 'images'>('api');
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
+  const [imageModels, setImageModels] = useState<ImageModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [imageSearchTerm, setImageSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedImageCategory, setSelectedImageCategory] = useState<string>('All');
   const [globalKeysAvailable, setGlobalKeysAvailable] = useState<Record<string, boolean>>({});
   const [globalSerperAvailable, setGlobalSerperAvailable] = useState(false);
 
@@ -61,6 +66,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen && activeTab === 'models') {
       loadOpenRouterModels();
       checkGlobalKeysAvailability();
+    }
+    if (isOpen && activeTab === 'images') {
+      loadImageModels();
     }
   }, [isOpen, activeTab]);
 
@@ -93,6 +101,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const loadImageModels = async () => {
+    setLoadingImages(true);
+    try {
+      const models = await imageRouterService.getAvailableModels();
+      setImageModels(models);
+    } catch (error) {
+      console.error('Failed to load image models:', error);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
   const handleSave = () => {
     onSave(settings, modelSettings);
     onClose();
@@ -112,6 +132,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       openrouter_models: {
         ...prev.openrouter_models,
         [modelId]: !prev.openrouter_models[modelId]
+      }
+    }));
+  };
+
+  const toggleImageModel = (modelId: string) => {
+    setModelSettings(prev => ({
+      ...prev,
+      image_models: {
+        ...prev.image_models,
+        [modelId]: !prev.image_models[modelId]
       }
     }));
   };
@@ -183,11 +213,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const modelCategories = openRouterService.getModelCategories(filteredModels);
   const categories = ['All', ...Object.keys(modelCategories)];
 
+  // Filter and categorize Image models
+  const filteredImageModels = imageModels.filter(model => {
+    const matchesSearch = model.name.toLowerCase().includes(imageSearchTerm.toLowerCase()) ||
+                         model.id.toLowerCase().includes(imageSearchTerm.toLowerCase());
+    return matchesSearch;
+  });
+
+  const imageModelCategories = imageRouterService.getModelCategories(filteredImageModels);
+  const imageCategories = ['All', ...Object.keys(imageModelCategories)];
+
   const getDisplayedModels = () => {
     if (selectedCategory === 'All') {
       return filteredModels;
     }
     return modelCategories[selectedCategory] || [];
+  };
+
+  const getDisplayedImageModels = () => {
+    if (selectedImageCategory === 'All') {
+      return filteredImageModels;
+    }
+    return imageModelCategories[selectedImageCategory] || [];
   };
 
   const getEnabledTraditionalCount = () => {
@@ -196,6 +243,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const getEnabledOpenRouterCount = () => {
     return Object.values(modelSettings.openrouter_models).filter(Boolean).length;
+  };
+
+  const getEnabledImageCount = () => {
+    return Object.values(modelSettings.image_models).filter(Boolean).length;
   };
 
   const getTotalEnabledCount = () => {
@@ -278,7 +329,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }`}
           >
             <Settings size={16} />
-            <span>Model Selection ({getTotalEnabledCount()} selected)</span>
+            <span>Text Models ({getTotalEnabledCount()} selected)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('images')}
+            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+              activeTab === 'images' 
+                ? 'bg-white text-blue-600 shadow-sm' 
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Palette size={16} />
+            <span>Image Models ({getEnabledImageCount()} selected)</span>
           </button>
         </div>
 
@@ -300,6 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <li>• ✅ 50 conversations per month</li>
                       <li>• ✅ Compare up to 3 models simultaneously</li>
                       {globalSerperAvailable && <li>• 🌐 Internet search enabled for all users</li>}
+                      <li>• 🎨 Image generation with Imagerouter API key</li>
                       <li>• 🔧 Configure your own API keys for unlimited usage</li>
                     </ul>
                   </div>
@@ -339,7 +402,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           {isImagerouter && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                               <Image size={10} className="mr-1" />
-                              Coming Soon
+                              Image Generation
                             </span>
                           )}
                           {hasGlobalAccess && !isSerper && !isImagerouter && (
@@ -368,7 +431,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                         {isImagerouter && (
                           <p className="text-xs text-purple-600 mt-1">
-                            🎨 Image generation features coming soon
+                            🎨 Configure your API key to enable image generation
                           </p>
                         )}
                       </div>
@@ -389,22 +452,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={settings[provider.key]}
                         onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
                         placeholder={
-                          isImagerouter 
-                            ? `${provider.placeholder} (coming soon)`
-                            : isSerper && globalSerperAvailable 
-                              ? `${provider.placeholder} (optional - available globally)`
-                              : hasGlobalAccess && !isSerper 
-                                ? `${provider.placeholder} (optional - free trial active)` 
-                                : provider.placeholder
+                          isSerper && globalSerperAvailable 
+                            ? `${provider.placeholder} (optional - available globally)`
+                            : hasGlobalAccess && !isSerper && !isImagerouter
+                              ? `${provider.placeholder} (optional - free trial active)` 
+                              : provider.placeholder
                         }
                         className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                        disabled={isImagerouter}
                       />
                       <button
                         type="button"
                         onClick={() => toggleShowKey(provider.key)}
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        disabled={isImagerouter}
                       >
                         {showKeys[provider.key] ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
@@ -413,6 +472,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {hasPersonalKey && !isImagerouter && (
                       <p className="text-xs text-blue-600 mt-2">
                         🔑 Using your personal API key for unlimited access
+                      </p>
+                    )}
+                    {hasPersonalKey && isImagerouter && (
+                      <p className="text-xs text-purple-600 mt-2">
+                        🎨 Image generation enabled with your API key
                       </p>
                     )}
                   </div>
@@ -432,14 +496,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
                     <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
                     <li>• <strong>Internet Search:</strong> {globalSerperAvailable ? 'Available globally for all users' : 'Requires personal Serper API key'}</li>
-                    <li>• <strong>Imagerouter:</strong> Image generation features coming soon - stay tuned!</li>
+                    <li>• <strong>Imagerouter:</strong> Configure your API key to enable AI image generation features</li>
                     <li>• Personal API keys always take priority over free trial access</li>
                   </ul>
                 </div>
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'models' ? (
           <div className="space-y-6">
             {/* Traditional Models */}
             <div>
@@ -681,6 +745,223 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
           </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Image Generation Models */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Image Generation Models ({getEnabledImageCount()} selected)
+                </h3>
+                {!hasPersonalApiKey('imagerouter') && (
+                  <p className="text-sm text-amber-600">⚠️ Imagerouter API key required for image generation</p>
+                )}
+                {hasPersonalApiKey('imagerouter') && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    <Palette size={12} className="mr-1" />
+                    Image Generation Enabled
+                  </span>
+                )}
+              </div>
+
+              {hasPersonalApiKey('imagerouter') ? (
+                <>
+                  {/* Search and Filter */}
+                  <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                    <div className="relative flex-1">
+                      <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search image models..."
+                        value={imageSearchTerm}
+                        onChange={(e) => setImageSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <select
+                      value={selectedImageCategory}
+                      onChange={(e) => setSelectedImageCategory(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {imageCategories.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <button
+                      onClick={() => {
+                        const freeModels = imageModels.filter(model => imageRouterService.isFreeModel(model));
+                        const newSettings = { ...modelSettings.image_models };
+                        freeModels.forEach(model => {
+                          newSettings[model.id] = true;
+                        });
+                        setModelSettings(prev => ({ ...prev, image_models: newSettings }));
+                      }}
+                      className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-1"
+                    >
+                      <Zap size={14} />
+                      <span>Enable All Free Models</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setModelSettings(prev => ({ ...prev, image_models: {} }));
+                      }}
+                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+
+                  {/* Image Models Grid */}
+                  {loadingImages ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 size={32} className="animate-spin text-purple-600" />
+                      <span className="ml-3 text-gray-600">Loading image models...</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                      {getDisplayedImageModels().map((model) => {
+                        const isEnabled = modelSettings.image_models[model.id] || false;
+                        const isFree = imageRouterService.isFreeModel(model);
+                        
+                        return (
+                          <div
+                            key={model.id}
+                            className={`border-2 rounded-lg p-3 transition-all cursor-pointer ${
+                              isEnabled 
+                                ? 'border-purple-300 bg-purple-50' 
+                                : 'border-gray-200 bg-white hover:shadow-md'
+                            }`}
+                            onClick={() => toggleImageModel(model.id)}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-lg">{imageRouterService.getModelIcon(model)}</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleImageModel(model.id);
+                                  }}
+                                  className="p-1"
+                                >
+                                  {isEnabled ? (
+                                    <CheckSquare size={16} className="text-purple-600" />
+                                  ) : (
+                                    <Square size={16} className="text-gray-400" />
+                                  )}
+                                </button>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
+                                  {isFree && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <Zap size={10} className="mr-1" />
+                                      Free
+                                    </span>
+                                  )}
+                                  {!isFree && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                      <Palette size={10} className="mr-1" />
+                                      Premium
+                                    </span>
+                                  )}
+                                  {model.arena_score && model.arena_score > 1050 && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      <Crown size={10} className="mr-1" />
+                                      Top Rated
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-600 mb-2 line-clamp-2">{model.description}</p>
+                                <div className="flex items-center justify-between text-xs text-gray-500">
+                                  <span>Released: {new Date(model.release_date).toLocaleDateString()}</span>
+                                  {!isFree && model.pricing.value && (
+                                    <span className="flex items-center">
+                                      <DollarSign size={10} />
+                                      {model.pricing.value.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <Image className="text-purple-600 flex-shrink-0 mt-0.5" size={20} />
+                    <div>
+                      <h4 className="font-medium text-purple-800 mb-1">🎨 Image Generation</h4>
+                      <p className="text-sm text-purple-700 mb-2">
+                        Configure your Imagerouter API key in the API Keys tab to enable AI image generation. 
+                        Once configured, you can ask the AI to generate images directly in the chat.
+                      </p>
+                      <ul className="text-sm text-purple-600 space-y-1">
+                        <li>• Generate images by asking "Create an image of..." or "Draw..."</li>
+                        <li>• Compare different image generation models side by side</li>
+                        <li>• Select your favorite result to add to the conversation</li>
+                        <li>• Access top models like FLUX, DALL-E, Ideogram, and more</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Image Generation Instructions */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <h4 className="font-medium text-purple-800 mb-2">How to Use Image Generation</h4>
+              <div className="space-y-3">
+                <div className="flex items-start space-x-3">
+                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">1</div>
+                  <div>
+                    <p className="text-sm text-purple-700 font-medium">Configure your Imagerouter API key</p>
+                    <p className="text-xs text-purple-600">Add your API key in the API Keys tab to enable image generation</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">2</div>
+                  <div>
+                    <p className="text-sm text-purple-700 font-medium">Select image models to use</p>
+                    <p className="text-xs text-purple-600">Enable the models you want to compare in this tab</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">3</div>
+                  <div>
+                    <p className="text-sm text-purple-700 font-medium">Ask for images in the chat</p>
+                    <p className="text-xs text-purple-600">Use phrases like "Generate an image of..." or "Draw a..."</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center text-purple-700 font-medium flex-shrink-0">4</div>
+                  <div>
+                    <p className="text-sm text-purple-700 font-medium">Compare and select your favorite</p>
+                    <p className="text-xs text-purple-600">Choose the best image to add to your conversation</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {getEnabledImageCount() === 0 && hasPersonalApiKey('imagerouter') && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2 text-amber-700">
+                  <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">!</span>
+                  </div>
+                  <span className="font-medium">No image models selected! Please select at least one model to enable image generation.</span>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
@@ -696,7 +977,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
                 }
                 {globalSerperAvailable && ' Internet search is powered by our global Serper API for all users.'}
-                {' Imagerouter features are coming soon to enhance your AI experience with image generation capabilities.'}
+                {' Imagerouter features are powered by your personal API key for image generation capabilities.'}
               </p>
             </div>
           </div>

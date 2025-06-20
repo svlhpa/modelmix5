@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, Check, Globe } from 'lucide-react';
+import { Copy, Check, Globe, ExternalLink, Download } from 'lucide-react';
 import { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -36,6 +36,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
   const isUser = message.role === 'user';
   const hasInternetSearch = message.content.includes('=== CURRENT INTERNET SEARCH RESULTS ===');
+  const isImageGeneration = message.isImageGeneration || message.generatedImages?.length > 0;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fadeInUp`}>
@@ -73,6 +74,38 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             <div className="mb-2 flex items-center space-x-2 text-blue-200 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
               <Globe size={16} className="animate-pulse" />
               <span className="text-sm">Internet search results included</span>
+            </div>
+          )}
+          
+          {/* Display generated images if present */}
+          {isImageGeneration && message.generatedImages && message.generatedImages.length > 0 && (
+            <div className="mb-3 flex flex-col items-center gap-2 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
+              <img
+                src={message.generatedImages[0]}
+                alt="AI generated image"
+                className="max-w-full max-h-64 object-contain rounded-lg border border-gray-200 hover:scale-105 transition-transform duration-300 cursor-pointer"
+                onClick={() => window.open(message.generatedImages[0], '_blank')}
+              />
+              <div className="flex space-x-2 mt-2">
+                <a 
+                  href={message.generatedImages[0]}
+                  download={`generated-image-${Date.now()}.jpg`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 text-xs bg-white text-gray-700 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download size={12} />
+                  <span>Download</span>
+                </a>
+                <button
+                  onClick={() => window.open(message.generatedImages[0], '_blank')}
+                  className="flex items-center space-x-1 text-xs bg-white text-gray-700 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                >
+                  <ExternalLink size={12} />
+                  <span>Open</span>
+                </button>
+              </div>
             </div>
           )}
           
