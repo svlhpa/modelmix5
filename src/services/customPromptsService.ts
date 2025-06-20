@@ -2,49 +2,9 @@ import { supabase } from '../lib/supabase';
 import { CustomPrompt } from '../types';
 
 class CustomPromptsService {
-  // Default prompts that come pre-installed
-  private defaultPrompts: Omit<CustomPrompt, 'id' | 'createdAt' | 'updatedAt'>[] = [
-    {
-      title: 'Creative Writing Assistant',
-      content: 'You are a creative writing assistant. Help me write engaging, imaginative content with vivid descriptions and compelling narratives. Focus on storytelling techniques, character development, and atmospheric details.',
-      isActive: false,
-      category: 'Writing'
-    },
-    {
-      title: 'Code Review Expert',
-      content: 'You are a senior software engineer conducting a code review. Analyze code for best practices, performance, security, maintainability, and suggest improvements. Provide constructive feedback with specific examples.',
-      isActive: false,
-      category: 'Programming'
-    },
-    {
-      title: 'Business Strategy Advisor',
-      content: 'You are a business strategy consultant with expertise in market analysis, competitive positioning, and growth strategies. Provide actionable insights and data-driven recommendations for business decisions.',
-      isActive: false,
-      category: 'Business'
-    },
-    {
-      title: 'Educational Tutor',
-      content: 'You are a patient and knowledgeable tutor. Explain concepts clearly, use examples and analogies, break down complex topics into digestible parts, and encourage learning through questions and practice.',
-      isActive: false,
-      category: 'Education'
-    },
-    {
-      title: 'Research Assistant',
-      content: 'You are a thorough research assistant. Provide well-sourced information, analyze data objectively, present multiple perspectives on topics, and help synthesize findings into clear, actionable insights.',
-      isActive: false,
-      category: 'Research'
-    },
-    {
-      title: 'Technical Documentation Writer',
-      content: 'You are a technical writer specializing in clear, comprehensive documentation. Create well-structured guides, API documentation, and user manuals that are easy to follow and understand.',
-      isActive: false,
-      category: 'Documentation'
-    }
-  ];
-
   async loadCustomPrompts(): Promise<CustomPrompt[]> {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return this.getDefaultPrompts();
+    if (!user) return [];
 
     try {
       const { data, error } = await supabase
@@ -55,8 +15,8 @@ class CustomPromptsService {
         .maybeSingle();
 
       if (error || !data) {
-        // Return default prompts if no custom prompts found
-        return this.getDefaultPrompts();
+        // Return empty array if no custom prompts found
+        return [];
       }
 
       const customPrompts = JSON.parse(data.api_key) as CustomPrompt[];
@@ -69,7 +29,7 @@ class CustomPromptsService {
       }));
     } catch (error) {
       console.error('Failed to load custom prompts:', error);
-      return this.getDefaultPrompts();
+      return [];
     }
   }
 
@@ -169,15 +129,6 @@ class CustomPromptsService {
     });
 
     return categories;
-  }
-
-  private getDefaultPrompts(): CustomPrompt[] {
-    return this.defaultPrompts.map((prompt, index) => ({
-      ...prompt,
-      id: `default-${index}`,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }));
   }
 
   // Get prompt categories for filtering

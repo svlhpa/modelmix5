@@ -4,7 +4,7 @@ import { CustomPrompt } from '../types';
 import { customPromptsService } from '../services/customPromptsService';
 
 interface CustomPromptsPanelProps {
-  onPromptActivated: (prompt: CustomPrompt | null) => void;
+  onPromptActivated?: (prompt: CustomPrompt | null) => void;
 }
 
 export const CustomPromptsPanel: React.FC<CustomPromptsPanelProps> = ({ onPromptActivated }) => {
@@ -102,7 +102,9 @@ export const CustomPromptsPanel: React.FC<CustomPromptsPanelProps> = ({ onPrompt
       await loadPrompts();
       
       // Notify parent component
-      onPromptActivated(isCurrentlyActive ? null : prompt);
+      if (onPromptActivated) {
+        onPromptActivated(isCurrentlyActive ? null : prompt);
+      }
     } catch (error) {
       console.error('Failed to activate prompt:', error);
     }
@@ -194,28 +196,32 @@ export const CustomPromptsPanel: React.FC<CustomPromptsPanelProps> = ({ onPrompt
       )}
 
       {/* Search and Filter */}
-      <div className="mb-3 px-2 space-y-2">
-        <div className="relative">
-          <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search prompts..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-7 pr-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
+      {prompts.length > 0 && (
+        <div className="mb-3 px-2 space-y-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search prompts..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-7 pr-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+          
+          {categories.length > 2 && (
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              {categories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          )}
         </div>
-        
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-        >
-          {categories.map(category => (
-            <option key={category} value={category}>{category}</option>
-          ))}
-        </select>
-      </div>
+      )}
 
       {/* Create Form */}
       {showCreateForm && (
@@ -265,15 +271,30 @@ export const CustomPromptsPanel: React.FC<CustomPromptsPanelProps> = ({ onPrompt
       <div className="max-h-64 overflow-y-auto">
         {Object.keys(categorizedPrompts).length === 0 ? (
           <div className="text-center py-4 px-2">
-            <BookOpen size={24} className="text-gray-500 mx-auto mb-2" />
-            <p className="text-xs text-gray-500">No prompts found</p>
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="text-xs text-emerald-400 hover:text-emerald-300 mt-1"
-              >
-                Clear search
-              </button>
+            {prompts.length === 0 && !searchTerm ? (
+              <>
+                <BookOpen size={24} className="text-gray-500 mx-auto mb-2" />
+                <p className="text-xs text-gray-500 mb-2">No custom prompts yet</p>
+                <button
+                  onClick={() => setShowCreateForm(true)}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 border border-emerald-800 rounded-lg hover:bg-emerald-900/30 transition-colors"
+                >
+                  Create your first prompt
+                </button>
+              </>
+            ) : (
+              <>
+                <BookOpen size={24} className="text-gray-500 mx-auto mb-2" />
+                <p className="text-xs text-gray-500">No prompts found</p>
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 mt-1"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </>
             )}
           </div>
         ) : (
