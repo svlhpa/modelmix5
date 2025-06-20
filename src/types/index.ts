@@ -105,17 +105,6 @@ export interface UserProfile {
   updated_at: string;
 }
 
-// Custom Prompts interface
-export interface CustomPrompt {
-  id: string;
-  title: string;
-  content: string;
-  isActive: boolean;
-  category: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 // Image generation model interface
 export interface ImageModel {
   id: string;

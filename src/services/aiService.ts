@@ -1,4 +1,4 @@
-import { APIResponse, APISettings, ModelSettings, CustomPrompt } from '../types';
+import { APIResponse, APISettings, ModelSettings } from '../types';
 import { databaseService } from './databaseService';
 import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
@@ -374,8 +374,8 @@ class AIService {
 
   // CRITICAL: Completely rebuilt debate response generation for proper engagement
   async generateDebateResponse(
-    topic: string, 
-    position: string, 
+    topic: string,
+    position: string,
     previousMessages: any[],
     model: string,
     responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user'

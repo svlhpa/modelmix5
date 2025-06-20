@@ -11,7 +11,7 @@ import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { aiService } from './services/aiService';
 import { tierService } from './services/tierService';
-import { APISettings, ModelSettings, CustomPrompt } from './types';
+import { APISettings, ModelSettings } from './types';
 
 function App() {
   const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile } = useAuth();
@@ -36,14 +36,12 @@ function App() {
   const [showDebateClub, setShowDebateClub] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activePrompt, setActivePrompt] = useState<CustomPrompt | null>(null);
   const [apiSettings, setApiSettings] = useState<APISettings>({
     openai: '',
     openrouter: '',
     gemini: '',
     deepseek: '',
-    serper: '',
-    imagerouter: ''
+    serper: ''
   });
   const [modelSettings, setModelSettings] = useState<ModelSettings>({
     openai: true,
@@ -150,10 +148,6 @@ function App() {
     refreshProfile(); // Refresh profile to get updated tier info
   };
 
-  const handlePromptActivated = (prompt: CustomPrompt | null) => {
-    setActivePrompt(prompt);
-  };
-
   if (!user) {
     return (
       <div className="flex h-screen bg-gray-100">
@@ -172,7 +166,6 @@ function App() {
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
-          onPromptActivated={handlePromptActivated}
         />
         
         <ChatArea
@@ -185,7 +178,6 @@ function App() {
           onSaveConversationTurn={saveConversationTurn}
           modelSettings={modelSettings}
           onTierUpgrade={() => setShowTierUpgrade(true)}
-          activePrompt={activePrompt}
         />
 
         <AuthModal
@@ -224,7 +216,6 @@ function App() {
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
-        onPromptActivated={handlePromptActivated}
       />
       
       <ChatArea
@@ -237,7 +228,6 @@ function App() {
         onSaveConversationTurn={saveConversationTurn}
         modelSettings={modelSettings}
         onTierUpgrade={() => setShowTierUpgrade(true)}
-        activePrompt={activePrompt}
       />
 
       <SettingsModal

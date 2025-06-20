@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Message, APIResponse, ChatSession, ConversationTurn, CustomPrompt } from '../types';
+import { Message, APIResponse, ChatSession, ConversationTurn } from '../types';
 import { aiService } from '../services/aiService';
 import { databaseService } from '../services/databaseService';
 import { analyticsService } from '../services/analyticsService';
@@ -86,12 +86,7 @@ export const useChat = () => {
   }, [user]);
 
   // CRITICAL: Simplified sendMessage - only returns responses, doesn't modify session
-  const sendMessage = useCallback(async (
-    content: string, 
-    images: string[] = [], 
-    useInternetSearch: boolean = false,
-    customPrompt?: string
-  ): Promise<APIResponse[]> => {
+  const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false): Promise<APIResponse[]> => {
     if (!user) {
       const newSessionId = await createNewSession();
       if (!newSessionId) return [];
@@ -114,14 +109,8 @@ export const useChat = () => {
       });
     });
     
-    // Prepare the message with custom prompt if provided
-    let finalMessage = content;
-    if (customPrompt) {
-      finalMessage = `${customPrompt}\n\nUser request: ${content}`;
-    }
-    
     // Add the new user message to context
-    conversationHistory.push({ role: 'user', content: finalMessage });
+    conversationHistory.push({ role: 'user', content });
 
     // Update session title in database if it's the first message
     if (session.messages.length === 0) {
@@ -142,7 +131,7 @@ export const useChat = () => {
       // CRITICAL: Just return the responses - don't modify session state here
       // The ChatArea component will handle the real-time updates
       const responses = await aiService.getResponses(
-        finalMessage, 
+        content, 
         conversationHistory,
         images, 
         undefined, // onResponseUpdate callback handled in ChatArea
@@ -180,8 +169,6 @@ export const useChat = () => {
       role: 'assistant',
       timestamp: new Date(),
       provider: selectedResponse.provider,
-      generatedImages: selectedResponse.generatedImages,
-      isImageGeneration: selectedResponse.isImageGeneration
     };
 
     // CRITICAL: Add BOTH messages to the session at once
