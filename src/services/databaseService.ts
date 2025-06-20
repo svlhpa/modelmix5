@@ -53,7 +53,8 @@ class DatabaseService {
       openrouter: '', 
       gemini: '', 
       deepseek: '',
-      serper: ''
+      serper: '',
+      imagerouter: ''
     };
 
     const { data, error } = await supabase
@@ -69,7 +70,8 @@ class DatabaseService {
       openrouter: '',
       gemini: '',
       deepseek: '',
-      serper: ''
+      serper: '',
+      imagerouter: ''
     };
 
     data?.forEach((setting) => {

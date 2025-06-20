@@ -9,7 +9,8 @@ class AIService {
     openrouter: '',
     gemini: '',
     deepseek: '',
-    serper: ''
+    serper: '',
+    imagerouter: ''
   };
 
   private modelSettings: ModelSettings = {

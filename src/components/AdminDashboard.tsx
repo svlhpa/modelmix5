@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe } from 'lucide-react';
+import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
 import { UserTier } from '../types';
@@ -185,7 +185,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   };
 
   const getProviderDisplayName = (provider: string) => {
-    return globalApiService.getProviderDisplayName(provider);
+    const names: Record<string, string> = {
+      openai: 'OpenAI',
+      openrouter: 'OpenRouter',
+      gemini: 'Google Gemini',
+      deepseek: 'DeepSeek',
+      serper: 'Serper (Internet Search)',
+      imagerouter: 'Imagerouter (Image Generation)'
+    };
+    return names[provider] || provider;
   };
 
   const getTierDisplayName = (tier: string) => {
@@ -465,6 +473,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           <option value="gemini">Google Gemini</option>
                           <option value="deepseek">DeepSeek</option>
                           <option value="serper">Serper (Internet Search)</option>
+                          <option value="imagerouter">Imagerouter (Image Generation)</option>
                         </select>
                       </div>
                       <div>
@@ -557,6 +566,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                     <Globe size={10} className="mr-1" />
                                     Internet Search
+                                  </span>
+                                )}
+                                {key.provider === 'imagerouter' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                    <Image size={10} className="mr-1" />
+                                    Image Generation
                                   </span>
                                 )}
                               </div>

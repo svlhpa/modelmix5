@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe } from 'lucide-react';
+import { X, Key, Save, Eye, EyeOff, ExternalLink, Settings, CheckSquare, Square, Search, Loader2, Zap, Crown, DollarSign, Gift, Globe, Image } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 import { globalApiService } from '../services/globalApiService';
@@ -28,7 +28,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     openrouter: false,
     gemini: false,
     deepseek: false,
-    serper: false
+    serper: false,
+    imagerouter: false
   });
   const [activeTab, setActiveTab] = useState<'api' | 'models'>('api');
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
@@ -155,6 +156,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       description: 'Enables AI models to search the internet for real-time information',
       docsUrl: 'https://serper.dev/api',
       category: 'Internet Search'
+    },
+    {
+      key: 'imagerouter' as keyof APISettings,
+      name: 'Imagerouter',
+      placeholder: 'Your Imagerouter API Key',
+      description: 'AI-powered image generation and processing capabilities',
+      docsUrl: 'https://imagerouter.ai/api',
+      category: 'Image Generation'
     }
   ];
 
@@ -319,6 +328,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 const hasPersonalKey = hasPersonalApiKey(provider.key);
                 const hasGlobalAccess = hasGlobalKeyAccess(provider.key);
                 const isSerper = provider.key === 'serper';
+                const isImagerouter = provider.key === 'imagerouter';
                 
                 return (
                   <div key={provider.key} className="border border-gray-200 rounded-lg p-4">
@@ -326,7 +336,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div>
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className="font-medium text-gray-900">{provider.name}</h4>
-                          {hasGlobalAccess && !isSerper && (
+                          {isImagerouter && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              <Image size={10} className="mr-1" />
+                              Coming Soon
+                            </span>
+                          )}
+                          {hasGlobalAccess && !isSerper && !isImagerouter && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               <Gift size={10} className="mr-1" />
                               Free Trial
@@ -340,7 +356,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           )}
                         </div>
                         <p className="text-sm text-gray-500">{provider.description}</p>
-                        {hasGlobalAccess && !isSerper && (
+                        {hasGlobalAccess && !isSerper && !isImagerouter && (
                           <p className="text-xs text-green-600 mt-1">
                             ✅ Available through free trial - no API key needed
                           </p>
@@ -348,6 +364,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {isSerper && globalSerperAvailable && (
                           <p className="text-xs text-blue-600 mt-1">
                             🌐 Internet search is available for all users
+                          </p>
+                        )}
+                        {isImagerouter && (
+                          <p className="text-xs text-purple-600 mt-1">
+                            🎨 Image generation features coming soon
                           </p>
                         )}
                       </div>
@@ -368,24 +389,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={settings[provider.key]}
                         onChange={(e) => setSettings({ ...settings, [provider.key]: e.target.value })}
                         placeholder={
-                          isSerper && globalSerperAvailable 
-                            ? `${provider.placeholder} (optional - available globally)`
-                            : hasGlobalAccess && !isSerper 
-                              ? `${provider.placeholder} (optional - free trial active)` 
-                              : provider.placeholder
+                          isImagerouter 
+                            ? `${provider.placeholder} (coming soon)`
+                            : isSerper && globalSerperAvailable 
+                              ? `${provider.placeholder} (optional - available globally)`
+                              : hasGlobalAccess && !isSerper 
+                                ? `${provider.placeholder} (optional - free trial active)` 
+                                : provider.placeholder
                         }
                         className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        disabled={isImagerouter}
                       />
                       <button
                         type="button"
                         onClick={() => toggleShowKey(provider.key)}
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        disabled={isImagerouter}
                       >
                         {showKeys[provider.key] ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                     
-                    {hasPersonalKey && (
+                    {hasPersonalKey && !isImagerouter && (
                       <p className="text-xs text-blue-600 mt-2">
                         🔑 Using your personal API key for unlimited access
                       </p>
@@ -407,6 +432,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
                     <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
                     <li>• <strong>Internet Search:</strong> {globalSerperAvailable ? 'Available globally for all users' : 'Requires personal Serper API key'}</li>
+                    <li>• <strong>Imagerouter:</strong> Image generation features coming soon - stay tuned!</li>
                     <li>• Personal API keys always take priority over free trial access</li>
                   </ul>
                 </div>
@@ -670,6 +696,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
                 }
                 {globalSerperAvailable && ' Internet search is powered by our global Serper API for all users.'}
+                {' Imagerouter features are coming soon to enhance your AI experience with image generation capabilities.'}
               </p>
             </div>
           </div>
