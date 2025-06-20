@@ -1,6 +1,6 @@
 import React from 'react';
 import { APIResponse } from '../types';
-import { Copy, Check, AlertCircle, Zap, Bot, Sparkles, CheckCircle, ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
+import { Copy, Check, AlertCircle, Zap, Bot, Sparkles, CheckCircle, ChevronLeft, ChevronRight, Download, ExternalLink, Palette } from 'lucide-react';
 
 interface ComparisonViewProps {
   responses: APIResponse[];
