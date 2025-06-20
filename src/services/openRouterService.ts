@@ -84,6 +84,35 @@ class OpenRouterService {
     }
   }
 
+  // CRITICAL: New method to filter models based on user tier and API key availability
+  async getAvailableModelsForUser(userTier: string, hasPersonalApiKey: boolean, hasGlobalAccess: boolean): Promise<OpenRouterModel[]> {
+    const allModels = await this.getAvailableModels();
+    
+    // If user has personal API key, they can access all models
+    if (hasPersonalApiKey) {
+      return allModels;
+    }
+    
+    // If user has global access (free trial), filter based on tier
+    if (hasGlobalAccess) {
+      if (userTier === 'tier1') {
+        // Free tier users can only access free models when using global keys
+        return allModels.filter(model => this.isFreeModel(model));
+      } else if (userTier === 'tier2') {
+        // Pro tier users can access all models even with global keys
+        return allModels;
+      }
+    }
+    
+    // No access - return empty array
+    return [];
+  }
+
+  // Helper method to check if a model is free
+  isFreeModel(model: OpenRouterModel): boolean {
+    return model.pricing.prompt === "0";
+  }
+
   private getFallbackModels(): OpenRouterModel[] {
     return [
       {

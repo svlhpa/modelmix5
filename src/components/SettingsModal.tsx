@@ -92,7 +92,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const loadOpenRouterModels = async () => {
     setLoadingModels(true);
     try {
-      const models = await openRouterService.getAvailableModels();
+      // CRITICAL: Use the new tier-based filtering method
+      const hasPersonalKey = hasPersonalApiKey('openrouter');
+      const hasGlobalAccess = hasGlobalKeyAccess('openrouter');
+      
+      const models = await openRouterService.getAvailableModelsForUser(
+        currentTier,
+        hasPersonalKey,
+        hasGlobalAccess
+      );
+      
       setOpenRouterModels(models);
     } catch (error) {
       console.error('Failed to load OpenRouter models:', error);
@@ -269,7 +278,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const isFreeModel = (model: OpenRouterModel) => {
-    return model.pricing.prompt === "0";
+    return openRouterService.isFreeModel(model);
   };
 
   const hasPersonalApiKey = (provider: string) => {
@@ -361,9 +370,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <li>• ✅ Free access to multiple AI models</li>
                       <li>• ✅ 50 conversations per month</li>
                       <li>• ✅ Compare up to 3 models simultaneously</li>
+                      <li>• 🆓 Access to free OpenRouter models (DeepSeek R1, Llama, Gemma, etc.)</li>
                       {globalSerperAvailable && <li>• 🌐 Internet search enabled for all users</li>}
                       <li>• 🎨 Image generation with Imagerouter API key</li>
-                      <li>• 🔧 Configure your own API keys for unlimited usage</li>
+                      <li>• 🔧 Configure your own API keys for unlimited usage and premium models</li>
                     </ul>
                   </div>
                 </div>
@@ -495,6 +505,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <li>• <strong>Free Trial:</strong> Use our global API keys with monthly limits</li>
                     <li>• <strong>Personal Keys:</strong> Your own API keys for unlimited usage and faster responses</li>
                     <li>• <strong>OpenRouter:</strong> Access to 400+ models including free ones like DeepSeek R1, Llama, Gemma</li>
+                    <li>• <strong>Free Tier Limitation:</strong> Only free OpenRouter models available with global keys</li>
+                    <li>• <strong>Pro Tier:</strong> Access to all OpenRouter models with global keys</li>
                     <li>• <strong>Internet Search:</strong> {globalSerperAvailable ? 'Available globally for all users' : 'Requires personal Serper API key'}</li>
                     <li>• <strong>Imagerouter:</strong> Configure your API key to enable AI image generation features</li>
                     <li>• Personal API keys always take priority over free trial access</li>
@@ -596,13 +608,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {hasGlobalKeyAccess('openrouter') && (
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     <Gift size={12} className="mr-1" />
-                    Free Trial Available
+                    {currentTier === 'tier1' ? 'Free Models Only' : 'Free Trial Available'}
                   </span>
                 )}
               </div>
 
               {(hasPersonalApiKey('openrouter') || hasGlobalKeyAccess('openrouter')) ? (
                 <>
+                  {/* Tier-based notice for free users */}
+                  {currentTier === 'tier1' && hasGlobalKeyAccess('openrouter') && !hasPersonalApiKey('openrouter') && (
+                    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-sm text-amber-700">
+                        🆓 <strong>Free Tier:</strong> You can only access free OpenRouter models with the global API key. 
+                        Add your own OpenRouter API key to access premium models, or upgrade to Pro for full access.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Search and Filter */}
                   <div className="flex flex-col sm:flex-row gap-4 mb-4">
                     <div className="relative flex-1">
@@ -657,6 +679,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center justify-center py-12">
                       <Loader2 size={32} className="animate-spin text-blue-600" />
                       <span className="ml-3 text-gray-600">Loading models...</span>
+                    </div>
+                  ) : openRouterModels.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 mb-2">No models available</p>
+                      {currentTier === 'tier1' && hasGlobalKeyAccess('openrouter') && (
+                        <p className="text-sm text-amber-600">
+                          Free tier users can only access free models. Add your own OpenRouter API key for premium models.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
@@ -973,7 +1004,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h4 className="font-medium text-blue-800 mb-1">Security & Privacy</h4>
               <p className="text-sm text-blue-700">
                 {currentTier === 'tier1' 
-                  ? 'Free trial uses secure global API keys. Personal API keys are stored securely in your account and never shared.'
+                  ? 'Free trial uses secure global API keys. Personal API keys are stored securely in your account and never shared. Free tier users can only access free OpenRouter models with global keys.'
                   : 'API keys are stored securely in your account and never shared. Keep your keys secure and don\'t share them with others.'
                 }
                 {globalSerperAvailable && ' Internet search is powered by our global Serper API for all users.'}
