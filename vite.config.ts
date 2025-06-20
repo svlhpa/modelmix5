@@ -33,6 +33,11 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  // Ensure proper base path for deployment
-  base: './',
+  // Critical: Set base to '/' for proper deployment
+  base: '/',
+  // Define environment variables with fallbacks
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || ''),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
+  },
 });

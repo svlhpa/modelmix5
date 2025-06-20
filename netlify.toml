@@ -5,6 +5,9 @@
 [build.environment]
   NODE_VERSION = "18"
   NPM_VERSION = "9"
+  # Add environment variables for production
+  VITE_SUPABASE_URL = ""
+  VITE_SUPABASE_ANON_KEY = ""
 
 [[redirects]]
   from = "/*"
@@ -37,3 +40,14 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Error pages
+[[redirects]]
+  from = "/404"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/500"
+  to = "/index.html"
+  status = 200
