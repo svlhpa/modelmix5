@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe, Palette, File } from 'lucide-react';
+import { Send, Menu, MessageSquare, Image, X, Paperclip, StopCircle, RotateCcw, SkipForward, Crown, Gift, Infinity, Globe, Palette, File, Plus } from 'lucide-react';
 import { ComparisonView } from './ComparisonView';
 import { MessageBubble } from './MessageBubble';
-import { FileUpload } from './FileUpload';
 import { Logo } from './Logo';
 import { APIResponse, ConversationTurn, ModelSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -46,8 +45,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [currentUserMessage, setCurrentUserMessage] = useState('');
   const [currentUserImages, setCurrentUserImages] = useState<string[]>([]);
-  const [currentFileContext, setCurrentFileContext] = useState<string>('');
   const [currentUseInternetSearch, setCurrentUseInternetSearch] = useState(false);
+  const [currentFileContext, setCurrentFileContext] = useState<string>('');
   const [waitingForSelection, setWaitingForSelection] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -67,21 +66,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       checkUsageLimit();
       checkGlobalKeysAvailability();
       checkImageGenerationAvailability();
+      loadUploadedFiles();
     }
   }, [user, messages.length]);
 
-  // Update uploaded files list periodically
-  useEffect(() => {
-    const updateFiles = () => {
-      const files = fileService.getAllFiles();
-      setUploadedFiles(files);
-    };
-
-    updateFiles();
-    const interval = setInterval(updateFiles, 30000); // Update every 30 seconds
-
-    return () => clearInterval(interval);
-  }, []);
+  const loadUploadedFiles = () => {
+    const files = fileService.getAllFiles();
+    setUploadedFiles(files);
+  };
 
   const checkUsageLimit = async () => {
     const result = await tierService.checkUsageLimit();
@@ -157,6 +149,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     });
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+
+    try {
+      const uploadPromises = Array.from(files).map(file => fileService.uploadFile(file));
+      await Promise.all(uploadPromises);
+      loadUploadedFiles();
+      setShowFileUpload(false);
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+      alert(error instanceof Error ? error.message : 'Failed to upload files');
+    }
+  };
+
   const handlePaste = (event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items;
     if (!items) return;
@@ -180,9 +187,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleFilesChange = (fileIds: string[]) => {
-    const files = fileService.getAllFiles();
-    setUploadedFiles(files);
+  const removeFile = (fileId: string) => {
+    fileService.removeFile(fileId);
+    loadUploadedFiles();
   };
 
   const getEnabledModelsCount = () => {
@@ -212,8 +219,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setCurrentResponses([]);
     setCurrentUserMessage('');
     setCurrentUserImages([]);
-    setCurrentFileContext('');
     setCurrentUseInternetSearch(false);
+    setCurrentFileContext('');
     if (abortController) {
       abortController.abort();
       setAbortController(null);
@@ -253,13 +260,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         content: msg.content 
       });
     });
-    
-    // Add file context to the message
-    let messageWithContext = currentUserMessage;
-    if (currentFileContext) {
-      messageWithContext += currentFileContext;
-    }
-    contextMessages.push({ role: 'user', content: messageWithContext });
+    contextMessages.push({ role: 'user', content: currentUserMessage });
 
     // Get responses with real-time updates
     try {
@@ -345,10 +346,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     const messageImages = [...images];
     const messageUseInternetSearch = useInternetSearch;
     
-    // CRITICAL: Get file context from uploaded files
-    const fileContext = uploadedFiles.length > 0 
-      ? fileService.getFileContext(uploadedFiles.map(f => f.id))
-      : '';
+    // Get file context
+    const fileIds = uploadedFiles.map(f => f.id);
+    const fileContext = fileService.getFileContext(fileIds);
     
     // Clear input immediately
     setInput('');
@@ -358,8 +358,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     // Store current generation context
     setCurrentUserMessage(message);
     setCurrentUserImages(messageImages);
-    setCurrentFileContext(fileContext);
     setCurrentUseInternetSearch(messageUseInternetSearch);
+    setCurrentFileContext(fileContext);
     setWaitingForSelection(false);
     setIsGenerating(true);
     
@@ -382,7 +382,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           content: msg.content 
         });
       });
-      
       // Add the current message with file context to context for AI generation
       let messageWithContext = message;
       if (fileContext) {
@@ -621,7 +620,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 Start Mixing AI Models
               </h2>
               <p className="text-gray-600 mb-6">
-                Ask a question, upload images or documents, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
+                Ask a question, upload images, and compare AI responses from hundreds of different models. Continue natural conversations with full context.
                 {internetSearchAvailable && (
                   <span className="block mt-2 text-blue-600 font-medium">
                     🌐 Internet search is available! Toggle it on to get real-time information.
@@ -805,13 +804,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         <span className="font-medium min-w-0">
                           <span className="hidden sm:inline">
                             {currentResponses[0]?.isImageGeneration 
-                              ? `AI models are generating images${currentUseInternetSearch && ' with internet search'}${uploadedFiles.length > 0 ? ` using ${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''}` : ''}... (images appear as they complete)` 
-                              : `AI models are mixing responses${currentUseInternetSearch && ' with internet search'}${uploadedFiles.length > 0 ? ` using ${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''}` : ''}... (responses appear as they complete)`}
+                              ? `AI models are generating images${currentUseInternetSearch && ' with internet search'}... (images appear as they complete)` 
+                              : `AI models are mixing responses${currentUseInternetSearch && ' with internet search'}... (responses appear as they complete)`}
                           </span>
                           <span className="sm:hidden">
                             {currentResponses[0]?.isImageGeneration 
-                              ? `Generating images${currentUseInternetSearch && ' + web'}${uploadedFiles.length > 0 ? ' + files' : ''}...` 
-                              : `AI models mixing${currentUseInternetSearch && ' + web'}${uploadedFiles.length > 0 ? ' + files' : ''}...`}
+                              ? `Generating images${currentUseInternetSearch && ' + web'}...` 
+                              : `AI models mixing${currentUseInternetSearch && ' + web'}...`}
                           </span>
                           {isProUser && (
                             currentResponses[0]?.isImageGeneration 
@@ -897,13 +896,30 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
       <div className="bg-white border-t border-gray-200 p-4 min-w-0">
         <form onSubmit={handleSubmit} className="max-w-7xl mx-auto">
-          {/* File Upload Area */}
-          {showFileUpload && (
-            <div className="mb-4">
-              <FileUpload
-                onFilesChange={handleFilesChange}
-                uploadedFiles={uploadedFiles}
-              />
+          {/* Compact File Attachments */}
+          {uploadedFiles.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {uploadedFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm"
+                >
+                  <File size={14} className="text-blue-600 flex-shrink-0" />
+                  <span className="font-medium text-blue-900 truncate max-w-32">
+                    {file.name}
+                  </span>
+                  <span className="text-blue-600 text-xs">
+                    {fileService.formatFileSize(file.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(file.id)}
+                    className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -983,24 +999,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                 : isProUser
                                   ? `Ask anything - Pro plan with ${enabledCount} AI models ready!`
                                   : imageGenerationAvailable
-                                    ? `Ask anything, upload images/files, or try "Generate an image of..."` 
-                                    : `Ask anything or upload images/files to mix ${enabledCount} AI responses...`
+                                    ? `Ask anything, upload images, or try "Generate an image of..."` 
+                                    : `Ask anything or upload images to mix ${enabledCount} AI responses...`
                               : "Continue the conversation..."
                 }
-                className="w-full px-4 py-3 pr-20 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
+                className="w-full px-4 py-3 pr-24 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 min-w-0"
                 disabled={!canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
               />
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
                 <button
                   type="button"
-                  onClick={() => setShowFileUpload(!showFileUpload)}
-                  className={`p-1 rounded hover:bg-gray-100 transition-colors ${
-                    showFileUpload ? 'text-blue-600' : 'text-gray-400'
-                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-1 rounded hover:bg-gray-100 transition-colors"
                   disabled={!canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
                   title="Upload files"
                 >
-                  <File size={18} />
+                  <File size={16} className="text-gray-400" />
                 </button>
                 <button
                   type="button"
@@ -1009,7 +1023,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   disabled={!canSendMessage || (enabledCount === 0 && enabledImageCount === 0) || (!isProUser && enabledCount > maxAllowed)}
                   title="Upload images"
                 >
-                  <Paperclip size={18} className="text-gray-400" />
+                  <Paperclip size={16} className="text-gray-400" />
                 </button>
               </div>
             </div>
@@ -1101,8 +1115,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {isGenerating && ((enabledCount > 0 && !currentResponses[0]?.isImageGeneration) || (enabledImageCount > 0 && currentResponses[0]?.isImageGeneration)) && usageCheck.canUse && (
             <p className="text-xs text-emerald-600 mt-2 text-center">
               {currentResponses[0]?.isImageGeneration 
-                ? `🎨 Generating images from ${enabledImageCount} model${enabledImageCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'}${uploadedFiles.length > 0 ? ` using ${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''}` : ''} - click Stop to cancel generation` 
-                : `🤖 Mixing responses from ${enabledCount} AI model${enabledCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'}${uploadedFiles.length > 0 ? ` using ${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''}` : ''} - click Stop to cancel generation`}
+                ? `🎨 Generating images from ${enabledImageCount} model${enabledImageCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation` 
+                : `🤖 Mixing responses from ${enabledCount} AI model${enabledCount !== 1 ? 's' : ''}${currentUseInternetSearch && ' with internet search'} - click Stop to cancel generation`}
               {isProUser && (
                 currentResponses[0]?.isImageGeneration 
                   ? enabledImageCount > 3 && (
@@ -1132,11 +1146,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   🎨 Try asking "Generate an image of..." or "Draw..." to create AI images
                 </span>
               )}
-              {uploadedFiles.length > 0 && (
-                <span className="block mt-1">
-                  📄 {uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''} ready for AI analysis
-                </span>
-              )}
             </p>
           )}
         </form>
@@ -1144,9 +1153,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept=".pdf,.doc,.docx,.txt,.zip,.md,.json,.csv,image/*"
           multiple
-          onChange={handleImageUpload}
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            const documentFiles = files.filter(f => !f.type.startsWith('image/'));
+            
+            // Handle images
+            imageFiles.forEach(file => {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const base64 = e.target?.result as string;
+                setImages(prev => [...prev, base64]);
+              };
+              reader.readAsDataURL(file);
+            });
+            
+            // Handle documents
+            if (documentFiles.length > 0) {
+              handleFileUpload({ target: { files: documentFiles } } as any);
+            }
+          }}
           className="hidden"
         />
       </div>
