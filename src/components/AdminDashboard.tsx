@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image } from 'lucide-react';
+import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
 import { UserTier } from '../types';
@@ -116,7 +116,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     }
   };
 
-  const handleResetUserUsage = async (userId: string) => {
+  const handleResetUserUsage = async (userId: string) =>  {
     try {
       await adminService.resetUserUsage(userId);
       await loadData();
@@ -191,7 +191,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       gemini: 'Google Gemini',
       deepseek: 'DeepSeek',
       serper: 'Serper (Internet Search)',
-      imagerouter: 'Imagerouter (Image Generation)'
+      imagerouter: 'Imagerouter (Image Generation)',
+      tavus: 'Tavus (AI Video Chat)' // Added Tavus provider
     };
     return names[provider] || provider;
   };
@@ -474,6 +475,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           <option value="deepseek">DeepSeek</option>
                           <option value="serper">Serper (Internet Search)</option>
                           <option value="imagerouter">Imagerouter (Image Generation)</option>
+                          <option value="tavus">Tavus (AI Video Chat)</option>
                         </select>
                       </div>
                       <div>
@@ -574,6 +576,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                     Image Generation
                                   </span>
                                 )}
+                                {key.provider === 'tavus' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                                    <Video size={10} className="mr-1" />
+                                    AI Video Chat
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -661,6 +669,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                             </div>
                           </div>
                         </div>
+                        
+                        {/* Special note for Tavus API key */}
+                        {key.provider === 'tavus' && (
+                          <div className="mt-3 bg-pink-50 border border-pink-200 rounded-lg p-3">
+                            <div className="flex items-start space-x-2">
+                              <Video size={16} className="text-pink-600 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-medium text-pink-800">Pro-Only Secret Feature</p>
+                                <p className="text-xs text-pink-700">
+                                  This API key enables the secret AI Video Chat feature for Pro users. 
+                                  Pro users can type "*I want to talk to someone*" in the chat to access this feature.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
