@@ -166,42 +166,18 @@ class TierService {
     console.log('Starting tier upgrade for user:', user.id, 'to tier:', tier);
 
     try {
-      // First, update or create subscription
-      const { error: subscriptionError } = await supabase
-        .from('user_subscriptions')
-        .upsert({
-          user_id: user.id,
-          tier,
-          status: 'active',
-          started_at: new Date().toISOString(),
-          expires_at: null, // No expiration for active subscriptions
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
-        });
+      // Use the new database function for better RLS handling
+      const { error } = await supabase.rpc('upgrade_user_tier', {
+        target_user_id: user.id,
+        new_tier: tier
+      });
 
-      if (subscriptionError) {
-        console.error('Subscription update error:', subscriptionError);
-        throw new Error(`Failed to update subscription: ${subscriptionError.message}`);
+      if (error) {
+        console.error('Tier upgrade RPC error:', error);
+        throw new Error(`Failed to upgrade tier: ${error.message}`);
       }
 
-      console.log('Subscription updated successfully');
-
-      // Then, update user profile
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .update({ 
-          current_tier: tier,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-
-      if (profileError) {
-        console.error('Profile update error:', profileError);
-        throw new Error(`Failed to update profile: ${profileError.message}`);
-      }
-
-      console.log('Profile updated successfully');
+      console.log('Tier upgrade completed successfully using RPC');
 
       // Verify the update was successful
       const { data: updatedProfile, error: verifyError } = await supabase

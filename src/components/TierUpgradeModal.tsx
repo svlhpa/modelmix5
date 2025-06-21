@@ -42,23 +42,29 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       // Add a small delay to ensure payment is fully processed
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Upgrade user to Pro tier with better error handling
+      // Upgrade user to Pro tier with improved error handling
       try {
         await tierService.upgradeTier('tier2');
         console.log('Tier upgrade successful');
       } catch (tierError) {
         console.error('Tier upgrade error:', tierError);
-        // Try to refresh profile first, then upgrade again
-        await refreshProfile();
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await tierService.upgradeTier('tier2');
+        
+        // If it's an RLS error, try refreshing the session first
+        if (tierError instanceof Error && tierError.message.includes('row-level security')) {
+          console.log('RLS error detected, refreshing session...');
+          await refreshProfile();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Try upgrade again
+          await tierService.upgradeTier('tier2');
+        } else {
+          throw tierError;
+        }
       }
       
       // Refresh profile to get updated tier info
       await refreshProfile();
       
-      // Verify the upgrade was successful
-      const updatedProfile = await refreshProfile();
       console.log('Profile refreshed after upgrade');
       
       setPaymentSuccess(true);
@@ -70,7 +76,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     } catch (error) {
       console.error('Failed to upgrade tier after payment:', error);
       
-      // More specific error message
+      // More specific error message based on the error type
       let errorMessage = 'Payment was successful, but there was an error upgrading your account.';
       
       if (error instanceof Error) {
@@ -78,6 +84,8 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
           errorMessage = 'Payment successful! Please sign out and sign back in to see your Pro features.';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           errorMessage = 'Payment successful! There was a network error. Please refresh the page to see your Pro features.';
+        } else if (error.message.includes('row-level security') || error.message.includes('RLS')) {
+          errorMessage = 'Payment successful! Database permission issue detected. Please contact support - your payment will be honored.';
         } else {
           errorMessage = `Payment successful! Upgrade error: ${error.message}. Please contact support if Pro features don't appear.`;
         }
@@ -100,6 +108,10 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     setPaymentError(null);
     
     try {
+      // Refresh session first
+      await refreshProfile();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       await tierService.upgradeTier('tier2');
       await refreshProfile();
       setPaymentSuccess(true);
@@ -109,7 +121,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       }, 2000);
     } catch (error) {
       console.error('Retry upgrade failed:', error);
-      setPaymentError('Upgrade retry failed. Please contact support with your payment details.');
+      setPaymentError('Upgrade retry failed. Please contact support with your payment details. Your payment was successful and will be honored.');
     } finally {
       setProcessingPayment(false);
     }
