@@ -112,17 +112,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="font-medium">AI Debate Club</span>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      onOpenVideoCall();
-                      onToggleMobile();
-                    }}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                    style={{ animationDelay: '0.2s' }}
-                  >
-                    <Video size={18} />
-                    <span className="font-medium">AI Video Call</span>
-                  </button>
+                  {/* AI Video Call Button - Conditional for Pro Users */}
+                  {isProUser ? (
+                    <button
+                      onClick={() => {
+                        onOpenVideoCall();
+                        onToggleMobile();
+                      }}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                      style={{ animationDelay: '0.2s' }}
+                    >
+                      <Video size={18} />
+                      <span className="font-medium">AI Video Call</span>
+                    </button>
+                  ) : (
+                    <div className="relative animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+                      <button
+                        disabled
+                        className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed"
+                      >
+                        <Video size={18} />
+                        <span className="font-medium">AI Video Call</span>
+                        <Crown size={14} className="text-yellow-400 ml-auto" />
+                      </button>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <button
+                          onClick={() => {
+                            onOpenTierUpgrade();
+                            onToggleMobile();
+                          }}
+                          className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                        >
+                          Pro Only
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mobile Upgrade to Pro Button for Free Users */}
+                  {!isProUser && (
+                    <button
+                      onClick={() => {
+                        onOpenTierUpgrade();
+                        onToggleMobile();
+                      }}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                      style={{ animationDelay: '0.25s' }}
+                    >
+                      <Crown size={18} />
+                      <span className="font-medium">Upgrade to Pro</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -130,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {user ? (
               <>
                 {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
                   <UsageIndicator
                     usage={usage}
                     limit={limit}
@@ -142,7 +182,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
 
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
@@ -306,18 +346,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {[
               { onClick: onNewChat, icon: Plus, title: 'New Chat', bgClass: 'bg-gray-800 hover:bg-gray-700' },
               { onClick: onOpenDebateClub, icon: Mic, title: 'AI Debate Club', bgClass: 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' },
-              { onClick: onOpenVideoCall, icon: Video, title: 'AI Video Call', bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' },
+              // AI Video Call - Conditional for Pro Users
+              ...(isProUser ? [{
+                onClick: onOpenVideoCall, 
+                icon: Video, 
+                title: 'AI Video Call', 
+                bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+              }] : [{
+                onClick: onOpenTierUpgrade, 
+                icon: Video, 
+                title: 'AI Video Call (Pro Only)', 
+                bgClass: 'bg-gray-700 opacity-50 cursor-not-allowed relative'
+              }]),
               { onClick: onOpenAnalytics, icon: BarChart3, title: 'Analytics', bgClass: 'hover:bg-gray-800' },
               { onClick: onOpenSettings, icon: Settings, title: 'Settings', bgClass: 'hover:bg-gray-800' }
             ].map((item, index) => (
               <button
                 key={item.title}
                 onClick={item.onClick}
-                className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 transform animate-fadeInUp ${item.bgClass}`}
+                disabled={!isProUser && item.title.includes('Pro Only')}
+                className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 transform animate-fadeInUp ${item.bgClass} ${
+                  !isProUser && item.title.includes('Pro Only') ? 'relative' : ''
+                }`}
                 style={{ animationDelay: `${0.1 + index * 0.1}s` }}
                 title={item.title}
               >
                 <item.icon size={20} />
+                {!isProUser && item.title.includes('Pro Only') && (
+                  <Crown size={10} className="absolute -top-1 -right-1 text-yellow-400" />
+                )}
               </button>
             ))}
             
@@ -394,14 +451,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="font-medium">AI Debate Club</span>
             </button>
 
-            <button
-              onClick={onOpenVideoCall}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-              style={{ animationDelay: '0.2s' }}
-            >
-              <Video size={18} />
-              <span className="font-medium">AI Video Call</span>
-            </button>
+            {/* AI Video Call Button - Conditional for Pro Users */}
+            {isProUser ? (
+              <button
+                onClick={onOpenVideoCall}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                style={{ animationDelay: '0.2s' }}
+              >
+                <Video size={18} />
+                <span className="font-medium">AI Video Call</span>
+              </button>
+            ) : (
+              <div className="relative animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+                <button
+                  disabled
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed"
+                >
+                  <Video size={18} />
+                  <span className="font-medium">AI Video Call</span>
+                  <Crown size={14} className="text-yellow-400 ml-auto" />
+                </button>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <button
+                    onClick={onOpenTierUpgrade}
+                    className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                  >
+                    Pro Only
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Desktop Upgrade to Pro Button for Free Users */}
+            {!isProUser && (
+              <button
+                onClick={onOpenTierUpgrade}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                style={{ animationDelay: '0.25s' }}
+              >
+                <Crown size={18} />
+                <span className="font-medium">Upgrade to Pro</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -409,7 +500,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {user ? (
         <>
           {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
             <UsageIndicator
               usage={usage}
               limit={limit}
@@ -418,7 +509,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
 
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
@@ -506,18 +597,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Shield size={18} className="text-red-400" />
                 <span className="font-medium text-red-400">Admin Dashboard</span>
-              </button>
-            )}
-
-            {/* Tier Upgrade Button */}
-            {!isProUser && (
-              <button
-                onClick={onOpenTierUpgrade}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: '0.8s' }}
-              >
-                <Crown size={18} className="text-yellow-400" />
-                <span className="font-medium text-yellow-400">Upgrade to Pro</span>
               </button>
             )}
             
