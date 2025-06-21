@@ -61,7 +61,8 @@ class PayPalService {
       
       script.onload = () => {
         this.sdkLoaded = true;
-        resolve();
+        // Add a small delay to ensure PayPal SDK is fully initialized
+        setTimeout(() => resolve(), 500);
       };
       script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
       
@@ -78,8 +79,8 @@ class PayPalService {
         throw new Error('PayPal SDK not loaded');
       }
 
-      // Wait a bit to ensure DOM is ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait a bit more to ensure DOM is ready
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Check if container exists
       const container = document.getElementById(containerId);
@@ -90,6 +91,11 @@ class PayPalService {
       // Clear container
       container.innerHTML = '';
 
+      // Verify PayPal Buttons API is available
+      if (!window.paypal.Buttons) {
+        throw new Error('PayPal Buttons API not available');
+      }
+
       const buttons = window.paypal.Buttons({
         style: {
           layout: 'vertical',
@@ -99,16 +105,21 @@ class PayPalService {
           height: 45,
           tagline: false
         },
-        createOrder: () => {
-          // For sandbox, we'll create a simple order without backend
-          return window.paypal.order.create({
+        createOrder: (data: any, actions: any) => {
+          // Use the actions.order.create method properly
+          return actions.order.create({
             purchase_units: [{
               amount: {
                 value: '9.99',
                 currency_code: 'USD'
               },
               description: 'ModelMix Pro Plan - Monthly Subscription'
-            }]
+            }],
+            application_context: {
+              brand_name: 'ModelMix',
+              landing_page: 'NO_PREFERENCE',
+              user_action: 'PAY_NOW'
+            }
           });
         },
         onApprove: async (data: any, actions: any) => {
@@ -134,8 +145,13 @@ class PayPalService {
         }
       });
 
-      // Render the buttons
-      await buttons.render(`#${containerId}`);
+      // Render the buttons with error handling
+      try {
+        await buttons.render(`#${containerId}`);
+      } catch (renderError) {
+        console.error('PayPal render error:', renderError);
+        throw new Error('Failed to render PayPal buttons');
+      }
     } catch (error) {
       console.error('Failed to initialize PayPal buttons:', error);
       throw error;

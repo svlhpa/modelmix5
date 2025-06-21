@@ -20,15 +20,16 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
   const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    // Small delay to ensure DOM is ready
+    // Longer delay to ensure DOM is ready
     const timer = setTimeout(() => {
       initializePayPal();
-    }, 100);
+    }, 500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [retryCount]);
 
   const initializePayPal = async () => {
     try {
@@ -37,7 +38,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
 
       // Check if PayPal is configured
       if (!paypalService.isConfigured()) {
-        setError('PayPal is not configured. Please contact support.');
+        setError('PayPal is not configured. Please add your PayPal Client ID to the environment variables.');
         setIsConfigured(false);
         setLoading(false);
         return;
@@ -55,6 +56,9 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       // Clear any existing content
       paypalRef.current.innerHTML = '';
 
+      // Add another delay to ensure everything is ready
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Initialize PayPal buttons with the container reference
       await paypalService.initializePayPalButtons(
         containerId,
@@ -64,17 +68,23 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         },
         (error) => {
           console.error('PayPal payment error:', error);
-          setError(error.message || 'Payment failed');
+          const errorMessage = error?.message || error?.toString() || 'Payment failed';
+          setError(errorMessage);
           onError(error);
         }
       );
     } catch (error) {
       console.error('Failed to initialize PayPal:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load payment system');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
+      setError(errorMessage);
       onError(error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
   };
 
   if (!isConfigured && !loading) {
@@ -84,7 +94,15 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <AlertCircle size={20} />
           <div>
             <p className="font-medium">Payment System Not Configured</p>
-            <p className="text-sm">PayPal integration is not set up. Please contact support to enable payments.</p>
+            <p className="text-sm">
+              PayPal integration requires a Client ID. Please add <code>VITE_PAYPAL_CLIENT_ID</code> to your environment variables.
+            </p>
+            <div className="mt-2 text-xs bg-amber-100 p-2 rounded">
+              <p><strong>Setup Instructions:</strong></p>
+              <p>1. Go to <a href="https://developer.paypal.com/" target="_blank" rel="noopener noreferrer" className="underline">PayPal Developer</a></p>
+              <p>2. Create an app and get your Client ID</p>
+              <p>3. Add it to your .env file as VITE_PAYPAL_CLIENT_ID</p>
+            </div>
           </div>
         </div>
       </div>
@@ -99,10 +117,15 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <div>
             <p className="font-medium">Payment Error</p>
             <p className="text-sm">{error}</p>
+            {error.includes('create') && (
+              <p className="text-xs mt-1 bg-red-100 p-2 rounded">
+                This error usually means the PayPal SDK is not fully loaded. Try refreshing the page or check your internet connection.
+              </p>
+            )}
           </div>
         </div>
         <button
-          onClick={initializePayPal}
+          onClick={handleRetry}
           className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
         >
           <CreditCard size={16} />
