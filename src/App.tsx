@@ -7,6 +7,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
+import { AIVideoCall } from './components/AIVideoCall';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { aiService } from './services/aiService';
@@ -34,6 +35,7 @@ function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showTierUpgrade, setShowTierUpgrade] = useState(false);
   const [showDebateClub, setShowDebateClub] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -41,7 +43,8 @@ function App() {
     openrouter: '',
     gemini: '',
     deepseek: '',
-    serper: ''
+    serper: '',
+    imagerouter: ''
   });
   const [modelSettings, setModelSettings] = useState<ModelSettings>({
     openai: true,
@@ -143,6 +146,14 @@ function App() {
     setShowDebateClub(true);
   };
 
+  const handleOpenVideoCall = () => {
+    if (user) {
+      setShowVideoCall(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
   const handleTierUpgradeClose = () => {
     setShowTierUpgrade(false);
     refreshProfile(); // Refresh profile to get updated tier info
@@ -163,6 +174,7 @@ function App() {
           onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
           onOpenTierUpgrade={() => setShowTierUpgrade(true)}
           onOpenDebateClub={handleOpenDebateClub}
+          onOpenVideoCall={handleOpenVideoCall}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
@@ -190,6 +202,11 @@ function App() {
           onClose={() => setShowDebateClub(false)}
         />
 
+        <AIVideoCall
+          isOpen={showVideoCall}
+          onClose={() => setShowVideoCall(false)}
+        />
+
         <TierUpgradeModal
           isOpen={showTierUpgrade}
           onClose={handleTierUpgradeClose}
@@ -213,6 +230,7 @@ function App() {
         onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         onOpenDebateClub={handleOpenDebateClub}
+        onOpenVideoCall={handleOpenVideoCall}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -258,6 +276,11 @@ function App() {
       <DebateClub
         isOpen={showDebateClub}
         onClose={() => setShowDebateClub(false)}
+      />
+
+      <AIVideoCall
+        isOpen={showVideoCall}
+        onClose={() => setShowVideoCall(false)}
       />
 
       <TierUpgradeModal

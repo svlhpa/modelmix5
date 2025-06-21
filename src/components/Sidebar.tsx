@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { UsageIndicator } from './UsageIndicator';
@@ -17,6 +17,7 @@ interface SidebarProps {
   onOpenAdmin?: () => void;
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
+  onOpenVideoCall: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAdmin,
   onOpenTierUpgrade,
   onOpenDebateClub,
+  onOpenVideoCall,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -107,7 +109,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     style={{ animationDelay: '0.15s' }}
                   >
                     <Mic size={18} />
-                    <span className="font-medium">AI Debate Club 🎤🤖</span>
+                    <span className="font-medium">AI Debate Club</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onOpenVideoCall();
+                      onToggleMobile();
+                    }}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                    style={{ animationDelay: '0.2s' }}
+                  >
+                    <Video size={18} />
+                    <span className="font-medium">AI Video Call</span>
                   </button>
                 </div>
               )}
@@ -116,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {user ? (
               <>
                 {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
                   <UsageIndicator
                     usage={usage}
                     limit={limit}
@@ -292,6 +306,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {[
               { onClick: onNewChat, icon: Plus, title: 'New Chat', bgClass: 'bg-gray-800 hover:bg-gray-700' },
               { onClick: onOpenDebateClub, icon: Mic, title: 'AI Debate Club', bgClass: 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' },
+              { onClick: onOpenVideoCall, icon: Video, title: 'AI Video Call', bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' },
               { onClick: onOpenAnalytics, icon: BarChart3, title: 'Analytics', bgClass: 'hover:bg-gray-800' },
               { onClick: onOpenSettings, icon: Settings, title: 'Settings', bgClass: 'hover:bg-gray-800' }
             ].map((item, index) => (
@@ -311,7 +326,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onOpenAdmin}
                 className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.5s' }}
+                style={{ animationDelay: '0.6s' }}
                 title="Admin Dashboard"
               >
                 <Shield size={20} className="text-red-400" />
@@ -323,7 +338,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onOpenTierUpgrade}
                 className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.6s' }}
+                style={{ animationDelay: '0.7s' }}
                 title="Upgrade to Pro"
               >
                 <Crown size={20} className="text-yellow-400" />
@@ -334,7 +349,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={handleSignOut}
               className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
-              style={{ animationDelay: '0.7s' }}
+              style={{ animationDelay: '0.8s' }}
               title="Sign Out"
             >
               <LogOut size={20} />
@@ -376,7 +391,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               style={{ animationDelay: '0.15s' }}
             >
               <Mic size={18} />
-              <span className="font-medium">AI Debate Club 🎤🤖</span>
+              <span className="font-medium">AI Debate Club</span>
+            </button>
+
+            <button
+              onClick={onOpenVideoCall}
+              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+              style={{ animationDelay: '0.2s' }}
+            >
+              <Video size={18} />
+              <span className="font-medium">AI Video Call</span>
             </button>
           </div>
         )}
@@ -385,7 +409,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {user ? (
         <>
           {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
             <UsageIndicator
               usage={usage}
               limit={limit}
