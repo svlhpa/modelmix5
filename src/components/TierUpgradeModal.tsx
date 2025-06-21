@@ -224,7 +224,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
 
           <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
             <p className="text-sm text-green-700">
-              <strong>Recurring Subscription:</strong> Your Pro plan will automatically renew monthly at $9.99/month. 
+              <strong>Recurring Subscription:</strong> Your Pro plan will automatically renew monthly at $18.00/month. 
               You can cancel anytime from your PayPal account.
             </p>
           </div>

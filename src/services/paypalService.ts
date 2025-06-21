@@ -128,7 +128,7 @@ class PayPalService {
             return actions.order.create({
               purchase_units: [{
                 amount: {
-                  value: '9.99',
+                  value: '18.00',
                   currency_code: 'USD'
                 },
                 description: 'ModelMix Pro Plan - Monthly Subscription'
@@ -224,7 +224,7 @@ class PayPalService {
             total_cycles: 0, // 0 means infinite
             pricing_scheme: {
               fixed_price: {
-                value: '9.99',
+                value: '18.00',
                 currency_code: 'USD'
               }
             }
