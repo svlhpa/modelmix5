@@ -145,3 +145,14 @@ export interface ImageModel {
     };
   }>;
 }
+
+// File upload interface
+export interface UploadedFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  content: string;
+  uploadedAt: Date;
+  expiresAt: Date;
+}

@@ -86,7 +86,7 @@ export const useChat = () => {
   }, [user]);
 
   // CRITICAL: Simplified sendMessage - only returns responses, doesn't modify session
-  const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false): Promise<APIResponse[]> => {
+  const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false, fileContext?: string): Promise<APIResponse[]> => {
     if (!user) {
       const newSessionId = await createNewSession();
       if (!newSessionId) return [];
@@ -109,8 +109,12 @@ export const useChat = () => {
       });
     });
     
-    // Add the new user message to context
-    conversationHistory.push({ role: 'user', content });
+    // Add the new user message with file context to context
+    let messageWithContext = content;
+    if (fileContext) {
+      messageWithContext += fileContext;
+    }
+    conversationHistory.push({ role: 'user', content: messageWithContext });
 
     // Update session title in database if it's the first message
     if (session.messages.length === 0) {
@@ -150,7 +154,7 @@ export const useChat = () => {
   }, [currentSessionId, createNewSession, user, sessions, getCurrentTier]);
 
   // CRITICAL: Response selection function - this is where we add messages to the session
-  const selectResponse = useCallback(async (selectedResponse: APIResponse, userMessage: string, images: string[] = []) => {
+  const selectResponse = useCallback(async (selectedResponse: APIResponse, userMessage: string, images: string[] = [], fileContext?: string) => {
     if (!currentSessionId) return;
 
     // Create the user message
@@ -169,6 +173,8 @@ export const useChat = () => {
       role: 'assistant',
       timestamp: new Date(),
       provider: selectedResponse.provider,
+      generatedImages: selectedResponse.generatedImages,
+      isImageGeneration: selectedResponse.isImageGeneration,
     };
 
     // CRITICAL: Add BOTH messages to the session at once
