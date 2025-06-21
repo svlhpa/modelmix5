@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Menu, Upload, Globe, Zap, Crown, AlertTriangle, Paperclip, X } from 'lucide-react';
+import { Send, Menu, Upload, Globe, Zap, Crown, AlertTriangle, Paperclip, X, Image as ImageIcon } from 'lucide-react';
 import { Message, APIResponse, ModelSettings } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ComparisonView } from './ComparisonView';
@@ -41,7 +41,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [currentResponses, setCurrentResponses] = useState<APIResponse[]>([]);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   
-  // Tavus secret feature states
+  // Secret Tavus feature states (hidden from UI)
   const [showTavusChat, setShowTavusChat] = useState(false);
   const [tavusStep, setTavusStep] = useState<'name' | 'context' | 'ready'>('name');
   const [conversationName, setConversationName] = useState('');
@@ -81,26 +81,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     if (!input.trim() || isLoading) return;
     if (!user) return;
 
-    // Check for secret Tavus trigger (Pro users only)
+    // SECRET TAVUS FEATURE - Check for secret trigger (Pro users only)
     if (isProUser && input.trim() === '*I want to talk to someone') {
       setAwaitingTavusInput(true);
       setTavusStep('name');
       setInput('');
-      
-      // Add a system message asking for conversation name
-      const systemMessage: Message = {
-        id: `system-${Date.now()}`,
-        content: 'Please provide a name for this conversation:',
-        role: 'assistant',
-        timestamp: new Date(),
-        provider: 'System'
-      };
-      
-      // We can't directly add to messages here, so we'll handle this in the UI
       return;
     }
 
-    // Handle Tavus input steps
+    // Handle Tavus input steps (hidden from normal flow)
     if (awaitingTavusInput && isProUser) {
       if (tavusStep === 'name') {
         setConversationName(input.trim());
@@ -152,6 +141,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       
       if (!controller.signal.aborted) {
         setCurrentResponses(responses);
+        
+        // Update responses as they come in
+        const updateResponses = (updatedResponses: APIResponse[]) => {
+          if (!controller.signal.aborted) {
+            setCurrentResponses([...updatedResponses]);
+          }
+        };
+
+        // Call onSendMessage with the update callback
+        const finalResponses = await onSendMessage(
+          messageText, 
+          messageImages, 
+          useInternetSearch, 
+          fileContext
+        );
+        
+        if (!controller.signal.aborted) {
+          setCurrentResponses(finalResponses);
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -164,13 +172,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const handleResponseSelect = (response: APIResponse) => {
-    const messageText = input.trim() || 'Previous message'; // Fallback text
-    const messageImages = [...images];
-    
-    const fileContext = uploadedFiles.length > 0 
-      ? fileService.getFileContext(uploadedFiles.map(f => f.id))
-      : undefined;
-
     // Mark the selected response
     const updatedResponses = currentResponses.map(r => ({
       ...r,
@@ -179,6 +180,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
     setCurrentResponses(updatedResponses);
     
+    // Get the original user message from the last message
+    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+    const messageText = lastUserMessage?.content || 'Previous message';
+    const messageImages = lastUserMessage?.images || [];
+    
+    const fileContext = uploadedFiles.length > 0 
+      ? fileService.getFileContext(uploadedFiles.map(f => f.id))
+      : undefined;
+
     // Save the conversation turn with all responses
     const turn = {
       id: `turn-${Date.now()}`,
@@ -243,6 +253,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setAwaitingTavusInput(false);
   };
 
+  // Get enabled model count for display
+  const getEnabledModelCount = () => {
+    let count = 0;
+    if (modelSettings.openai) count++;
+    if (modelSettings.gemini) count++;
+    if (modelSettings.deepseek) count++;
+    count += Object.values(modelSettings.openrouter_models).filter(Boolean).length;
+    return count;
+  };
+
+  const getEnabledImageModelCount = () => {
+    return Object.values(modelSettings.image_models).filter(Boolean).length;
+  };
+
   return (
     <div className="flex-1 flex flex-col h-screen bg-white">
       {/* Header */}
@@ -265,6 +289,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
           
           <div className="flex items-center space-x-2">
+            {isProUser && (
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-sm">
+                <Crown size={14} />
+                <span className="hidden sm:inline">Pro Plan</span>
+                <span className="text-green-600">• ∞ unlimited</span>
+                <span className="text-blue-600">• {getEnabledModelCount()} models</span>
+              </div>
+            )}
             {!isProUser && (
               <button
                 onClick={onTierUpgrade}
@@ -274,22 +306,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 <span className="hidden sm:inline">Upgrade to Pro</span>
               </button>
             )}
-            {isProUser && (
-              <div className="flex items-center space-x-2 px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-sm">
-                <Crown size={14} />
-                <span className="hidden sm:inline">Pro Plan</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {messages.length === 0 && currentResponses.length === 0 && (
+        {messages.length === 0 && currentResponses.length === 0 && !awaitingTavusInput && (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center max-w-md">
-              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="text-center max-w-md animate-fadeInUp">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounceIn">
                 <Zap size={32} className="text-emerald-600" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Start Mixing AI Models</h3>
@@ -298,26 +324,42 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 Continue natural conversations with full context.
               </p>
               <div className="space-y-2 text-sm text-gray-500">
-                <div className="flex items-center justify-center space-x-2">
+                <div className="flex items-center justify-center space-x-2 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
                   <Globe size={16} className="text-blue-500" />
                   <span>Internet search is available! Toggle it on to get real-time information.</span>
                 </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <Upload size={16} className="text-purple-500" />
+                <div className="flex items-center justify-center space-x-2 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+                  <ImageIcon size={16} className="text-purple-500" />
                   <span>Image generation is available! Ask the AI to "generate an image of..." or "draw...".</span>
                 </div>
               </div>
+              
+              {/* Pro user status indicator */}
+              {isProUser && (
+                <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+                  <div className="flex items-center justify-center space-x-2 text-green-700 mb-2">
+                    <Crown size={16} className="animate-pulse" />
+                    <span className="font-medium">{getEnabledModelCount()} AI models and {getEnabledImageModelCount()} image models ready for comparison!</span>
+                  </div>
+                  <p className="text-sm text-green-600">Unlimited conversations and models with Pro plan!</p>
+                  <div className="flex items-center justify-center space-x-4 mt-2 text-xs text-green-600">
+                    <span>🌐 Internet search available for real-time information!</span>
+                  </div>
+                  <div className="flex items-center justify-center space-x-4 mt-1 text-xs text-green-600">
+                    <span>🎨 Image generation available! Just ask the AI to create images.</span>
+                  </div>
+                  <div className="text-center mt-2 text-xs text-yellow-600">
+                    👑 Pro plan: unlimited everything!
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
-
-        {/* Show Tavus input prompts */}
+        {/* Show Tavus input prompts (hidden system messages) */}
         {awaitingTavusInput && isProUser && (
-          <div className="flex justify-start mb-6">
+          <div className="flex justify-start mb-6 animate-fadeInUp">
             <div className="max-w-3xl">
               <div className="px-4 py-3 rounded-2xl bg-gray-100 text-gray-900 border border-gray-200">
                 <div className="text-xs font-medium mb-2 opacity-70">System</div>
@@ -329,6 +371,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           </div>
         )}
+
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
 
         {currentResponses.length > 0 && (
           <ComparisonView
@@ -355,9 +401,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       <div className="border-t border-gray-200 p-4 bg-white">
         {/* Images Preview */}
         {images.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2 animate-fadeInUp">
             {images.map((image, index) => (
-              <div key={index} className="relative">
+              <div key={index} className="relative animate-scaleIn" style={{ animationDelay: `${index * 0.1}s` }}>
                 <img
                   src={image}
                   alt={`Upload ${index + 1}`}
@@ -419,7 +465,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   ? tavusStep === 'name'
                     ? 'Enter conversation name...'
                     : 'Enter conversation context...'
-                  : 'Ask anything - Pro plan with 4 AI models ready!'
+                  : isProUser
+                    ? 'Ask anything - Pro plan with 4 AI models ready!'
+                    : 'Ask anything - Free trial with AI models!'
               }
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
               rows={1}
@@ -454,7 +502,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
             >
               <X size={16} />
-              <span>Cancel</span>
+              <span className="hidden sm:inline">Cancel</span>
             </button>
           ) : (
             <button
@@ -463,25 +511,31 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
             >
               <Send size={16} />
-              <span className="hidden sm:inline">Send</span>
+              <span className="hidden sm:inline">
+                {awaitingTavusInput && isProUser ? 'Submit' : 'Mix'}
+              </span>
             </button>
           )}
         </form>
 
-        {/* Usage Warning for Free Users */}
-        {!isProUser && (
-          <div className="mt-3 text-center">
-            <p className="text-xs text-gray-500">
-              🔥 Pro plan active • Unlimited conversations • Upload images/files for context • Toggle internet search for real-time info
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              🎨 Pro plan: unlimited everything!
-            </p>
-          </div>
-        )}
+        {/* Usage Info */}
+        <div className="mt-3 text-center">
+          <p className="text-xs text-gray-500">
+            {isProUser 
+              ? '👑 Pro plan active • Unlimited conversations • Upload images/files for context • Toggle internet search for real-time info'
+              : '🔥 Free trial • Upload images/files for context • Toggle internet search for real-time info'
+            }
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {isProUser 
+              ? '🎨 Pro plan: unlimited everything!'
+              : '🎨 Try asking "Generate an image of..." or "Draw..." to create AI images'
+            }
+          </p>
+        </div>
       </div>
 
-      {/* Tavus Video Chat Modal */}
+      {/* Secret Tavus Video Chat Modal */}
       <TavusVideoChat
         isOpen={showTavusChat}
         onClose={handleTavusClose}
