@@ -4,6 +4,7 @@ import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { GCashPayment } from './GCashPayment';
+import { PayPalButton } from './PayPalButton';
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
@@ -293,9 +294,12 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
                 </div>
               </div>
               
-              <div id="paypal-button-container" className="min-h-[150px]">
-                {/* PayPal button will be rendered here */}
-              </div>
+              <PayPalButton
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                disabled={processingPayment}
+                isRecurring={true}
+              />
               
               <p className="text-xs text-gray-500 text-center">
                 By completing this payment, you agree to our Terms of Service and Privacy Policy.

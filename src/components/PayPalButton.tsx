@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle, CreditCard, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, CreditCard, Loader2, RefreshCw } from 'lucide-react';
 import { paypalService } from '../services/paypalService';
 
 interface PayPalButtonProps {
@@ -23,20 +23,24 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [isConfigured, setIsConfigured] = useState(false);
   const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
   const [retryCount, setRetryCount] = useState(0);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
-    // Longer delay to ensure DOM is ready
-    const timer = setTimeout(() => {
-      initializePayPal();
-    }, 500);
-
-    return () => clearTimeout(timer);
+    console.log('PayPal Button component mounted, initializing...');
+    initializePayPal();
   }, [retryCount]);
 
   const initializePayPal = async () => {
     try {
       setLoading(true);
       setError(null);
+
+      console.log('Checking PayPal configuration...');
+      
+      // Get debug info
+      const envInfo = paypalService.getEnvironmentInfo();
+      setDebugInfo(envInfo);
+      console.log('PayPal environment info:', envInfo);
 
       // Check if PayPal is configured
       if (!paypalService.isConfigured()) {
@@ -47,21 +51,19 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       }
 
       setIsConfigured(true);
+      console.log('PayPal is configured, proceeding with initialization...');
 
-      // Ensure the container exists before initializing
+      // Wait for DOM to be ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Ensure the container exists
       if (!paypalRef.current) {
-        setError('Payment container not ready');
-        setLoading(false);
-        return;
+        throw new Error('PayPal container not found');
       }
 
-      // Clear any existing content
-      paypalRef.current.innerHTML = '';
+      console.log('PayPal container found, initializing buttons...');
 
-      // Add another delay to ensure everything is ready
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Initialize PayPal buttons with the container reference
+      // Initialize PayPal buttons
       await paypalService.initializePayPalButtons(
         containerId,
         (details) => {
@@ -76,17 +78,20 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         },
         isRecurring
       );
+
+      console.log('PayPal buttons initialized successfully');
+      setLoading(false);
     } catch (error) {
       console.error('Failed to initialize PayPal:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
       setError(errorMessage);
       onError(error);
-    } finally {
       setLoading(false);
     }
   };
 
   const handleRetry = () => {
+    console.log('Retrying PayPal initialization...');
     setRetryCount(prev => prev + 1);
   };
 
@@ -106,6 +111,12 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
               <p>2. Create an app and get your Client ID</p>
               <p>3. Add it to your .env file as VITE_PAYPAL_CLIENT_ID</p>
             </div>
+            {debugInfo && (
+              <div className="mt-2 text-xs bg-amber-100 p-2 rounded">
+                <p><strong>Debug Info:</strong></p>
+                <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -120,10 +131,20 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <div>
             <p className="font-medium">Payment Error</p>
             <p className="text-sm">{error}</p>
-            {error.includes('create') && (
+            {error.includes('SDK') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
-                This error usually means the PayPal SDK is not fully loaded. Try refreshing the page or check your internet connection.
+                This error usually means the PayPal SDK failed to load. This could be due to:
+                <br />• Network connectivity issues
+                <br />• Invalid PayPal Client ID
+                <br />• Browser blocking the PayPal script
+                <br />• Ad blockers or privacy extensions
               </p>
+            )}
+            {debugInfo && (
+              <div className="mt-2 text-xs bg-red-100 p-2 rounded">
+                <p><strong>Debug Info:</strong></p>
+                <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+              </div>
             )}
           </div>
         </div>
@@ -131,7 +152,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           onClick={handleRetry}
           className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
         >
-          <CreditCard size={16} />
+          <RefreshCw size={16} />
           <span>Retry Payment Setup</span>
         </button>
       </div>
@@ -144,7 +165,12 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         <div className="flex items-center justify-center p-8 bg-gray-50 border border-gray-200 rounded-lg">
           <div className="flex items-center space-x-3 text-gray-600">
             <Loader2 size={20} className="animate-spin" />
-            <span>Loading PayPal...</span>
+            <div className="text-center">
+              <p>Loading PayPal...</p>
+              <p className="text-xs text-gray-500 mt-1">
+                This may take a few seconds
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -159,7 +185,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         <div className="mt-3 text-center">
           <p className="text-xs text-gray-500">
             Secure payment powered by PayPal
-            {isRecurring && <span className="block">Recurring monthly subscription</span>}
+            {isRecurring && <span className="block">Monthly subscription</span>}
           </p>
           <div className="flex items-center justify-center space-x-1 mt-1">
             <CheckCircle size={12} className="text-green-500" />
