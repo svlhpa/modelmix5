@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Check, Zap, Star, CreditCard, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Crown, Check, Zap, Star, CreditCard, Loader2, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -22,6 +22,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [showRefreshPrompt, setShowRefreshPrompt] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -29,6 +30,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       setPaymentSuccess(false);
       setPaymentError(null);
       setProcessingPayment(false);
+      setShowRefreshPrompt(false);
     }
   }, [isOpen]);
 
@@ -68,11 +70,12 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       console.log('Profile refreshed after upgrade');
       
       setPaymentSuccess(true);
+      setShowRefreshPrompt(true);
       
-      // Close modal after showing success message
+      // Auto-close after showing success message for a while
       setTimeout(() => {
         onClose();
-      }, 3000);
+      }, 8000);
     } catch (error) {
       console.error('Failed to upgrade tier after payment:', error);
       
@@ -92,6 +95,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       }
       
       setPaymentError(errorMessage);
+      setShowRefreshPrompt(true);
     } finally {
       setProcessingPayment(false);
     }
@@ -115,16 +119,22 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       await tierService.upgradeTier('tier2');
       await refreshProfile();
       setPaymentSuccess(true);
+      setShowRefreshPrompt(true);
       
       setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 6000);
     } catch (error) {
       console.error('Retry upgrade failed:', error);
       setPaymentError('Upgrade retry failed. Please contact support with your payment details. Your payment was successful and will be honored.');
+      setShowRefreshPrompt(true);
     } finally {
       setProcessingPayment(false);
     }
+  };
+
+  const handleRefreshPage = () => {
+    window.location.reload();
   };
 
   const getTierIcon = (tier: UserTier) => {
@@ -165,35 +175,65 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Payment success screen
-  if (paymentSuccess) {
+  // Payment success screen with refresh prompt
+  if (paymentSuccess || showRefreshPrompt) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
         <div className="bg-white rounded-xl max-w-md w-full p-6 text-center transform animate-slideUp">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle size={32} className="text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Pro!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {paymentSuccess ? 'Welcome to Pro!' : 'Payment Successful!'}
+          </h2>
           <p className="text-gray-600 mb-4">
             Your payment was successful and your account has been upgraded to Pro.
           </p>
+          
+          {/* Refresh Prompt */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-center space-x-2 text-blue-800 mb-3">
+              <RefreshCw size={20} />
+              <span className="font-medium">Refresh Required</span>
+            </div>
+            <p className="text-sm text-blue-700 mb-3">
+              Please refresh the page to see your Pro features and unlimited access.
+            </p>
+            <button
+              onClick={handleRefreshPage}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw size={16} />
+              <span>Refresh Page Now</span>
+            </button>
+          </div>
+
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center space-x-2 text-yellow-800">
+            <div className="flex items-center space-x-2 text-yellow-800 mb-2">
               <Crown size={20} />
               <span className="font-medium">Pro Features Unlocked:</span>
             </div>
-            <ul className="text-sm text-yellow-700 mt-2 space-y-1">
-              <li>• Unlimited conversations</li>
-              <li>• Unlimited AI models</li>
-              <li>• Advanced analytics</li>
+            <ul className="text-sm text-yellow-700 space-y-1">
+              <li>• Unlimited conversations per month</li>
+              <li>• Compare unlimited AI models</li>
+              <li>• Advanced analytics dashboard</li>
               <li>• Priority support</li>
+              <li>• Export conversations</li>
             </ul>
           </div>
+
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+            <p className="text-sm text-green-700">
+              <strong>Recurring Subscription:</strong> Your Pro plan will automatically renew monthly at $9.99/month. 
+              You can cancel anytime from your PayPal account.
+            </p>
+          </div>
+
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+            className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
           >
-            Start Using Pro Features
+            Close (Auto-refresh in a moment)
           </button>
         </div>
       </div>
@@ -357,7 +397,11 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
                     onSuccess={handlePaymentSuccess}
                     onError={handlePaymentError}
                     disabled={processingPayment}
+                    isRecurring={true}
                   />
+                  <div className="text-xs text-center text-gray-500">
+                    Recurring monthly subscription • Cancel anytime
+                  </div>
                 </div>
               ) : (
                 <button
@@ -392,6 +436,8 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
           <p className="text-xs text-gray-500">
             All plans include secure data storage, conversation history, and access to our growing library of AI models.
             Pro plan removes all limits and unlocks premium features. Payments are processed securely through PayPal.
+            <br />
+            <strong>Recurring Subscription:</strong> Pro plan automatically renews monthly. Cancel anytime from your PayPal account.
           </p>
         </div>
       </div>

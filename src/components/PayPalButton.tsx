@@ -7,13 +7,15 @@ interface PayPalButtonProps {
   onError: (error: any) => void;
   disabled?: boolean;
   className?: string;
+  isRecurring?: boolean;
 }
 
 export const PayPalButton: React.FC<PayPalButtonProps> = ({
   onSuccess,
   onError,
   disabled = false,
-  className = ''
+  className = '',
+  isRecurring = false
 }) => {
   const paypalRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +73,8 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           const errorMessage = error?.message || error?.toString() || 'Payment failed';
           setError(errorMessage);
           onError(error);
-        }
+        },
+        isRecurring
       );
     } catch (error) {
       console.error('Failed to initialize PayPal:', error);
@@ -156,6 +159,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         <div className="mt-3 text-center">
           <p className="text-xs text-gray-500">
             Secure payment powered by PayPal
+            {isRecurring && <span className="block">Recurring monthly subscription</span>}
           </p>
           <div className="flex items-center justify-center space-x-1 mt-1">
             <CheckCircle size={12} className="text-green-500" />
