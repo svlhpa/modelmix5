@@ -4,9 +4,6 @@ import { UserTier } from '../types';
 interface TavusConversationRequest {
   replica_id: string;
   conversation_name?: string;
-  conversation_properties?: {
-    context?: string;
-  };
 }
 
 interface TavusConversationResponse {
@@ -31,16 +28,13 @@ class TavusService {
       throw new Error('Tavus API key not available. Please configure it in settings or contact support for global key access.');
     }
 
-    // CRITICAL: Fix the request body format according to Tavus API documentation
+    // CRITICAL: Simplified request body - only include required fields
     const requestBody: TavusConversationRequest = {
       replica_id: this.REPLICA_ID,
-      conversation_name: conversationName,
-      conversation_properties: {
-        context: conversationContext
-      }
+      conversation_name: `${conversationName} - ${conversationContext.substring(0, 50)}...`
     };
 
-    console.log('Tavus API Request:', {
+    console.log('Tavus API Request (Simplified):', {
       url: `${this.API_BASE_URL}/conversations`,
       headers: {
         'Content-Type': 'application/json',
