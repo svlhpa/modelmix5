@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image } from 'lucide-react';
+import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
 import { UserTier } from '../types';
@@ -191,7 +191,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       gemini: 'Google Gemini',
       deepseek: 'DeepSeek',
       serper: 'Serper (Internet Search)',
-      imagerouter: 'Imagerouter (Image Generation)'
+      imagerouter: 'Imagerouter (Image Generation)',
+      tavus: 'Tavus (Video Chat)'
     };
     return names[provider] || provider;
   };
@@ -474,6 +475,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           <option value="deepseek">DeepSeek</option>
                           <option value="serper">Serper (Internet Search)</option>
                           <option value="imagerouter">Imagerouter (Image Generation)</option>
+                          <option value="tavus">Tavus (Video Chat)</option>
                         </select>
                       </div>
                       <div>
@@ -572,6 +574,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                     <Image size={10} className="mr-1" />
                                     Image Generation
+                                  </span>
+                                )}
+                                {key.provider === 'tavus' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    <Video size={10} className="mr-1" />
+                                    Video Chat
                                   </span>
                                 )}
                               </div>
