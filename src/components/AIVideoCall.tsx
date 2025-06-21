@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Video, MessageCircle, Send, Loader2, AlertCircle, CheckCircle, ExternalLink, Clock, User, FileText } from 'lucide-react';
+import { X, Video, MessageCircle, Send, Loader2, AlertCircle, CheckCircle, ExternalLink, Clock, User, FileText, Maximize2, Minimize2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { tavusService } from '../services/tavusService';
 
@@ -16,12 +16,13 @@ interface ConversationData {
 
 export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => {
   const { user, getCurrentTier } = useAuth();
-  const [step, setStep] = useState<'setup' | 'creating' | 'ready' | 'error'>('setup');
+  const [step, setStep] = useState<'setup' | 'creating' | 'ready' | 'video-call' | 'error'>('setup');
   const [conversationName, setConversationName] = useState('');
   const [conversationContext, setConversationContext] = useState('');
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -32,6 +33,7 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
       setConversationData(null);
       setError(null);
       setIsLoading(false);
+      setIsFullscreen(false);
     }
   }, [isOpen]);
 
@@ -73,7 +75,7 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
 
   const handleStartVideoCall = () => {
     if (conversationData?.conversation_url) {
-      window.open(conversationData.conversation_url, '_blank', 'noopener,noreferrer');
+      setStep('video-call');
     }
   };
 
@@ -83,11 +85,63 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
     setConversationData(null);
   };
 
+  const handleEndCall = () => {
+    setStep('ready');
+    setIsFullscreen(false);
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
   if (!isOpen) return null;
+
+  // Fullscreen video call mode
+  if (step === 'video-call' && isFullscreen) {
+    return (
+      <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+        {/* Fullscreen header */}
+        <div className="bg-gray-900 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Video size={20} className="text-blue-400" />
+            <span className="font-medium">AI Video Call - {conversationName}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+              title="Exit fullscreen"
+            >
+              <Minimize2 size={20} />
+            </button>
+            <button
+              onClick={handleEndCall}
+              className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+              title="End call"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+        
+        {/* Fullscreen video iframe */}
+        <div className="flex-1">
+          <iframe
+            src={conversationData?.conversation_url}
+            className="w-full h-full border-0"
+            allow="camera; microphone; autoplay; encrypted-media; fullscreen"
+            title="AI Video Call"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto transform animate-slideUp">
+      <div className={`bg-white rounded-xl w-full p-6 max-h-[90vh] overflow-y-auto transform animate-slideUp ${
+        step === 'video-call' ? 'max-w-6xl h-[90vh]' : 'max-w-2xl'
+      }`}>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-blue-100 rounded-lg animate-bounceIn">
@@ -98,13 +152,24 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
               <p className="text-sm text-gray-500">Start a real-time video conversation with AI</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
-            disabled={isLoading}
-          >
-            <X size={20} className="text-gray-500" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {step === 'video-call' && (
+              <button
+                onClick={toggleFullscreen}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
+                title="Fullscreen"
+              >
+                <Maximize2 size={20} className="text-gray-500" />
+              </button>
+            )}
+            <button
+              onClick={step === 'video-call' ? handleEndCall : onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
+              disabled={isLoading}
+            >
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Setup Step */}
@@ -253,20 +318,88 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
                 onClick={handleStartVideoCall}
                 className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform"
               >
-                <ExternalLink size={18} />
-                <span>Start Video Call</span>
+                <Video size={18} />
+                <span>Start Video Call (Embedded)</span>
+              </button>
+              
+              <button
+                onClick={() => window.open(conversationData.conversation_url, '_blank')}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <ExternalLink size={16} />
+                <span>Open in New Tab</span>
               </button>
               
               <button
                 onClick={onClose}
-                className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="w-full px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 Close
               </button>
             </div>
 
             <div className="mt-4 text-xs text-gray-500">
-              The video call will open in a new tab. Make sure to allow camera and microphone access.
+              The embedded video call will appear within ModelMix. Make sure to allow camera and microphone access.
+            </div>
+          </div>
+        )}
+
+        {/* Video Call Step - Embedded */}
+        {step === 'video-call' && conversationData && (
+          <div className="space-y-4 animate-fadeInUp">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Video className="text-blue-600" size={16} />
+                  <span className="font-medium text-blue-800">Live Video Call: {conversationName}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                    title="Fullscreen"
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                  <button
+                    onClick={handleEndCall}
+                    className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                    title="End call"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Embedded video iframe */}
+            <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9', minHeight: '400px' }}>
+              <iframe
+                src={conversationData.conversation_url}
+                className="w-full h-full border-0"
+                allow="camera; microphone; autoplay; encrypted-media; fullscreen"
+                title="AI Video Call"
+              />
+            </div>
+
+            <div className="flex justify-between items-center text-sm text-gray-600">
+              <span>🎥 Video call is active</span>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => window.open(conversationData.conversation_url, '_blank')}
+                  className="flex items-center space-x-1 text-blue-600 hover:text-blue-700"
+                >
+                  <ExternalLink size={14} />
+                  <span>Open in new tab</span>
+                </button>
+                <button
+                  onClick={handleEndCall}
+                  className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                >
+                  <X size={14} />
+                  <span>End call</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -336,6 +469,7 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
               <li>• Camera and microphone access required</li>
               <li>• Conversations are personalized based on your context</li>
               <li>• Works best in Chrome, Firefox, or Safari browsers</li>
+              <li>• Can be used embedded or in fullscreen mode</li>
             </ul>
           </div>
         )}
