@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Check, Zap, Star, CreditCard, Loader2, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Crown, Check, Zap, Star, CreditCard, Loader2, CheckCircle, AlertCircle, RefreshCw, Smartphone } from 'lucide-react';
 import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { PayPalButton } from './PayPalButton';
+import { GCashPayment } from './GCashPayment';
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [showRefreshPrompt, setShowRefreshPrompt] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'paypal' | 'gcash' | null>(null);
+  const [showGCashForm, setShowGCashForm] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -31,6 +34,8 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       setPaymentError(null);
       setProcessingPayment(false);
       setShowRefreshPrompt(false);
+      setSelectedPaymentMethod(null);
+      setShowGCashForm(false);
     }
   }, [isOpen]);
 
@@ -137,6 +142,16 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     window.location.reload();
   };
 
+  const handleGCashSuccess = () => {
+    setPaymentSuccess(true);
+    setShowRefreshPrompt(true);
+    
+    // Auto-close after showing success message for a while
+    setTimeout(() => {
+      onClose();
+    }, 8000);
+  };
+
   const getTierIcon = (tier: UserTier) => {
     switch (tier) {
       case 'tier1':
@@ -187,26 +202,30 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
             {paymentSuccess ? 'Welcome to Pro!' : 'Payment Successful!'}
           </h2>
           <p className="text-gray-600 mb-4">
-            Your payment was successful and your account has been upgraded to Pro.
+            {selectedPaymentMethod === 'gcash' 
+              ? 'Your GCash payment has been submitted for verification. Your account will be upgraded within 1 business day.'
+              : 'Your payment was successful and your account has been upgraded to Pro.'}
           </p>
           
-          {/* Refresh Prompt */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-center space-x-2 text-blue-800 mb-3">
-              <RefreshCw size={20} />
-              <span className="font-medium">Refresh Required</span>
+          {/* Refresh Prompt - only for PayPal */}
+          {selectedPaymentMethod === 'paypal' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-center space-x-2 text-blue-800 mb-3">
+                <RefreshCw size={20} />
+                <span className="font-medium">Refresh Required</span>
+              </div>
+              <p className="text-sm text-blue-700 mb-3">
+                Please refresh the page to see your Pro features and unlimited access.
+              </p>
+              <button
+                onClick={handleRefreshPage}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <RefreshCw size={16} />
+                <span>Refresh Page Now</span>
+              </button>
             </div>
-            <p className="text-sm text-blue-700 mb-3">
-              Please refresh the page to see your Pro features and unlimited access.
-            </p>
-            <button
-              onClick={handleRefreshPage}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <RefreshCw size={16} />
-              <span>Refresh Page Now</span>
-            </button>
-          </div>
+          )}
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
             <div className="flex items-center space-x-2 text-yellow-800 mb-2">
@@ -222,19 +241,59 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
             </ul>
           </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-            <p className="text-sm text-green-700">
-              <strong>Recurring Subscription:</strong> Your Pro plan will automatically renew monthly at $9.99/month. 
-              You can cancel anytime from your PayPal account.
-            </p>
-          </div>
+          {selectedPaymentMethod === 'paypal' && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-green-700">
+                <strong>Recurring Subscription:</strong> Your Pro plan will automatically renew monthly at $18.00/month. 
+                You can cancel anytime from your PayPal account.
+              </p>
+            </div>
+          )}
 
           <button
             onClick={onClose}
             className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
           >
-            Close (Auto-refresh in a moment)
+            Close {selectedPaymentMethod === 'paypal' ? '(Auto-refresh in a moment)' : ''}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // GCash payment form
+  if (showGCashForm) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto transform animate-slideUp">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-100 rounded-lg animate-bounceIn">
+                <Smartphone size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">GCash Payment</h2>
+                <p className="text-sm text-gray-500">₱580.00 PHP for ModelMix Pro</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowGCashForm(false);
+                setSelectedPaymentMethod(null);
+              }}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
+            >
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
+
+          <GCashPayment 
+            onSuccess={handleGCashSuccess}
+            onCancel={() => {
+              setShowGCashForm(false);
+              setSelectedPaymentMethod(null);
+            }}
+          />
         </div>
       </div>
     );
@@ -393,15 +452,45 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
                 </button>
               ) : tier.tier === 'tier2' ? (
                 <div className="space-y-3">
-                  <PayPalButton
-                    onSuccess={handlePaymentSuccess}
-                    onError={handlePaymentError}
-                    disabled={processingPayment}
-                    isRecurring={true}
-                  />
-                  <div className="text-xs text-center text-gray-500">
-                    Recurring monthly subscription • Cancel anytime
-                  </div>
+                  {!selectedPaymentMethod ? (
+                    <>
+                      <button
+                        onClick={() => setSelectedPaymentMethod('paypal')}
+                        className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <img src="https://www.paypalobjects.com/webstatic/en_US/i/buttons/PP_logo_h_100x26.png" alt="PayPal" className="h-5" />
+                        <span>Pay with PayPal - $18.00 USD</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedPaymentMethod('gcash');
+                          setShowGCashForm(true);
+                        }}
+                        className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      >
+                        <Smartphone size={18} />
+                        <span>Pay with GCash - ₱580.00 PHP</span>
+                      </button>
+                    </>
+                  ) : selectedPaymentMethod === 'paypal' ? (
+                    <>
+                      <PayPalButton
+                        onSuccess={handlePaymentSuccess}
+                        onError={handlePaymentError}
+                        disabled={processingPayment}
+                        isRecurring={true}
+                      />
+                      <div className="text-xs text-center text-gray-500">
+                        Recurring monthly subscription • Cancel anytime
+                      </div>
+                      <button
+                        onClick={() => setSelectedPaymentMethod(null)}
+                        className="w-full py-2 px-4 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors mt-2"
+                      >
+                        Back to payment options
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               ) : (
                 <button
@@ -435,9 +524,11 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
         <div className="mt-6 text-center animate-fadeInUp" style={{ animationDelay: '0.8s' }}>
           <p className="text-xs text-gray-500">
             All plans include secure data storage, conversation history, and access to our growing library of AI models.
-            Pro plan removes all limits and unlocks premium features. Payments are processed securely through PayPal.
+            Pro plan removes all limits and unlocks premium features. Payments are processed securely through PayPal or GCash.
             <br />
-            <strong>Recurring Subscription:</strong> Pro plan automatically renews monthly. Cancel anytime from your PayPal account.
+            <strong>PayPal Subscription:</strong> Pro plan automatically renews monthly at $18.00 USD. Cancel anytime from your PayPal account.
+            <br />
+            <strong>GCash Payment:</strong> One-time payment of ₱580.00 PHP for 1 month of Pro access. Manual renewal required.
           </p>
         </div>
       </div>
