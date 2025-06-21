@@ -19,9 +19,15 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
+  const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
-    initializePayPal();
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      initializePayPal();
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const initializePayPal = async () => {
@@ -39,24 +45,29 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
 
       setIsConfigured(true);
 
-      // Initialize PayPal buttons
-      if (paypalRef.current) {
-        // Clear any existing content
-        paypalRef.current.innerHTML = '';
-        
-        await paypalService.initializePayPalButtons(
-          paypalRef.current.id,
-          (details) => {
-            console.log('PayPal payment successful:', details);
-            onSuccess(details);
-          },
-          (error) => {
-            console.error('PayPal payment error:', error);
-            setError(error.message || 'Payment failed');
-            onError(error);
-          }
-        );
+      // Ensure the container exists before initializing
+      if (!paypalRef.current) {
+        setError('Payment container not ready');
+        setLoading(false);
+        return;
       }
+
+      // Clear any existing content
+      paypalRef.current.innerHTML = '';
+
+      // Initialize PayPal buttons with the container reference
+      await paypalService.initializePayPalButtons(
+        containerId,
+        (details) => {
+          console.log('PayPal payment successful:', details);
+          onSuccess(details);
+        },
+        (error) => {
+          console.error('PayPal payment error:', error);
+          setError(error.message || 'Payment failed');
+          onError(error);
+        }
+      );
     } catch (error) {
       console.error('Failed to initialize PayPal:', error);
       setError(error instanceof Error ? error.message : 'Failed to load payment system');
@@ -114,8 +125,8 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       
       <div
         ref={paypalRef}
-        id={`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`}
-        className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+        id={containerId}
+        className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''} min-h-[50px]`}
       />
       
       {!loading && isConfigured && (

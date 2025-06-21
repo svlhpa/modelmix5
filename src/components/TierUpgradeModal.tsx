@@ -28,6 +28,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
       setTiers(tierService.getAllTiers());
       setPaymentSuccess(false);
       setPaymentError(null);
+      setProcessingPayment(false);
     }
   }, [isOpen]);
 
@@ -97,10 +98,6 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
   };
 
   const isCurrentTier = (tier: UserTier) => tier === currentTier;
-  const isUpgrade = (tier: UserTier) => {
-    const tierOrder = { tier1: 1, tier2: 2 };
-    return tierOrder[tier] > tierOrder[currentTier];
-  };
 
   if (!isOpen) return null;
 
