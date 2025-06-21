@@ -39,19 +39,51 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     try {
       console.log('Payment successful:', details);
       
-      // Upgrade user to Pro tier
-      await tierService.upgradeTier('tier2');
+      // Add a small delay to ensure payment is fully processed
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Upgrade user to Pro tier with better error handling
+      try {
+        await tierService.upgradeTier('tier2');
+        console.log('Tier upgrade successful');
+      } catch (tierError) {
+        console.error('Tier upgrade error:', tierError);
+        // Try to refresh profile first, then upgrade again
+        await refreshProfile();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await tierService.upgradeTier('tier2');
+      }
+      
+      // Refresh profile to get updated tier info
       await refreshProfile();
+      
+      // Verify the upgrade was successful
+      const updatedProfile = await refreshProfile();
+      console.log('Profile refreshed after upgrade');
       
       setPaymentSuccess(true);
       
-      // Close modal after a delay to show success message
+      // Close modal after showing success message
       setTimeout(() => {
         onClose();
       }, 3000);
     } catch (error) {
       console.error('Failed to upgrade tier after payment:', error);
-      setPaymentError('Payment was successful, but there was an error upgrading your account. Please contact support.');
+      
+      // More specific error message
+      let errorMessage = 'Payment was successful, but there was an error upgrading your account.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('not authenticated')) {
+          errorMessage = 'Payment successful! Please sign out and sign back in to see your Pro features.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Payment successful! There was a network error. Please refresh the page to see your Pro features.';
+        } else {
+          errorMessage = `Payment successful! Upgrade error: ${error.message}. Please contact support if Pro features don't appear.`;
+        }
+      }
+      
+      setPaymentError(errorMessage);
     } finally {
       setProcessingPayment(false);
     }
@@ -61,6 +93,26 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     console.error('Payment error:', error);
     setPaymentError(error.message || 'Payment failed. Please try again.');
     setProcessingPayment(false);
+  };
+
+  const handleRetryUpgrade = async () => {
+    setProcessingPayment(true);
+    setPaymentError(null);
+    
+    try {
+      await tierService.upgradeTier('tier2');
+      await refreshProfile();
+      setPaymentSuccess(true);
+      
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error('Retry upgrade failed:', error);
+      setPaymentError('Upgrade retry failed. Please contact support with your payment details.');
+    } finally {
+      setProcessingPayment(false);
+    }
   };
 
   const getTierIcon = (tier: UserTier) => {
@@ -161,11 +213,32 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
         {/* Payment Error */}
         {paymentError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg animate-shakeX">
-            <div className="flex items-center space-x-2 text-red-700">
-              <AlertCircle size={20} />
-              <div>
+            <div className="flex items-start space-x-2 text-red-700">
+              <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
                 <p className="font-medium">Payment Error</p>
                 <p className="text-sm">{paymentError}</p>
+                
+                {/* Show retry button if it's an upgrade error after successful payment */}
+                {paymentError.includes('Payment was successful') && (
+                  <button
+                    onClick={handleRetryUpgrade}
+                    disabled={processingPayment}
+                    className="mt-3 flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {processingPayment ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Retrying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard size={16} />
+                        <span>Retry Account Upgrade</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>

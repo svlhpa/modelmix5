@@ -163,32 +163,67 @@ class TierService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
-    // Update subscription
-    const { error: subscriptionError } = await supabase
-      .from('user_subscriptions')
-      .upsert({
-        user_id: user.id,
-        tier,
-        status: 'active',
-        started_at: new Date().toISOString(),
-        expires_at: null, // No expiration for active subscriptions
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id'
-      });
+    console.log('Starting tier upgrade for user:', user.id, 'to tier:', tier);
 
-    if (subscriptionError) throw subscriptionError;
+    try {
+      // First, update or create subscription
+      const { error: subscriptionError } = await supabase
+        .from('user_subscriptions')
+        .upsert({
+          user_id: user.id,
+          tier,
+          status: 'active',
+          started_at: new Date().toISOString(),
+          expires_at: null, // No expiration for active subscriptions
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
 
-    // Update user profile
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .update({ 
-        current_tier: tier,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', user.id);
+      if (subscriptionError) {
+        console.error('Subscription update error:', subscriptionError);
+        throw new Error(`Failed to update subscription: ${subscriptionError.message}`);
+      }
 
-    if (profileError) throw profileError;
+      console.log('Subscription updated successfully');
+
+      // Then, update user profile
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({ 
+          current_tier: tier,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (profileError) {
+        console.error('Profile update error:', profileError);
+        throw new Error(`Failed to update profile: ${profileError.message}`);
+      }
+
+      console.log('Profile updated successfully');
+
+      // Verify the update was successful
+      const { data: updatedProfile, error: verifyError } = await supabase
+        .from('user_profiles')
+        .select('current_tier')
+        .eq('id', user.id)
+        .single();
+
+      if (verifyError) {
+        console.error('Verification error:', verifyError);
+        throw new Error(`Failed to verify upgrade: ${verifyError.message}`);
+      }
+
+      if (updatedProfile.current_tier !== tier) {
+        throw new Error(`Upgrade verification failed. Expected ${tier}, got ${updatedProfile.current_tier}`);
+      }
+
+      console.log('Tier upgrade completed and verified successfully');
+    } catch (error) {
+      console.error('Tier upgrade failed:', error);
+      throw error;
+    }
   }
 
   async cancelSubscription(): Promise<void> {
