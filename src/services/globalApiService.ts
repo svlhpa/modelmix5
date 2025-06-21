@@ -138,8 +138,7 @@ class GlobalApiService {
       gemini: 'Google Gemini',
       deepseek: 'DeepSeek',
       serper: 'Serper (Internet Search)',
-      imagerouter: 'Imagerouter (Image Generation)',
-      tavus: 'Tavus (AI Video Chat)'
+      imagerouter: 'Imagerouter (Image Generation)'
     };
     return names[provider] || provider;
   }
@@ -151,8 +150,7 @@ class GlobalApiService {
       gemini: '💎',
       deepseek: '🔍',
       serper: '🌐',
-      imagerouter: '🎨',
-      tavus: '🎥'
+      imagerouter: '🎨'
     };
     return icons[provider] || '🔧';
   }
