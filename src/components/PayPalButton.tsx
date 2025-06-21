@@ -24,11 +24,29 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
   const [retryCount, setRetryCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     console.log('PayPal Button component mounted, initializing...');
     initializePayPal();
+    
+    // Cleanup function to prevent memory leaks
+    return () => {
+      if (paypalRef.current) {
+        paypalRef.current.innerHTML = '';
+      }
+      setIsInitialized(false);
+    };
   }, [retryCount]);
+
+  // Effect to handle container changes
+  useEffect(() => {
+    if (isInitialized && paypalRef.current && !paypalRef.current.hasChildNodes()) {
+      console.log('PayPal container detected as empty, reinitializing...');
+      setIsInitialized(false);
+      initializePayPal();
+    }
+  }, [isInitialized]);
 
   const initializePayPal = async () => {
     try {
@@ -53,38 +71,50 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       setIsConfigured(true);
       console.log('PayPal is configured, proceeding with initialization...');
 
-      // Wait for DOM to be ready
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for DOM to be ready and ensure container exists
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Ensure the container exists
+      // Ensure the container exists and is in the DOM
       if (!paypalRef.current) {
-        throw new Error('PayPal container not found');
+        throw new Error('PayPal container ref not found');
       }
 
-      console.log('PayPal container found, initializing buttons...');
+      // Check if container is actually in the DOM
+      if (!document.contains(paypalRef.current)) {
+        throw new Error('PayPal container not in DOM');
+      }
 
-      // Initialize PayPal buttons
+      console.log('PayPal container found and in DOM, initializing buttons...');
+
+      // Clear any existing content
+      paypalRef.current.innerHTML = '';
+
+      // Initialize PayPal buttons with better error handling
       await paypalService.initializePayPalButtons(
         containerId,
         (details) => {
           console.log('PayPal payment successful:', details);
+          setIsInitialized(true);
           onSuccess(details);
         },
         (error) => {
           console.error('PayPal payment error:', error);
           const errorMessage = error?.message || error?.toString() || 'Payment failed';
           setError(errorMessage);
+          setIsInitialized(false);
           onError(error);
         },
         isRecurring
       );
 
       console.log('PayPal buttons initialized successfully');
+      setIsInitialized(true);
       setLoading(false);
     } catch (error) {
       console.error('Failed to initialize PayPal:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
       setError(errorMessage);
+      setIsInitialized(false);
       onError(error);
       setLoading(false);
     }
@@ -92,6 +122,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
 
   const handleRetry = () => {
     console.log('Retrying PayPal initialization...');
+    setIsInitialized(false);
     setRetryCount(prev => prev + 1);
   };
 
@@ -131,6 +162,14 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <div>
             <p className="font-medium">Payment Error</p>
             <p className="text-sm">{error}</p>
+            {error.includes('container') && (
+              <p className="text-xs mt-1 bg-red-100 p-2 rounded">
+                This error indicates the PayPal button container was removed from the page. This can happen when:
+                <br />• The modal is closed and reopened quickly
+                <br />• React re-renders the component
+                <br />• Navigation occurs during initialization
+              </p>
+            )}
             {error.includes('SDK') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
                 This error usually means the PayPal SDK failed to load. This could be due to:
@@ -179,9 +218,10 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         ref={paypalRef}
         id={containerId}
         className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''} min-h-[50px]`}
+        style={{ minHeight: '50px' }}
       />
       
-      {!loading && isConfigured && (
+      {!loading && isConfigured && isInitialized && (
         <div className="mt-3 text-center">
           <p className="text-xs text-gray-500">
             Secure payment powered by PayPal

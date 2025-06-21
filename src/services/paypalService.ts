@@ -31,6 +31,7 @@ class PayPalService {
   private baseUrl: string;
   private sdkLoaded: boolean = false;
   private sdkLoading: boolean = false;
+  private initializationPromise: Promise<void> | null = null;
 
   constructor() {
     // Use environment variables or default to sandbox
@@ -43,28 +44,19 @@ class PayPalService {
 
   // Load PayPal SDK dynamically with better error handling
   async loadPayPalSDK(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Check if PayPal SDK is already loaded
-      if (window.paypal && this.sdkLoaded) {
-        console.log('PayPal SDK already loaded');
-        resolve();
-        return;
-      }
+    // Return existing promise if already loading
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
 
-      // Prevent multiple simultaneous loads
-      if (this.sdkLoading) {
-        console.log('PayPal SDK is already loading, waiting...');
-        const checkLoaded = () => {
-          if (this.sdkLoaded) {
-            resolve();
-          } else {
-            setTimeout(checkLoaded, 100);
-          }
-        };
-        checkLoaded();
-        return;
-      }
+    // Check if PayPal SDK is already loaded
+    if (window.paypal && this.sdkLoaded) {
+      console.log('PayPal SDK already loaded');
+      return Promise.resolve();
+    }
 
+    // Create new initialization promise
+    this.initializationPromise = new Promise((resolve, reject) => {
       this.sdkLoading = true;
 
       // Remove existing script if any
@@ -72,6 +64,9 @@ class PayPalService {
       if (existingScript) {
         console.log('Removing existing PayPal script');
         existingScript.remove();
+        // Reset state
+        this.sdkLoaded = false;
+        window.paypal = undefined;
       }
 
       const script = document.createElement('script');
@@ -83,6 +78,7 @@ class PayPalService {
         console.log('PayPal SDK loaded successfully');
         this.sdkLoaded = true;
         this.sdkLoading = false;
+        
         // Add a delay to ensure PayPal SDK is fully initialized
         setTimeout(() => {
           if (window.paypal && window.paypal.Buttons) {
@@ -90,6 +86,7 @@ class PayPalService {
             resolve();
           } else {
             console.error('PayPal Buttons API not available after load');
+            this.sdkLoaded = false;
             reject(new Error('PayPal Buttons API not available'));
           }
         }, 1000);
@@ -98,12 +95,19 @@ class PayPalService {
       script.onerror = (error) => {
         console.error('Failed to load PayPal SDK:', error);
         this.sdkLoading = false;
+        this.sdkLoaded = false;
         reject(new Error('Failed to load PayPal SDK'));
       };
       
       console.log('Loading PayPal SDK with URL:', script.src);
       document.head.appendChild(script);
     });
+
+    this.initializationPromise.finally(() => {
+      this.initializationPromise = null;
+    });
+
+    return this.initializationPromise;
   }
 
   // Initialize PayPal buttons with improved error handling
@@ -129,10 +133,27 @@ class PayPalService {
       // Wait for DOM to be ready
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Check if container exists
-      const container = document.getElementById(containerId);
+      // Check if container exists multiple times with retries
+      let container: HTMLElement | null = null;
+      let retries = 0;
+      const maxRetries = 10;
+
+      while (!container && retries < maxRetries) {
+        container = document.getElementById(containerId);
+        if (!container) {
+          console.log(`PayPal container attempt ${retries + 1}/${maxRetries}: not found, waiting...`);
+          await new Promise(resolve => setTimeout(resolve, 200));
+          retries++;
+        }
+      }
+
       if (!container) {
-        throw new Error(`PayPal container with ID ${containerId} not found`);
+        throw new Error(`PayPal container with ID ${containerId} not found after ${maxRetries} attempts`);
+      }
+
+      // Verify container is in DOM
+      if (!document.contains(container)) {
+        throw new Error(`PayPal container with ID ${containerId} is not in the DOM`);
       }
 
       // Clear container
@@ -191,11 +212,28 @@ class PayPalService {
         }
       });
 
-      // Render the buttons with error handling
+      // Render the buttons with error handling and container verification
       try {
         console.log('Rendering PayPal buttons...');
+        
+        // Double-check container still exists before rendering
+        const finalContainer = document.getElementById(containerId);
+        if (!finalContainer) {
+          throw new Error('Container was removed before rendering');
+        }
+
         await buttons.render(`#${containerId}`);
         console.log('PayPal buttons rendered successfully');
+        
+        // Verify buttons were actually rendered
+        setTimeout(() => {
+          const renderedContainer = document.getElementById(containerId);
+          if (renderedContainer && renderedContainer.children.length === 0) {
+            console.warn('PayPal buttons container is empty after render');
+            onError(new Error('Failed to render PayPal buttons: Container is empty'));
+          }
+        }, 1000);
+        
       } catch (renderError) {
         console.error('PayPal render error:', renderError);
         throw new Error(`Failed to render PayPal buttons: ${renderError.message}`);
