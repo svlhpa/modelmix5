@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { AlertCircle, CheckCircle, CreditCard, Loader2, RefreshCw } from 'lucide-react';
 import { paypalService } from '../services/paypalService';
 
@@ -18,149 +18,180 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   isRecurring = false
 }) => {
   const paypalRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
+  const initializationRef = useRef<Promise<void> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
-  const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
+  const [containerId] = useState(`paypal-button-container-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const [retryCount, setRetryCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isDestroyed, setIsDestroyed] = useState(false);
 
-  // Use a more stable container approach
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    mountedRef.current = false;
+    if (paypalRef.current) {
+      paypalRef.current.innerHTML = '';
+    }
+    paypalService.cleanupContainer(containerId);
+    setIsInitialized(false);
+  }, [containerId]);
+
+  // Component mount/unmount
   useEffect(() => {
-    console.log('PayPal Button component mounted, initializing...');
-    setIsDestroyed(false);
-    initializePayPal();
-    
-    // Cleanup function to prevent memory leaks
-    return () => {
-      console.log('PayPal Button component unmounting, cleaning up...');
-      setIsDestroyed(true);
-      setIsInitialized(false);
-      if (paypalRef.current) {
-        paypalRef.current.innerHTML = '';
-      }
-    };
+    mountedRef.current = true;
+    return cleanup;
+  }, [cleanup]);
+
+  // Initialize PayPal when component mounts or retry count changes
+  useEffect(() => {
+    if (mountedRef.current) {
+      initializePayPal();
+    }
   }, [retryCount]);
 
-  // Monitor container health
-  useEffect(() => {
-    if (isInitialized && !isDestroyed) {
-      const checkContainer = () => {
-        if (paypalRef.current && !paypalRef.current.hasChildNodes() && !isDestroyed) {
-          console.log('PayPal container detected as empty, reinitializing...');
-          setIsInitialized(false);
-          setTimeout(() => {
-            if (!isDestroyed) {
-              initializePayPal();
-            }
-          }, 500);
-        }
-      };
-
-      const interval = setInterval(checkContainer, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [isInitialized, isDestroyed]);
-
   const initializePayPal = async () => {
-    if (isDestroyed) {
-      console.log('Component destroyed, skipping PayPal initialization');
+    // Prevent multiple simultaneous initializations
+    if (initializationRef.current) {
+      try {
+        await initializationRef.current;
+        return;
+      } catch (error) {
+        // Continue with new initialization if previous failed
+      }
+    }
+
+    if (!mountedRef.current) {
+      console.log('Component unmounted, skipping PayPal initialization');
       return;
     }
 
+    const initPromise = performInitialization();
+    initializationRef.current = initPromise;
+
     try {
+      await initPromise;
+    } catch (error) {
+      console.error('PayPal initialization failed:', error);
+    } finally {
+      initializationRef.current = null;
+    }
+  };
+
+  const performInitialization = async () => {
+    try {
+      if (!mountedRef.current) return;
+
       setLoading(true);
       setError(null);
+      setIsInitialized(false);
 
       console.log('Checking PayPal configuration...');
       
       // Get debug info
       const envInfo = paypalService.getEnvironmentInfo();
-      setDebugInfo(envInfo);
+      if (mountedRef.current) {
+        setDebugInfo(envInfo);
+      }
       console.log('PayPal environment info:', envInfo);
 
       // Check if PayPal is configured
       if (!paypalService.isConfigured()) {
-        setError('PayPal is not configured. Please add your PayPal Client ID to the environment variables.');
-        setIsConfigured(false);
-        setLoading(false);
+        if (mountedRef.current) {
+          setError('PayPal is not configured. Please add your PayPal Client ID to the environment variables.');
+          setIsConfigured(false);
+          setLoading(false);
+        }
         return;
       }
 
-      setIsConfigured(true);
+      if (mountedRef.current) {
+        setIsConfigured(true);
+      }
       console.log('PayPal is configured, proceeding with initialization...');
 
-      // Wait for DOM to be ready and ensure container exists
+      // Wait for container to be ready with multiple checks
+      let containerReady = false;
       let attempts = 0;
-      const maxAttempts = 20;
+      const maxAttempts = 30;
       
-      while (attempts < maxAttempts && !isDestroyed) {
-        if (paypalRef.current && document.contains(paypalRef.current)) {
+      while (!containerReady && attempts < maxAttempts && mountedRef.current) {
+        if (paypalRef.current && 
+            document.contains(paypalRef.current) && 
+            paypalRef.current.offsetParent !== null) {
+          containerReady = true;
           break;
         }
-        console.log(`Waiting for container (attempt ${attempts + 1}/${maxAttempts})...`);
+        console.log(`Waiting for container to be ready (attempt ${attempts + 1}/${maxAttempts})...`);
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
 
-      if (isDestroyed) {
-        console.log('Component destroyed during initialization, aborting...');
+      if (!mountedRef.current) {
+        console.log('Component unmounted during container wait');
         return;
       }
 
-      // Ensure the container exists and is in the DOM
+      if (!containerReady) {
+        throw new Error('PayPal container not ready after maximum attempts');
+      }
+
+      // Ensure the container exists and is properly set up
       if (!paypalRef.current) {
         throw new Error('PayPal container ref not found');
       }
 
-      // Check if container is actually in the DOM
+      // Check if container is actually in the DOM and visible
       if (!document.contains(paypalRef.current)) {
         throw new Error('PayPal container not in DOM');
       }
 
-      console.log('PayPal container found and in DOM, initializing buttons...');
+      console.log('PayPal container ready, initializing buttons...');
 
-      // Clear any existing content
+      // Clear any existing content and set ID
       paypalRef.current.innerHTML = '';
-
-      // Set a unique ID on the container
       paypalRef.current.id = containerId;
 
-      // Initialize PayPal buttons with better error handling
+      // Add a small delay to ensure DOM is stable
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      if (!mountedRef.current) {
+        console.log('Component unmounted during delay');
+        return;
+      }
+
+      // Initialize PayPal buttons with proper error handling
       await paypalService.initializePayPalButtons(
         containerId,
         (details) => {
-          if (!isDestroyed) {
+          if (mountedRef.current) {
             console.log('PayPal payment successful:', details);
             setIsInitialized(true);
             onSuccess(details);
           }
         },
         (error) => {
-          if (!isDestroyed) {
+          if (mountedRef.current) {
             console.error('PayPal payment error:', error);
             const errorMessage = error?.message || error?.toString() || 'Payment failed';
             setError(errorMessage);
-            setIsInitialized(false);
             onError(error);
           }
         },
         isRecurring
       );
 
-      if (!isDestroyed) {
+      if (mountedRef.current) {
         console.log('PayPal buttons initialized successfully');
         setIsInitialized(true);
         setLoading(false);
       }
     } catch (error) {
-      if (!isDestroyed) {
+      if (mountedRef.current) {
         console.error('Failed to initialize PayPal:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
         setError(errorMessage);
-        setIsInitialized(false);
         onError(error);
         setLoading(false);
       }
@@ -168,10 +199,19 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   };
 
   const handleRetry = () => {
+    if (!mountedRef.current) return;
+    
     console.log('Retrying PayPal initialization...');
-    setIsInitialized(false);
+    cleanup();
     setError(null);
-    setRetryCount(prev => prev + 1);
+    setLoading(true);
+    
+    // Small delay before retry to ensure cleanup is complete
+    setTimeout(() => {
+      if (mountedRef.current) {
+        setRetryCount(prev => prev + 1);
+      }
+    }, 500);
   };
 
   if (!isConfigured && !loading) {
@@ -255,7 +295,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
             <div className="text-center">
               <p>Loading PayPal...</p>
               <p className="text-xs text-gray-500 mt-1">
-                This may take a few seconds
+                Initializing secure payment system...
               </p>
             </div>
           </div>
@@ -264,7 +304,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       
       <div
         ref={paypalRef}
-        className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''} min-h-[50px]`}
+        className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
         style={{ minHeight: '50px' }}
       />
       

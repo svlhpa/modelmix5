@@ -33,6 +33,7 @@ class PayPalService {
   private sdkLoading: boolean = false;
   private initializationPromise: Promise<void> | null = null;
   private activeContainers: Set<string> = new Set();
+  private renderingContainers: Set<string> = new Set();
 
   constructor() {
     // Use environment variables or default to sandbox
@@ -71,7 +72,6 @@ class PayPalService {
       }
 
       const script = document.createElement('script');
-      // Simplified SDK loading - remove subscription for now to test basic functionality
       script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&currency=USD&intent=capture&disable-funding=credit,card`;
       script.async = true;
       
@@ -121,8 +121,14 @@ class PayPalService {
     try {
       console.log('Starting PayPal button initialization for container:', containerId);
       
+      // Check if already rendering this container
+      if (this.renderingContainers.has(containerId)) {
+        throw new Error('Container is already being rendered');
+      }
+
       // Track this container
       this.activeContainers.add(containerId);
+      this.renderingContainers.add(containerId);
       
       await this.loadPayPalSDK();
 
@@ -134,44 +140,50 @@ class PayPalService {
         throw new Error('PayPal Buttons API not available');
       }
 
-      // Wait for DOM to be ready
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Comprehensive container verification
+      const verifyContainer = () => {
+        const container = document.getElementById(containerId);
+        if (!container) {
+          throw new Error(`Container with ID ${containerId} not found`);
+        }
+        if (!document.contains(container)) {
+          throw new Error(`Container with ID ${containerId} is not in the DOM`);
+        }
+        if (container.offsetParent === null && container.style.display !== 'none') {
+          throw new Error(`Container with ID ${containerId} is not visible`);
+        }
+        return container;
+      };
 
-      // Check if container exists multiple times with retries
+      // Wait for container to be ready with retries
       let container: HTMLElement | null = null;
       let retries = 0;
-      const maxRetries = 15;
+      const maxRetries = 20;
 
       while (!container && retries < maxRetries) {
-        container = document.getElementById(containerId);
-        if (!container) {
-          console.log(`PayPal container attempt ${retries + 1}/${maxRetries}: not found, waiting...`);
-          await new Promise(resolve => setTimeout(resolve, 200));
+        try {
+          container = verifyContainer();
+          break;
+        } catch (error) {
+          console.log(`Container verification attempt ${retries + 1}/${maxRetries}: ${error.message}`);
+          await new Promise(resolve => setTimeout(resolve, 150));
           retries++;
         }
       }
 
       if (!container) {
-        throw new Error(`PayPal container with ID ${containerId} not found after ${maxRetries} attempts`);
+        throw new Error(`Container verification failed after ${maxRetries} attempts`);
       }
 
-      // Verify container is in DOM and stable
-      if (!document.contains(container)) {
-        throw new Error(`PayPal container with ID ${containerId} is not in the DOM`);
-      }
-
-      // Wait a bit more to ensure container is stable
+      // Clear container and ensure it's ready
+      container.innerHTML = '';
+      
+      // Wait for DOM to stabilize
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // Double-check container still exists
-      const finalContainer = document.getElementById(containerId);
-      if (!finalContainer) {
-        throw new Error('Container was removed during initialization');
-      }
-
-      // Clear container
-      finalContainer.innerHTML = '';
-      console.log('PayPal container cleared, initializing buttons...');
+      // Final container check before rendering
+      const finalContainer = verifyContainer();
+      console.log('Container verified, creating PayPal buttons...');
 
       const buttons = window.paypal.Buttons({
         style: {
@@ -184,7 +196,6 @@ class PayPalService {
         },
         createOrder: (data: any, actions: any) => {
           console.log('Creating PayPal order...');
-          // For now, use simple one-time payment instead of subscription
           return actions.order.create({
             purchase_units: [{
               amount: {
@@ -225,48 +236,56 @@ class PayPalService {
         }
       });
 
-      // Render the buttons with error handling and container verification
+      // Render with comprehensive error handling
       try {
-        console.log('Rendering PayPal buttons...');
+        console.log('Rendering PayPal buttons to container:', containerId);
         
-        // Triple-check container still exists before rendering
+        // Verify container one more time before rendering
         const renderContainer = document.getElementById(containerId);
         if (!renderContainer) {
           throw new Error('Container was removed before rendering');
         }
 
-        // Use a more robust rendering approach
+        // Use Promise-based rendering with timeout
+        await Promise.race([
+          buttons.render(`#${containerId}`),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('PayPal render timeout')), 10000)
+          )
+        ]);
+
+        console.log('PayPal buttons render completed');
+        
+        // Verify buttons were actually rendered
         await new Promise<void>((resolve, reject) => {
-          buttons.render(`#${containerId}`)
-            .then(() => {
-              console.log('PayPal buttons rendered successfully');
-              
-              // Verify buttons were actually rendered
-              setTimeout(() => {
-                const verifyContainer = document.getElementById(containerId);
-                if (verifyContainer && verifyContainer.children.length === 0) {
-                  console.warn('PayPal buttons container is empty after render');
-                  reject(new Error('Failed to render PayPal buttons: Container is empty'));
-                } else {
-                  console.log('PayPal buttons verified in container');
-                  resolve();
-                }
-              }, 1000);
-            })
-            .catch((renderError: any) => {
-              console.error('PayPal render promise rejected:', renderError);
-              reject(renderError);
-            });
+          setTimeout(() => {
+            const verifyContainer = document.getElementById(containerId);
+            if (!verifyContainer) {
+              reject(new Error('Container was removed after rendering'));
+              return;
+            }
+            
+            if (verifyContainer.children.length === 0) {
+              reject(new Error('PayPal buttons container is empty after render'));
+              return;
+            }
+            
+            console.log('PayPal buttons successfully verified in container');
+            resolve();
+          }, 1000);
         });
         
       } catch (renderError) {
         console.error('PayPal render error:', renderError);
         throw new Error(`Failed to render PayPal buttons: ${renderError.message}`);
+      } finally {
+        this.renderingContainers.delete(containerId);
       }
     } catch (error) {
       console.error('Failed to initialize PayPal buttons:', error);
-      // Remove from active containers on error
+      // Clean up on error
       this.activeContainers.delete(containerId);
+      this.renderingContainers.delete(containerId);
       throw error;
     }
   }
@@ -274,6 +293,7 @@ class PayPalService {
   // Clean up container tracking
   cleanupContainer(containerId: string): void {
     this.activeContainers.delete(containerId);
+    this.renderingContainers.delete(containerId);
     const container = document.getElementById(containerId);
     if (container) {
       container.innerHTML = '';
@@ -299,7 +319,8 @@ class PayPalService {
       configured: this.isConfigured(),
       sdkLoaded: this.sdkLoaded,
       sdkLoading: this.sdkLoading,
-      activeContainers: Array.from(this.activeContainers)
+      activeContainers: Array.from(this.activeContainers),
+      renderingContainers: Array.from(this.renderingContainers)
     };
   }
 }
