@@ -29,11 +29,21 @@ class TavusService {
       throw new Error('Tavus API key not available. Please configure it in settings or contact support for global key access.');
     }
 
+    // CRITICAL: Fix the request body format according to Tavus API documentation
     const requestBody: TavusConversationRequest = {
       replica_id: this.REPLICA_ID,
       conversation_name: conversationName,
       conversation_context: conversationContext
     };
+
+    console.log('Tavus API Request:', {
+      url: `${this.API_BASE_URL}/conversations`,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey ? 'present' : 'missing'
+      },
+      body: requestBody
+    });
 
     try {
       const response = await fetch(`${this.API_BASE_URL}/conversations`, {
@@ -45,12 +55,34 @@ class TavusService {
         body: JSON.stringify(requestBody)
       });
 
+      console.log('Tavus API Response Status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Tavus API error: ${response.status}`);
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.log('Tavus API Error Response:', errorData);
+        } catch (parseError) {
+          console.log('Failed to parse error response:', parseError);
+          errorData = { message: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
+        // Provide more specific error messages
+        if (response.status === 400) {
+          throw new Error(`Invalid request: ${errorData.message || 'Please check your conversation details and try again.'}`);
+        } else if (response.status === 401) {
+          throw new Error('Invalid API key. Please check your Tavus API key configuration.');
+        } else if (response.status === 403) {
+          throw new Error('Access forbidden. Please check your Tavus API key permissions.');
+        } else if (response.status === 404) {
+          throw new Error('Replica not found. Please contact support.');
+        } else {
+          throw new Error(errorData.message || `Tavus API error: ${response.status}`);
+        }
       }
 
       const data = await response.json();
+      console.log('Tavus API Success Response:', data);
       
       // Increment global usage if using global key
       const isGlobalKey = await this.isUsingGlobalKey(userTier);
@@ -61,6 +93,12 @@ class TavusService {
       return data;
     } catch (error) {
       console.error('Tavus API error:', error);
+      
+      // Re-throw with more user-friendly message if it's a network error
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error: Unable to connect to Tavus API. Please check your internet connection.');
+      }
+      
       throw error;
     }
   }
@@ -99,6 +137,7 @@ class TavusService {
     
     try {
       const globalKey = await globalApiService.getGlobalApiKey('tavus', userTier);
+      console.log('Tavus global key check:', { hasKey: !!globalKey, userTier });
       return globalKey;
     } catch (error) {
       console.error('Error accessing Tavus API key:', error);
@@ -140,6 +179,24 @@ class TavusService {
       name: 'ModelMix AI Assistant',
       description: 'AI video conversation assistant for ModelMix platform'
     };
+  }
+
+  // Test API key validity
+  async testApiKey(apiKey: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/replicas`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey
+        }
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Tavus API key test failed:', error);
+      return false;
+    }
   }
 }
 

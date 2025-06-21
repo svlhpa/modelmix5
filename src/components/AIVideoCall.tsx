@@ -285,6 +285,25 @@ export const AIVideoCall: React.FC<AIVideoCallProps> = ({ isOpen, onClose }) => 
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-left">
                 <p className="text-sm text-red-700">{error}</p>
+                
+                {/* Show helpful hints based on error type */}
+                {error.includes('API key') && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-100 p-2 rounded">
+                    💡 <strong>Tip:</strong> Make sure a valid Tavus API key is configured in the Admin Dashboard under Global API Keys.
+                  </div>
+                )}
+                
+                {error.includes('Invalid request') && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-100 p-2 rounded">
+                    💡 <strong>Tip:</strong> Please check that your conversation name and context are properly filled out and try again.
+                  </div>
+                )}
+                
+                {error.includes('Network error') && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-100 p-2 rounded">
+                    💡 <strong>Tip:</strong> Please check your internet connection and try again.
+                  </div>
+                )}
               </div>
             )}
 
