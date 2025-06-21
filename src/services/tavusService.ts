@@ -4,7 +4,9 @@ import { UserTier } from '../types';
 interface TavusConversationRequest {
   replica_id: string;
   conversation_name?: string;
-  conversation_context?: string;
+  conversation_properties?: {
+    context?: string;
+  };
 }
 
 interface TavusConversationResponse {
@@ -33,7 +35,9 @@ class TavusService {
     const requestBody: TavusConversationRequest = {
       replica_id: this.REPLICA_ID,
       conversation_name: conversationName,
-      conversation_context: conversationContext
+      conversation_properties: {
+        context: conversationContext
+      }
     };
 
     console.log('Tavus API Request:', {
@@ -69,7 +73,7 @@ class TavusService {
         
         // Provide more specific error messages
         if (response.status === 400) {
-          throw new Error(`Invalid request: ${errorData.message || 'Please check your conversation details and try again.'}`);
+          throw new Error(`Invalid request: ${errorData.error || errorData.message || 'Please check your conversation details and try again.'}`);
         } else if (response.status === 401) {
           throw new Error('Invalid API key. Please check your Tavus API key configuration.');
         } else if (response.status === 403) {
@@ -77,7 +81,7 @@ class TavusService {
         } else if (response.status === 404) {
           throw new Error('Replica not found. Please contact support.');
         } else {
-          throw new Error(errorData.message || `Tavus API error: ${response.status}`);
+          throw new Error(errorData.error || errorData.message || `Tavus API error: ${response.status}`);
         }
       }
 
