@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Check, Zap, Star, CreditCard, Loader2, Infinity } from 'lucide-react';
+import { X, Crown, Check, Zap, Star, CreditCard, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { PayPalButton } from './PayPalButton';
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
@@ -18,35 +19,47 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
   const { refreshProfile } = useAuth();
   const [tiers, setTiers] = useState<TierLimits[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<UserTier | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setTiers(tierService.getAllTiers());
+      setPaymentSuccess(false);
+      setPaymentError(null);
     }
   }, [isOpen]);
 
-  const handleUpgrade = async (tier: UserTier) => {
-    if (tier === currentTier) return;
-    
-    setLoading(true);
-    setSelectedTier(tier);
-    
+  const handlePaymentSuccess = async (details: any) => {
+    setProcessingPayment(true);
+    setPaymentError(null);
+
     try {
-      if (tier === 'tier2') {
-        // In a real app, this would integrate with Stripe or another payment processor
-        // For now, we'll simulate the upgrade
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate payment processing
-        await tierService.upgradeTier(tier);
-        await refreshProfile();
+      console.log('Payment successful:', details);
+      
+      // Upgrade user to Pro tier
+      await tierService.upgradeTier('tier2');
+      await refreshProfile();
+      
+      setPaymentSuccess(true);
+      
+      // Close modal after a delay to show success message
+      setTimeout(() => {
         onClose();
-      }
+      }, 3000);
     } catch (error) {
-      console.error('Failed to upgrade tier:', error);
+      console.error('Failed to upgrade tier after payment:', error);
+      setPaymentError('Payment was successful, but there was an error upgrading your account. Please contact support.');
     } finally {
-      setLoading(false);
-      setSelectedTier(null);
+      setProcessingPayment(false);
     }
+  };
+
+  const handlePaymentError = (error: any) => {
+    console.error('Payment error:', error);
+    setPaymentError(error.message || 'Payment failed. Please try again.');
+    setProcessingPayment(false);
   };
 
   const getTierIcon = (tier: UserTier) => {
@@ -75,7 +88,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
     if (value === -1) {
       return (
         <div className="flex items-center space-x-1">
-          <Infinity size={16} className="animate-pulse" />
+          <span className="text-2xl">∞</span>
           <span>Unlimited</span>
         </div>
       );
@@ -90,6 +103,41 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  // Payment success screen
+  if (paymentSuccess) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="bg-white rounded-xl max-w-md w-full p-6 text-center transform animate-slideUp">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} className="text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Pro!</h2>
+          <p className="text-gray-600 mb-4">
+            Your payment was successful and your account has been upgraded to Pro.
+          </p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center space-x-2 text-yellow-800">
+              <Crown size={20} />
+              <span className="font-medium">Pro Features Unlocked:</span>
+            </div>
+            <ul className="text-sm text-yellow-700 mt-2 space-y-1">
+              <li>• Unlimited conversations</li>
+              <li>• Unlimited AI models</li>
+              <li>• Advanced analytics</li>
+              <li>• Priority support</li>
+            </ul>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+          >
+            Start Using Pro Features
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
@@ -107,11 +155,37 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
-            disabled={loading}
+            disabled={processingPayment}
           >
             <X size={20} className="text-gray-500" />
           </button>
         </div>
+
+        {/* Payment Error */}
+        {paymentError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg animate-shakeX">
+            <div className="flex items-center space-x-2 text-red-700">
+              <AlertCircle size={20} />
+              <div>
+                <p className="font-medium">Payment Error</p>
+                <p className="text-sm">{paymentError}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Processing Payment */}
+        {processingPayment && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-3 text-blue-700">
+              <Loader2 size={20} className="animate-spin" />
+              <div>
+                <p className="font-medium">Processing Payment...</p>
+                <p className="text-sm">Please wait while we upgrade your account.</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tiers.map((tier, index) => (
@@ -187,33 +261,30 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
                 </div>
               </div>
 
-              <button
-                onClick={() => handleUpgrade(tier.tier)}
-                disabled={isCurrentTier(tier.tier) || loading}
-                className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-300 flex items-center justify-center space-x-2 transform hover:scale-105 ${
-                  isCurrentTier(tier.tier)
-                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                    : tier.tier === 'tier2'
-                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white hover:shadow-lg'
-                      : 'bg-gray-600 hover:bg-gray-700 text-white'
-                } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
-              >
-                {loading && selectedTier === tier.tier ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Processing...</span>
-                  </>
-                ) : isCurrentTier(tier.tier) ? (
-                  <span>Current Plan</span>
-                ) : isUpgrade(tier.tier) ? (
-                  <>
-                    <CreditCard size={16} />
-                    <span>Upgrade to {tier.name}</span>
-                  </>
-                ) : (
-                  <span>Select {tier.name}</span>
-                )}
-              </button>
+              {/* Payment Button or Current Plan Indicator */}
+              {isCurrentTier(tier.tier) ? (
+                <button
+                  disabled
+                  className="w-full py-3 px-4 rounded-lg font-medium bg-gray-100 text-gray-500 cursor-not-allowed"
+                >
+                  Current Plan
+                </button>
+              ) : tier.tier === 'tier2' ? (
+                <div className="space-y-3">
+                  <PayPalButton
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    disabled={processingPayment}
+                  />
+                </div>
+              ) : (
+                <button
+                  disabled
+                  className="w-full py-3 px-4 rounded-lg font-medium bg-gray-100 text-gray-500 cursor-not-allowed"
+                >
+                  Current Plan
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -238,7 +309,7 @@ export const TierUpgradeModal: React.FC<TierUpgradeModalProps> = ({
         <div className="mt-6 text-center animate-fadeInUp" style={{ animationDelay: '0.8s' }}>
           <p className="text-xs text-gray-500">
             All plans include secure data storage, conversation history, and access to our growing library of AI models.
-            Pro plan removes all limits and unlocks premium features.
+            Pro plan removes all limits and unlocks premium features. Payments are processed securely through PayPal.
           </p>
         </div>
       </div>
