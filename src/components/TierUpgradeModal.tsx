@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Check, Zap, Star, CreditCard, Loader2, Infinity, CheckCircle, AlertCircle, RefreshCw, Smartphone } from 'lucide-react';
+import { X, Crown, Check, Zap, Star, CreditCard, Loader2, Infinity, CheckCircle, AlertCircle, RefreshCw, Smartphone, Clock } from 'lucide-react';
 import { tierService } from '../services/tierService';
 import { TierLimits, UserTier } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { GCashPayment } from './GCashPayment';
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
