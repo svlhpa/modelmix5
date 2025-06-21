@@ -33,7 +33,7 @@ class TierService {
         'Access to all premium models',
         'Faster response times'
       ],
-      price: 1800 // $18.00 in cents
+      price: 999 // $9.99 in cents
     }
   };
 

@@ -30,10 +30,6 @@ class PayPalService {
   private environment: 'sandbox' | 'production';
   private baseUrl: string;
   private sdkLoaded: boolean = false;
-  private sdkLoading: boolean = false;
-  private initializationPromise: Promise<void> | null = null;
-  private activeContainers: Set<string> = new Set();
-  private renderingContainers: Set<string> = new Set();
 
   constructor() {
     // Use environment variables or default to sandbox
@@ -44,74 +40,38 @@ class PayPalService {
       : 'https://api-m.sandbox.paypal.com';
   }
 
-  // Load PayPal SDK dynamically with better error handling
+  // Load PayPal SDK dynamically
   async loadPayPalSDK(): Promise<void> {
-    // Return existing promise if already loading
-    if (this.initializationPromise) {
-      return this.initializationPromise;
-    }
-
-    // Check if PayPal SDK is already loaded
-    if (window.paypal && this.sdkLoaded) {
-      console.log('PayPal SDK already loaded');
-      return Promise.resolve();
-    }
-
-    // Create new initialization promise
-    this.initializationPromise = new Promise((resolve, reject) => {
-      this.sdkLoading = true;
+    return new Promise((resolve, reject) => {
+      // Check if PayPal SDK is already loaded
+      if (window.paypal && this.sdkLoaded) {
+        resolve();
+        return;
+      }
 
       // Remove existing script if any
       const existingScript = document.querySelector('script[src*="paypal.com/sdk/js"]');
       if (existingScript) {
-        console.log('Removing existing PayPal script');
         existingScript.remove();
-        // Reset state
-        this.sdkLoaded = false;
-        window.paypal = undefined;
       }
 
       const script = document.createElement('script');
-      script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&currency=USD&intent=capture&disable-funding=credit,card`;
+      // Add subscription support to the SDK
+      script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&currency=USD&intent=subscription&vault=true&disable-funding=credit,card`;
       script.async = true;
       
       script.onload = () => {
-        console.log('PayPal SDK loaded successfully');
         this.sdkLoaded = true;
-        this.sdkLoading = false;
-        
-        // Add a delay to ensure PayPal SDK is fully initialized
-        setTimeout(() => {
-          if (window.paypal && window.paypal.Buttons) {
-            console.log('PayPal Buttons API is available');
-            resolve();
-          } else {
-            console.error('PayPal Buttons API not available after load');
-            this.sdkLoaded = false;
-            reject(new Error('PayPal Buttons API not available'));
-          }
-        }, 1000);
+        // Add a small delay to ensure PayPal SDK is fully initialized
+        setTimeout(() => resolve(), 500);
       };
+      script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
       
-      script.onerror = (error) => {
-        console.error('Failed to load PayPal SDK:', error);
-        this.sdkLoading = false;
-        this.sdkLoaded = false;
-        reject(new Error('Failed to load PayPal SDK'));
-      };
-      
-      console.log('Loading PayPal SDK with URL:', script.src);
       document.head.appendChild(script);
     });
-
-    this.initializationPromise.finally(() => {
-      this.initializationPromise = null;
-    });
-
-    return this.initializationPromise;
   }
 
-  // Initialize PayPal buttons with improved error handling
+  // Initialize PayPal buttons
   async initializePayPalButtons(
     containerId: string, 
     onSuccess: (details: any) => void, 
@@ -119,71 +79,28 @@ class PayPalService {
     isRecurring: boolean = false
   ): Promise<void> {
     try {
-      console.log('Starting PayPal button initialization for container:', containerId);
-      
-      // Check if already rendering this container
-      if (this.renderingContainers.has(containerId)) {
-        throw new Error('Container is already being rendered');
-      }
-
-      // Track this container
-      this.activeContainers.add(containerId);
-      this.renderingContainers.add(containerId);
-      
       await this.loadPayPalSDK();
 
       if (!window.paypal) {
         throw new Error('PayPal SDK not loaded');
       }
 
+      // Wait a bit more to ensure DOM is ready
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Check if container exists
+      const container = document.getElementById(containerId);
+      if (!container) {
+        throw new Error(`PayPal container with ID ${containerId} not found`);
+      }
+
+      // Clear container
+      container.innerHTML = '';
+
+      // Verify PayPal Buttons API is available
       if (!window.paypal.Buttons) {
         throw new Error('PayPal Buttons API not available');
       }
-
-      // Comprehensive container verification
-      const verifyContainer = () => {
-        const container = document.getElementById(containerId);
-        if (!container) {
-          throw new Error(`Container with ID ${containerId} not found`);
-        }
-        if (!document.contains(container)) {
-          throw new Error(`Container with ID ${containerId} is not in the DOM`);
-        }
-        if (container.offsetParent === null && container.style.display !== 'none') {
-          throw new Error(`Container with ID ${containerId} is not visible`);
-        }
-        return container;
-      };
-
-      // Wait for container to be ready with retries
-      let container: HTMLElement | null = null;
-      let retries = 0;
-      const maxRetries = 20;
-
-      while (!container && retries < maxRetries) {
-        try {
-          container = verifyContainer();
-          break;
-        } catch (error) {
-          console.log(`Container verification attempt ${retries + 1}/${maxRetries}: ${error.message}`);
-          await new Promise(resolve => setTimeout(resolve, 150));
-          retries++;
-        }
-      }
-
-      if (!container) {
-        throw new Error(`Container verification failed after ${maxRetries} attempts`);
-      }
-
-      // Clear container and ensure it's ready
-      container.innerHTML = '';
-      
-      // Wait for DOM to stabilize
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Final container check before rendering
-      const finalContainer = verifyContainer();
-      console.log('Container verified, creating PayPal buttons...');
 
       const buttons = window.paypal.Buttons({
         style: {
@@ -195,34 +112,56 @@ class PayPalService {
           tagline: false
         },
         createOrder: (data: any, actions: any) => {
-          console.log('Creating PayPal order...');
-          return actions.order.create({
-            purchase_units: [{
-              amount: {
-                value: '18.00',
-                currency_code: 'USD'
-              },
-              description: 'ModelMix Pro Plan - Monthly Subscription'
-            }],
-            application_context: {
-              brand_name: 'ModelMix',
-              landing_page: 'NO_PREFERENCE',
-              user_action: 'PAY_NOW'
-            }
-          });
+          if (isRecurring) {
+            // For recurring payments, create a subscription
+            return actions.subscription.create({
+              plan_id: this.getSubscriptionPlanId(), // You'll need to create this plan in PayPal
+              application_context: {
+                brand_name: 'ModelMix',
+                locale: 'en-US',
+                shipping_preference: 'NO_SHIPPING',
+                user_action: 'SUBSCRIBE_NOW'
+              }
+            });
+          } else {
+            // For one-time payments
+            return actions.order.create({
+              purchase_units: [{
+                amount: {
+                  value: '9.99',
+                  currency_code: 'USD'
+                },
+                description: 'ModelMix Pro Plan - Monthly Subscription'
+              }],
+              application_context: {
+                brand_name: 'ModelMix',
+                landing_page: 'NO_PREFERENCE',
+                user_action: 'PAY_NOW'
+              }
+            });
+          }
         },
         onApprove: async (data: any, actions: any) => {
           try {
-            console.log('PayPal payment approved, capturing order...');
-            const order = await actions.order.capture();
-            console.log('Order captured successfully:', order);
-            onSuccess({
-              orderID: data.orderID,
-              order,
-              paymentID: order.purchase_units[0]?.payments?.captures[0]?.id
-            });
+            if (isRecurring) {
+              // For subscriptions, the subscription is automatically activated
+              const subscription = await actions.subscription.get();
+              onSuccess({
+                subscriptionID: data.subscriptionID,
+                subscription,
+                orderID: data.orderID
+              });
+            } else {
+              // For one-time payments
+              const order = await actions.order.capture();
+              onSuccess({
+                orderID: data.orderID,
+                order,
+                paymentID: order.purchase_units[0]?.payments?.captures[0]?.id
+              });
+            }
           } catch (error) {
-            console.error('Error capturing order:', error);
+            console.error('Error processing payment:', error);
             onError(error);
           }
         },
@@ -236,91 +175,153 @@ class PayPalService {
         }
       });
 
-      // Render with comprehensive error handling
+      // Render the buttons with error handling
       try {
-        console.log('Rendering PayPal buttons to container:', containerId);
-        
-        // Verify container one more time before rendering
-        const renderContainer = document.getElementById(containerId);
-        if (!renderContainer) {
-          throw new Error('Container was removed before rendering');
-        }
-
-        // Use Promise-based rendering with timeout
-        await Promise.race([
-          buttons.render(`#${containerId}`),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('PayPal render timeout')), 10000)
-          )
-        ]);
-
-        console.log('PayPal buttons render completed');
-        
-        // Verify buttons were actually rendered
-        await new Promise<void>((resolve, reject) => {
-          setTimeout(() => {
-            const verifyContainer = document.getElementById(containerId);
-            if (!verifyContainer) {
-              reject(new Error('Container was removed after rendering'));
-              return;
-            }
-            
-            if (verifyContainer.children.length === 0) {
-              reject(new Error('PayPal buttons container is empty after render'));
-              return;
-            }
-            
-            console.log('PayPal buttons successfully verified in container');
-            resolve();
-          }, 1000);
-        });
-        
+        await buttons.render(`#${containerId}`);
       } catch (renderError) {
         console.error('PayPal render error:', renderError);
-        throw new Error(`Failed to render PayPal buttons: ${renderError.message}`);
-      } finally {
-        this.renderingContainers.delete(containerId);
+        throw new Error('Failed to render PayPal buttons');
       }
     } catch (error) {
       console.error('Failed to initialize PayPal buttons:', error);
-      // Clean up on error
-      this.activeContainers.delete(containerId);
-      this.renderingContainers.delete(containerId);
       throw error;
     }
   }
 
-  // Clean up container tracking
-  cleanupContainer(containerId: string): void {
-    this.activeContainers.delete(containerId);
-    this.renderingContainers.delete(containerId);
-    const container = document.getElementById(containerId);
-    if (container) {
-      container.innerHTML = '';
+  // Get subscription plan ID (you'll need to create this in PayPal Dashboard)
+  private getSubscriptionPlanId(): string {
+    // For sandbox, you'll need to create a subscription plan in PayPal Dashboard
+    // and replace this with the actual plan ID
+    if (this.environment === 'production') {
+      return 'P-XXXXXXXXXXXXXXXXXXXX'; // Replace with your production plan ID
+    } else {
+      return 'P-XXXXXXXXXXXXXXXXXXXX'; // Replace with your sandbox plan ID
     }
+  }
+
+  // Create a subscription plan (this would typically be done server-side)
+  async createSubscriptionPlan(): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/billing/plans`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getAccessToken()}`,
+          'PayPal-Request-Id': `plan-${Date.now()}`
+        },
+        body: JSON.stringify({
+          product_id: await this.createProduct(),
+          name: 'ModelMix Pro Monthly',
+          description: 'Monthly subscription for ModelMix Pro features',
+          status: 'ACTIVE',
+          billing_cycles: [{
+            frequency: {
+              interval_unit: 'MONTH',
+              interval_count: 1
+            },
+            tenure_type: 'REGULAR',
+            sequence: 1,
+            total_cycles: 0, // 0 means infinite
+            pricing_scheme: {
+              fixed_price: {
+                value: '9.99',
+                currency_code: 'USD'
+              }
+            }
+          }],
+          payment_preferences: {
+            auto_bill_outstanding: true,
+            setup_fee: {
+              value: '0',
+              currency_code: 'USD'
+            },
+            setup_fee_failure_action: 'CONTINUE',
+            payment_failure_threshold: 3
+          },
+          taxes: {
+            percentage: '0',
+            inclusive: false
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create subscription plan: ${response.status}`);
+      }
+
+      const plan = await response.json();
+      return plan.id;
+    } catch (error) {
+      console.error('Error creating subscription plan:', error);
+      throw error;
+    }
+  }
+
+  // Create a product (required for subscription plans)
+  private async createProduct(): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/catalogs/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getAccessToken()}`,
+          'PayPal-Request-Id': `product-${Date.now()}`
+        },
+        body: JSON.stringify({
+          name: 'ModelMix Pro',
+          description: 'ModelMix Pro subscription with unlimited AI model access',
+          type: 'SERVICE',
+          category: 'SOFTWARE'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create product: ${response.status}`);
+      }
+
+      const product = await response.json();
+      return product.id;
+    } catch (error) {
+      console.error('Error creating product:', error);
+      throw error;
+    }
+  }
+
+  // Get access token for PayPal API calls
+  private async getAccessToken(): Promise<string> {
+    const clientSecret = import.meta.env.VITE_PAYPAL_CLIENT_SECRET;
+    if (!clientSecret) {
+      throw new Error('PayPal client secret not configured');
+    }
+
+    const response = await fetch(`${this.baseUrl}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${btoa(`${this.clientId}:${clientSecret}`)}`
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get access token: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.access_token;
   }
 
   // Validate PayPal configuration
   isConfigured(): boolean {
-    const configured = !!(this.clientId && this.clientId.trim() !== '' && this.clientId !== 'your-paypal-client-id');
-    console.log('PayPal configuration check:', {
-      hasClientId: !!this.clientId,
-      clientIdLength: this.clientId?.length,
-      configured
-    });
-    return configured;
+    return !!(this.clientId && this.clientId.trim() !== '' && this.clientId !== 'your-paypal-client-id');
   }
 
-  // Get environment info for debugging
+  // Get environment info
   getEnvironmentInfo() {
     return {
       environment: this.environment,
       clientId: this.clientId ? `${this.clientId.substring(0, 10)}...` : 'Not set',
-      configured: this.isConfigured(),
-      sdkLoaded: this.sdkLoaded,
-      sdkLoading: this.sdkLoading,
-      activeContainers: Array.from(this.activeContainers),
-      renderingContainers: Array.from(this.renderingContainers)
+      configured: this.isConfigured()
     };
   }
 }
