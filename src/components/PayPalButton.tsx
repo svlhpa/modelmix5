@@ -25,30 +25,51 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isDestroyed, setIsDestroyed] = useState(false);
 
+  // Use a more stable container approach
   useEffect(() => {
     console.log('PayPal Button component mounted, initializing...');
+    setIsDestroyed(false);
     initializePayPal();
     
     // Cleanup function to prevent memory leaks
     return () => {
+      console.log('PayPal Button component unmounting, cleaning up...');
+      setIsDestroyed(true);
+      setIsInitialized(false);
       if (paypalRef.current) {
         paypalRef.current.innerHTML = '';
       }
-      setIsInitialized(false);
     };
   }, [retryCount]);
 
-  // Effect to handle container changes
+  // Monitor container health
   useEffect(() => {
-    if (isInitialized && paypalRef.current && !paypalRef.current.hasChildNodes()) {
-      console.log('PayPal container detected as empty, reinitializing...');
-      setIsInitialized(false);
-      initializePayPal();
+    if (isInitialized && !isDestroyed) {
+      const checkContainer = () => {
+        if (paypalRef.current && !paypalRef.current.hasChildNodes() && !isDestroyed) {
+          console.log('PayPal container detected as empty, reinitializing...');
+          setIsInitialized(false);
+          setTimeout(() => {
+            if (!isDestroyed) {
+              initializePayPal();
+            }
+          }, 500);
+        }
+      };
+
+      const interval = setInterval(checkContainer, 2000);
+      return () => clearInterval(interval);
     }
-  }, [isInitialized]);
+  }, [isInitialized, isDestroyed]);
 
   const initializePayPal = async () => {
+    if (isDestroyed) {
+      console.log('Component destroyed, skipping PayPal initialization');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -72,7 +93,22 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       console.log('PayPal is configured, proceeding with initialization...');
 
       // Wait for DOM to be ready and ensure container exists
-      await new Promise(resolve => setTimeout(resolve, 500));
+      let attempts = 0;
+      const maxAttempts = 20;
+      
+      while (attempts < maxAttempts && !isDestroyed) {
+        if (paypalRef.current && document.contains(paypalRef.current)) {
+          break;
+        }
+        console.log(`Waiting for container (attempt ${attempts + 1}/${maxAttempts})...`);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (isDestroyed) {
+        console.log('Component destroyed during initialization, aborting...');
+        return;
+      }
 
       // Ensure the container exists and is in the DOM
       if (!paypalRef.current) {
@@ -89,40 +125,52 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       // Clear any existing content
       paypalRef.current.innerHTML = '';
 
+      // Set a unique ID on the container
+      paypalRef.current.id = containerId;
+
       // Initialize PayPal buttons with better error handling
       await paypalService.initializePayPalButtons(
         containerId,
         (details) => {
-          console.log('PayPal payment successful:', details);
-          setIsInitialized(true);
-          onSuccess(details);
+          if (!isDestroyed) {
+            console.log('PayPal payment successful:', details);
+            setIsInitialized(true);
+            onSuccess(details);
+          }
         },
         (error) => {
-          console.error('PayPal payment error:', error);
-          const errorMessage = error?.message || error?.toString() || 'Payment failed';
-          setError(errorMessage);
-          setIsInitialized(false);
-          onError(error);
+          if (!isDestroyed) {
+            console.error('PayPal payment error:', error);
+            const errorMessage = error?.message || error?.toString() || 'Payment failed';
+            setError(errorMessage);
+            setIsInitialized(false);
+            onError(error);
+          }
         },
         isRecurring
       );
 
-      console.log('PayPal buttons initialized successfully');
-      setIsInitialized(true);
-      setLoading(false);
+      if (!isDestroyed) {
+        console.log('PayPal buttons initialized successfully');
+        setIsInitialized(true);
+        setLoading(false);
+      }
     } catch (error) {
-      console.error('Failed to initialize PayPal:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
-      setError(errorMessage);
-      setIsInitialized(false);
-      onError(error);
-      setLoading(false);
+      if (!isDestroyed) {
+        console.error('Failed to initialize PayPal:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
+        setError(errorMessage);
+        setIsInitialized(false);
+        onError(error);
+        setLoading(false);
+      }
     }
   };
 
   const handleRetry = () => {
     console.log('Retrying PayPal initialization...');
     setIsInitialized(false);
+    setError(null);
     setRetryCount(prev => prev + 1);
   };
 
@@ -216,7 +264,6 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
       
       <div
         ref={paypalRef}
-        id={containerId}
         className={`${loading ? 'hidden' : 'block'} ${disabled ? 'opacity-50 pointer-events-none' : ''} min-h-[50px]`}
         style={{ minHeight: '50px' }}
       />
