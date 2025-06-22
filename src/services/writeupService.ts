@@ -85,13 +85,16 @@ class WriteupService {
 
     // Step 1: Generate outline using Planner Agent
     try {
+      console.log('🧠 Starting outline generation...');
       const outline = await this.generateOutline(params.prompt, params.settings, params.userTier);
       project.outline = outline;
       project.sections = this.createSectionsFromOutline(outline);
       project.totalSections = project.sections.length;
       project.status = 'writing';
-      project.progress = 5; // Planning complete
+      project.progress = 10; // Planning complete
+      console.log(`✅ Outline generated with ${project.sections.length} sections`);
     } catch (error) {
+      console.error('❌ Outline generation failed:', error);
       project.status = 'error';
       throw new Error(`Failed to create project outline: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -111,23 +114,30 @@ class WriteupService {
     this.activeWritingProcesses.set(projectId, true);
 
     try {
+      console.log('🚀 Starting writing process...');
+      
       // Step 2: Sequential Writing with Context
       await this.writeSequentially(project, onProgress);
       
       // Step 3: Review and Refinement (if enabled)
       if (project.settings.enableReview) {
+        console.log('👁️ Starting review process...');
         await this.reviewAndRefine(project, onProgress);
       }
       
       // Step 4: Final Formatting
+      console.log('🎨 Final formatting...');
       await this.finalFormatting(project, onProgress);
       
       project.status = 'completed';
       project.progress = 100;
       project.updatedAt = new Date();
       
+      console.log(`✅ Writing completed! Total words: ${project.wordCount}`);
+      
       if (onProgress) onProgress(project);
     } catch (error) {
+      console.error('❌ Writing process failed:', error);
       project.status = 'error';
       project.updatedAt = new Date();
       if (onProgress) onProgress(project);
@@ -180,7 +190,11 @@ class WriteupService {
     // Combine all sections into final document
     const fullContent = this.combineAllSections(project);
     
-    // In a real implementation, this would generate the actual file
+    if (fullContent.trim().length === 0) {
+      throw new Error('No content to export. Please ensure the document has been generated successfully.');
+    }
+    
+    // Generate the actual file
     const blob = new Blob([fullContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -208,7 +222,14 @@ class WriteupService {
   private generateTitle(prompt: string): string {
     // Extract a meaningful title from the prompt
     const words = prompt.split(' ').slice(0, 8);
-    return words.join(' ').replace(/[^\w\s]/g, '').trim() || 'Untitled Document';
+    let title = words.join(' ').replace(/[^\w\s]/g, '').trim();
+    
+    // Capitalize first letter of each word
+    title = title.replace(/\w\S*/g, (txt) => 
+      txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+    );
+    
+    return title || 'Untitled Document';
   }
 
   private async generateOutline(prompt: string, settings: WriteupSettings, userTier: UserTier): Promise<any> {
@@ -219,12 +240,17 @@ class WriteupService {
     }
 
     const systemPrompt = this.buildPlannerPrompt(settings);
-    const userPrompt = `Create a detailed outline for: ${prompt}`;
+    const userPrompt = `Create a detailed outline for: ${prompt}
+
+Please provide a structured outline with clear sections that would be appropriate for a ${settings.format} in ${settings.style} style.`;
 
     try {
+      console.log(`🧠 Calling ${this.modelAssignments.planner} for outline generation...`);
       const response = await this.callModel(this.modelAssignments.planner, systemPrompt, userPrompt, apiKey);
+      console.log('📋 Outline response received, parsing...');
       return this.parseOutlineResponse(response);
     } catch (error) {
+      console.error('❌ Outline generation failed:', error);
       throw new Error(`Failed to generate outline: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -246,8 +272,8 @@ class WriteupService {
         });
       });
     } else {
-      // Fallback: create default sections
-      const defaultSections = ['Introduction', 'Main Content', 'Analysis', 'Conclusion'];
+      // Fallback: create meaningful sections based on format
+      const defaultSections = this.getDefaultSections(outline.format || 'research-paper');
       defaultSections.forEach((title, index) => {
         sections.push({
           id: `section-${index + 1}`,
@@ -263,17 +289,41 @@ class WriteupService {
     return sections;
   }
 
+  private getDefaultSections(format: string): string[] {
+    switch (format) {
+      case 'research-paper':
+        return ['Abstract', 'Introduction', 'Literature Review', 'Methodology', 'Results', 'Discussion', 'Conclusion', 'References'];
+      case 'report':
+        return ['Executive Summary', 'Introduction', 'Background', 'Analysis', 'Findings', 'Recommendations', 'Conclusion'];
+      case 'novel':
+        return ['Chapter 1', 'Chapter 2', 'Chapter 3', 'Chapter 4', 'Chapter 5'];
+      case 'article':
+        return ['Introduction', 'Main Content', 'Key Points', 'Analysis', 'Conclusion'];
+      case 'manual':
+        return ['Overview', 'Getting Started', 'Basic Operations', 'Advanced Features', 'Troubleshooting', 'Appendix'];
+      case 'proposal':
+        return ['Executive Summary', 'Problem Statement', 'Proposed Solution', 'Implementation Plan', 'Budget', 'Timeline', 'Conclusion'];
+      default:
+        return ['Introduction', 'Main Content', 'Analysis', 'Conclusion'];
+    }
+  }
+
   private async writeSequentially(project: WriteupProject, onProgress?: (project: WriteupProject) => void): Promise<void> {
     let context = '';
     
+    console.log(`📝 Starting sequential writing for ${project.sections.length} sections...`);
+    
     for (let i = 0; i < project.sections.length; i++) {
       if (!this.activeWritingProcesses.get(project.id)) {
+        console.log('⏸️ Writing process paused');
         break; // Process was paused
       }
 
       const section = project.sections[i];
       section.status = 'writing';
       project.currentSection = i;
+      
+      console.log(`✍️ Writing section ${i + 1}/${project.sections.length}: ${section.title}`);
       
       if (onProgress) onProgress(project);
 
@@ -283,21 +333,24 @@ class WriteupService {
         // Generate summary for context
         const summary = await this.generateSectionSummary(section.content);
         section.summary = summary;
-        context += `\n\n${section.title}: ${summary}`;
+        context += `\n\nPrevious section "${section.title}": ${summary}`;
         
         // Update progress
-        project.progress = Math.round(((i + 1) / project.sections.length) * 80); // 80% for writing
+        project.progress = Math.round(10 + ((i + 1) / project.sections.length) * 70); // 10% for planning + 70% for writing
         project.wordCount = project.sections.reduce((total, s) => total + s.wordCount, 0);
         project.estimatedPages = Math.ceil(project.wordCount / 250); // ~250 words per page
         project.updatedAt = new Date();
         
+        console.log(`✅ Section "${section.title}" completed: ${section.wordCount} words`);
+        
         if (onProgress) onProgress(project);
         
         // Rate limiting: wait between sections
-        await this.delay(2000);
+        await this.delay(1000);
       } catch (error) {
         section.status = 'error';
-        console.error(`Failed to write section ${section.title}:`, error);
+        console.error(`❌ Failed to write section ${section.title}:`, error);
+        // Continue with next section instead of failing completely
       }
     }
   }
@@ -309,17 +362,28 @@ class WriteupService {
     }
 
     const systemPrompt = this.buildWriterPrompt(project.settings, section.title, context);
-    const userPrompt = `Write the "${section.title}" section for: ${project.prompt}`;
+    const userPrompt = `Write a comprehensive "${section.title}" section for the following topic: ${project.prompt}
+
+Make this section substantial and detailed, aiming for at least 500-1000 words. Ensure it flows well and provides valuable content.`;
 
     try {
+      console.log(`🤖 Calling ${section.model} for section: ${section.title}`);
       const content = await this.callModel(section.model, systemPrompt, userPrompt, apiKey);
+      
+      if (!content || content.trim().length === 0) {
+        throw new Error('Empty response from AI model');
+      }
+      
       section.content = content;
       section.wordCount = this.countWords(content);
       section.status = 'completed';
       
+      console.log(`✅ Section content generated: ${section.wordCount} words`);
+      
       // Increment global usage
       await globalApiService.incrementGlobalUsage(section.model);
     } catch (error) {
+      console.error(`❌ Failed to write section ${section.title}:`, error);
       section.status = 'error';
       throw error;
     }
@@ -351,14 +415,14 @@ class WriteupService {
     if (onProgress) onProgress(project);
     
     // Simulate formatting time
-    await this.delay(1000);
+    await this.delay(500);
   }
 
   private async reviewSection(section: WriteupSection): Promise<string> {
     const apiKey = await globalApiService.getGlobalApiKey(this.modelAssignments.reviewer, 'tier1');
     if (!apiKey) return 'Review skipped - no API key available';
 
-    const systemPrompt = `You are a critical reviewer. Analyze the following text for clarity, coherence, and quality. Provide brief feedback.`;
+    const systemPrompt = `You are a critical reviewer. Analyze the following text for clarity, coherence, and quality. Provide brief feedback in 2-3 sentences.`;
     
     try {
       const review = await this.callModel(this.modelAssignments.reviewer, systemPrompt, section.content, apiKey);
@@ -370,12 +434,12 @@ class WriteupService {
   }
 
   private async generateSectionSummary(content: string): Promise<string> {
-    // Generate a 300-word summary for context
+    // Generate a concise summary for context
     const words = content.split(' ');
-    if (words.length <= 300) return content;
+    if (words.length <= 100) return content;
     
-    // Simple truncation for now - in real implementation, use AI summarization
-    return words.slice(0, 300).join(' ') + '...';
+    // Take first 100 words as summary
+    return words.slice(0, 100).join(' ') + '...';
   }
 
   private selectWriterModel(index: number): string {
@@ -385,19 +449,15 @@ class WriteupService {
 
   private buildPlannerPrompt(settings: WriteupSettings): string {
     return `You are an expert document planner. Create a detailed outline for a ${settings.format} in ${settings.style} style with a ${settings.tone} tone. 
-    
+
 Target length: ${this.getTargetWordCount(settings)} words
 Format: ${settings.format}
 Style: ${settings.style}
 Tone: ${settings.tone}
 
-Create a structured outline with:
-1. Main sections and subsections
-2. Estimated word count per section
-3. Key points to cover
-4. Logical flow and transitions
+Create a structured outline with clear sections that would be appropriate for this type of document. Focus on creating a logical flow and comprehensive coverage of the topic.
 
-Return the outline in JSON format with sections array.`;
+Respond with a simple list of section titles, one per line. Do not use JSON format.`;
   }
 
   private buildWriterPrompt(settings: WriteupSettings, sectionTitle: string, context?: string): string {
@@ -409,7 +469,7 @@ Style guidelines:
 - Tone: ${settings.tone}
 - Include references: ${settings.includeReferences ? 'Yes' : 'No'}
 
-Write a comprehensive, well-structured section that flows naturally and maintains consistency.`;
+Write a comprehensive, well-structured section that flows naturally and maintains consistency. Aim for substantial content (500-1000 words minimum).`;
 
     if (context) {
       prompt += `\n\nContext from previous sections:\n${context}`;
@@ -421,17 +481,38 @@ Write a comprehensive, well-structured section that flows naturally and maintain
   private parseOutlineResponse(response: string): any {
     try {
       // Try to parse as JSON first
-      return JSON.parse(response);
+      const parsed = JSON.parse(response);
+      if (parsed.sections) return parsed;
     } catch {
-      // Fallback: create structure from text
-      const lines = response.split('\n').filter(line => line.trim());
-      const sections = lines.map((line, index) => ({
-        title: line.replace(/^\d+\.?\s*/, '').trim(),
-        summary: `Content for ${line.trim()}`
-      }));
-      
-      return { sections };
+      // Parse as text outline
     }
+    
+    // Parse as simple text outline
+    const lines = response.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .filter(line => !line.startsWith('#') && !line.startsWith('*') && !line.startsWith('-'))
+      .map(line => line.replace(/^\d+\.?\s*/, '').trim())
+      .filter(line => line.length > 0);
+    
+    const sections = lines.map((line, index) => ({
+      title: line,
+      summary: `Content for ${line}`
+    }));
+    
+    // Ensure we have at least some sections
+    if (sections.length === 0) {
+      return {
+        sections: [
+          { title: 'Introduction', summary: 'Opening section' },
+          { title: 'Main Content', summary: 'Core content' },
+          { title: 'Analysis', summary: 'Analysis and discussion' },
+          { title: 'Conclusion', summary: 'Concluding remarks' }
+        ]
+      };
+    }
+    
+    return { sections };
   }
 
   private async callModel(model: string, systemPrompt: string, userPrompt: string, apiKey: string): Promise<string> {
@@ -473,7 +554,13 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content || 'No response generated';
+    const content = data.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('No content received from OpenAI');
+    }
+    
+    return content;
   }
 
   private async callGemini(messages: any[], apiKey: string): Promise<string> {
@@ -508,7 +595,13 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     }
 
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!content) {
+      throw new Error('No content received from Gemini');
+    }
+    
+    return content;
   }
 
   private async callDeepSeek(messages: any[], apiKey: string): Promise<string> {
@@ -532,7 +625,13 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content || 'No response generated';
+    const content = data.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('No content received from DeepSeek');
+    }
+    
+    return content;
   }
 
   private getTargetWordCount(settings: WriteupSettings): string {
@@ -546,15 +645,16 @@ Write a comprehensive, well-structured section that flows naturally and maintain
   }
 
   private countWords(text: string): number {
+    if (!text || text.trim().length === 0) return 0;
     return text.trim().split(/\s+/).length;
   }
 
   private combineAllSections(project: WriteupProject): string {
-    let fullContent = `${project.title}\n\n`;
+    let fullContent = `${project.title}\n${'='.repeat(project.title.length)}\n\n`;
     
     project.sections.forEach(section => {
-      if (section.content) {
-        fullContent += `${section.title}\n\n${section.content}\n\n`;
+      if (section.content && section.content.trim().length > 0) {
+        fullContent += `${section.title}\n${'-'.repeat(section.title.length)}\n\n${section.content}\n\n`;
       }
     });
 
