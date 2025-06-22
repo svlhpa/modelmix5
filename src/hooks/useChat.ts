@@ -63,6 +63,16 @@ export const useChat = () => {
     }
   };
 
+  // Check if a session is empty (has no messages)
+  const isSessionEmpty = (session: ChatSession): boolean => {
+    return session.messages.length === 0;
+  };
+
+  // Find an empty session if one exists
+  const findEmptySession = (): ChatSession | undefined => {
+    return sessions.find(isSessionEmpty);
+  };
+
   const createNewSession = useCallback(async () => {
     if (!user) return null;
 
@@ -242,6 +252,8 @@ export const useChat = () => {
     sendMessage,
     selectResponse,
     deleteSession,
-    saveConversationTurn
+    saveConversationTurn,
+    findEmptySession,
+    isSessionEmpty
   };
 };

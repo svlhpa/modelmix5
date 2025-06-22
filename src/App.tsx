@@ -27,7 +27,9 @@ function App() {
     sendMessage,
     selectResponse,
     deleteSession,
-    saveConversationTurn
+    saveConversationTurn,
+    findEmptySession,
+    isSessionEmpty
   } = useChat();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -62,13 +64,28 @@ function App() {
     }
   }, [user]);
 
-  // Auto-create new chat when user logs in
+  // Smart auto-create new chat when user logs in
   useEffect(() => {
     if (justLoggedIn && user) {
-      handleNewChat();
+      // Check if there are any sessions
+      if (sessions.length === 0) {
+        // No sessions, create a new one
+        handleNewChat();
+      } else {
+        // Check if there's an empty session we can use
+        const emptySession = findEmptySession();
+        if (emptySession) {
+          // Use the existing empty session
+          setCurrentSessionId(emptySession.id);
+        } else if (currentSession && !isSessionEmpty(currentSession)) {
+          // Current session has content, create a new one
+          handleNewChat();
+        }
+        // Otherwise, keep the current session
+      }
       clearJustLoggedInFlag();
     }
-  }, [justLoggedIn, user]);
+  }, [justLoggedIn, user, sessions, currentSession]);
 
   const loadSettings = async () => {
     try {
