@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
-import { UsageIndicator } from './UsageIndicator';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -82,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Header with Logo and Close */}
             <div className="p-4 border-b border-gray-700">
               <div className="flex items-center justify-between mb-4">
-                <Logo size="sm" className="animate-fadeInUp" />
+                <Logo size="sm" className="animate-fadeInUp" showProCrown={isProUser} />
                 <button
                   onClick={onToggleMobile}
                   className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform"
@@ -199,19 +198,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {user ? (
               <>
-                {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
-                  <UsageIndicator
-                    usage={usage}
-                    limit={limit}
-                    tier={currentTier}
-                    onUpgradeClick={() => {
-                      onOpenTierUpgrade();
-                      onToggleMobile();
-                    }}
-                  />
-                </div>
-
                 <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -388,7 +374,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (isCollapsed) {
     return (
       <div className="hidden lg:flex w-16 bg-gray-900 text-white flex-col items-center py-4 space-y-4 transition-all duration-300 ease-in-out">
-        <Logo variant="icon" size="sm" className="animate-fadeInUp" />
+        <Logo variant="icon" size="sm" className="animate-fadeInUp" showProCrown={isProUser} />
         {user ? (
           <>
             <button
@@ -470,7 +456,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="hidden lg:flex w-64 bg-gray-900 text-white flex-col h-full transition-all duration-300 ease-in-out">
       {/* Header with Logo */}
       <div className="p-4 border-b border-gray-700">
-        <Logo size="sm" className="mb-4 animate-fadeInUp" />
+        <Logo size="sm" className="mb-4 animate-fadeInUp" showProCrown={isProUser} />
         {user && (
           <div className="space-y-2">
             <button
@@ -562,16 +548,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {user ? (
         <>
-          {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
-            <UsageIndicator
-              usage={usage}
-              limit={limit}
-              tier={currentTier}
-              onUpgradeClick={onOpenTierUpgrade}
-            />
-          </div>
-
           <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />

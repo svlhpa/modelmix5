@@ -242,7 +242,7 @@ function App() {
         onDeleteSession={deleteSession}
         onOpenSettings={handleOpenSettings}
         onOpenAnalytics={handleOpenAnalytics}
-        onOpenAuth={() => setShowAuth(true)}
+        onOpenAuth={() => setShowAuth(false)}
         onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         onOpenDebateClub={handleOpenDebateClub}
