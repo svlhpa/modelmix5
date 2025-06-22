@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { UsageIndicator } from './UsageIndicator';
@@ -18,6 +18,7 @@ interface SidebarProps {
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
+  onOpenWriteupAgent: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -36,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTierUpgrade,
   onOpenDebateClub,
   onOpenVideoCall,
+  onOpenWriteupAgent,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -149,6 +151,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                   )}
 
+                  {/* Write-up Agent Button */}
+                  <button
+                    onClick={() => {
+                      onOpenWriteupAgent();
+                      onToggleMobile();
+                    }}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+                    style={{ animationDelay: '0.25s' }}
+                  >
+                    <FileText size={18} />
+                    <span className="font-medium">Write-up Agent</span>
+                  </button>
+
                   {/* Mobile Upgrade to Pro Button for Free Users */}
                   {!isProUser && (
                     <button
@@ -157,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onToggleMobile();
                       }}
                       className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                      style={{ animationDelay: '0.25s' }}
+                      style={{ animationDelay: '0.3s' }}
                     >
                       <Crown size={18} />
                       <span className="font-medium">Upgrade to Pro</span>
@@ -170,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {user ? (
               <>
                 {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
                   <UsageIndicator
                     usage={usage}
                     limit={limit}
@@ -182,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
 
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
@@ -203,7 +218,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             ? 'bg-gray-700'
                             : 'hover:bg-gray-800'
                         }`}
-                        style={{ animationDelay: `${0.4 + index * 0.05}s` }}
+                        style={{ animationDelay: `${0.45 + index * 0.05}s` }}
                         onClick={() => {
                           onSelectSession(session.id);
                           onToggleMobile();
@@ -239,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ))}
                     
                     {sessions.length === 0 && (
-                      <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+                      <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
                         <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                         <p className="text-sm">No conversations yet</p>
                         <p className="text-xs">Start a new chat to begin</p>
@@ -358,6 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 title: 'AI Video Call (Pro Only)', 
                 bgClass: 'bg-gray-700 opacity-50 cursor-not-allowed relative'
               }]),
+              { onClick: onOpenWriteupAgent, icon: FileText, title: 'Write-up Agent', bgClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' },
               { onClick: onOpenAnalytics, icon: BarChart3, title: 'Analytics', bgClass: 'hover:bg-gray-800' },
               { onClick: onOpenSettings, icon: Settings, title: 'Settings', bgClass: 'hover:bg-gray-800' }
             ].map((item, index) => (
@@ -383,7 +399,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onOpenAdmin}
                 className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.6s' }}
+                style={{ animationDelay: '0.7s' }}
                 title="Admin Dashboard"
               >
                 <Shield size={20} className="text-red-400" />
@@ -395,7 +411,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onOpenTierUpgrade}
                 className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.7s' }}
+                style={{ animationDelay: '0.8s' }}
                 title="Upgrade to Pro"
               >
                 <Crown size={20} className="text-yellow-400" />
@@ -406,7 +422,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={handleSignOut}
               className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
-              style={{ animationDelay: '0.8s' }}
+              style={{ animationDelay: '0.9s' }}
               title="Sign Out"
             >
               <LogOut size={20} />
@@ -482,12 +498,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
 
+            {/* Write-up Agent Button */}
+            <button
+              onClick={onOpenWriteupAgent}
+              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
+              style={{ animationDelay: '0.25s' }}
+            >
+              <FileText size={18} />
+              <span className="font-medium">Write-up Agent</span>
+            </button>
+
             {/* Desktop Upgrade to Pro Button for Free Users */}
             {!isProUser && (
               <button
                 onClick={onOpenTierUpgrade}
                 className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: '0.25s' }}
+                style={{ animationDelay: '0.3s' }}
               >
                 <Crown size={18} />
                 <span className="font-medium">Upgrade to Pro</span>
@@ -500,7 +526,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {user ? (
         <>
           {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
             <UsageIndicator
               usage={usage}
               limit={limit}
@@ -509,7 +535,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
 
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
@@ -530,7 +556,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? 'bg-gray-700'
                       : 'hover:bg-gray-800'
                   }`}
-                  style={{ animationDelay: `${0.4 + index * 0.05}s` }}
+                  style={{ animationDelay: `${0.45 + index * 0.05}s` }}
                   onClick={() => onSelectSession(session.id)}
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -563,7 +589,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ))}
               
               {sessions.length === 0 && (
-                <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+                <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
                   <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No conversations yet</p>
                   <p className="text-xs">Start a new chat to begin</p>
