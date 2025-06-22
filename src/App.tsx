@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
 import { SettingsModal } from './components/SettingsModal';
@@ -58,6 +58,22 @@ function App() {
     image_models: {}
   });
 
+  const handleNewChat = useCallback(async () => {
+    if (!user) {
+      setShowAuth(true);
+      return;
+    }
+
+    // Check usage limits
+    const { canUse } = await tierService.checkUsageLimit();
+    if (!canUse) {
+      setShowTierUpgrade(true);
+      return;
+    }
+
+    createNewSession();
+  }, [user, createNewSession, setShowAuth, setShowTierUpgrade]);
+
   useEffect(() => {
     if (user) {
       loadSettings();
@@ -90,7 +106,7 @@ function App() {
       // Clear the flag to prevent creating more sessions on refresh
       clearJustLoggedInFlag();
     }
-  }, [justLoggedIn, user, sessions, currentSession, findEmptySession, isSessionEmpty, handleNewChat, clearJustLoggedInFlag]);
+  }, [justLoggedIn, user, sessions, currentSession, findEmptySession, isSessionEmpty, handleNewChat, clearJustLoggedInFlag, setCurrentSessionId]);
 
   const loadSettings = async () => {
     try {
@@ -106,22 +122,6 @@ function App() {
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
-  };
-
-  const handleNewChat = async () => {
-    if (!user) {
-      setShowAuth(true);
-      return;
-    }
-
-    // Check usage limits
-    const { canUse } = await tierService.checkUsageLimit();
-    if (!canUse) {
-      setShowTierUpgrade(true);
-      return;
-    }
-
-    createNewSession();
   };
 
   const handleSaveSettings = async (settings: APISettings, models: ModelSettings) => {
