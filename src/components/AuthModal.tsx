@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Eye, EyeOff, LogIn, UserPlus, CheckCircle, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useChat } from '../hooks/useChat';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+  const { createNewSession } = useChat();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,6 +52,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           // For testing purposes, we'll treat unconfirmed users as confirmed
           console.log('User created successfully for testing environment');
         }
+        
+        // Create a new chat session for the new user
+        setTimeout(async () => {
+          try {
+            await createNewSession();
+            console.log('Created initial chat session for new user');
+          } catch (err) {
+            console.error('Failed to create initial chat session:', err);
+          }
+        }, 1500); // Small delay to ensure auth state is updated
         
         // Close modal immediately - user can start using the app
         onClose();
