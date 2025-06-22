@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, X, Menu, Globe, HelpCircle, Crown, Infinity, Image, Upload, FileText, Zap } from 'lucide-react';
+import { Send, Paperclip, X, Menu, Globe, HelpCircle, Crown, Infinity, Image, Upload, FileText, Zap, CheckCircle } from 'lucide-react';
 import { Message, APIResponse, ModelSettings } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ComparisonView } from './ComparisonView';
@@ -42,6 +42,24 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
+
+  // Count enabled models
+  const getEnabledTextModels = () => {
+    const traditionalModels = [
+      modelSettings.openai, 
+      modelSettings.gemini, 
+      modelSettings.deepseek
+    ].filter(Boolean).length;
+    
+    const openRouterModels = Object.values(modelSettings.openrouter_models)
+      .filter(Boolean).length;
+    
+    return traditionalModels + openRouterModels;
+  };
+
+  const getEnabledImageModels = () => {
+    return Object.values(modelSettings.image_models).filter(Boolean).length;
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -183,112 +201,177 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </button>
         </div>
         
-        {/* Help Icon with Tooltip */}
-        <div className="relative">
-          <button
-            onClick={toggleHelpTooltip}
-            className="p-2 rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-110 transform"
-            aria-label="Help"
-          >
-            <HelpCircle size={20} className="text-gray-600" />
-          </button>
+        {/* Model Info */}
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center text-xs text-gray-500">
+            <span className="hidden sm:inline-flex items-center">
+              <CheckCircle size={12} className="text-emerald-500 mr-1" />
+              <span className="text-emerald-600 font-medium">{getEnabledTextModels()} models</span>
+            </span>
+            <span className="mx-1 hidden sm:inline">•</span>
+            <span className="hidden sm:inline-flex items-center">
+              <Image size={12} className="text-purple-500 mr-1" />
+              <span className="text-purple-600 font-medium">{getEnabledImageModels()} images</span>
+            </span>
+          </div>
           
-          {showHelpTooltip && (
-            <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 p-4 text-sm animate-fadeInUp">
-              <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
-                <h3 className="font-semibold text-gray-900">ModelMix Features</h3>
-                <button 
-                  onClick={toggleHelpTooltip}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="flex items-start space-x-2">
-                  <div className="p-1 bg-blue-100 rounded-full mt-0.5">
-                    <Zap size={14} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">AI Model Comparison</p>
-                    <p className="text-gray-600">Compare responses from multiple AI models side by side</p>
-                  </div>
+          {/* Help Icon with Tooltip */}
+          <div className="relative">
+            <button
+              onClick={toggleHelpTooltip}
+              className="p-2 rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-110 transform"
+              aria-label="Help"
+            >
+              <HelpCircle size={20} className="text-gray-600" />
+            </button>
+            
+            {showHelpTooltip && (
+              <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 p-4 text-sm animate-fadeInUp">
+                <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
+                  <h3 className="font-semibold text-gray-900">ModelMix Features</h3>
+                  <button 
+                    onClick={toggleHelpTooltip}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
                 
-                <div className="flex items-start space-x-2">
-                  <div className="p-1 bg-purple-100 rounded-full mt-0.5">
-                    <Globe size={14} className="text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">Internet Search</p>
-                    <p className="text-gray-600">Enable real-time web search for up-to-date information</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start space-x-2">
-                  <div className="p-1 bg-pink-100 rounded-full mt-0.5">
-                    <Image size={14} className="text-pink-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">Image Generation</p>
-                    <p className="text-gray-600">Ask the AI to "generate an image of..." or "draw..."</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start space-x-2">
-                  <div className="p-1 bg-amber-100 rounded-full mt-0.5">
-                    <Upload size={14} className="text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">File Upload</p>
-                    <p className="text-gray-600">Upload images and documents for AI analysis</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start space-x-2">
-                  <div className="p-1 bg-green-100 rounded-full mt-0.5">
-                    <FileText size={14} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">Write-up Agent</p>
-                    <p className="text-gray-600">Generate comprehensive documents with AI orchestration</p>
-                  </div>
-                </div>
-                
-                {isProUser ? (
+                <div className="space-y-3">
                   <div className="flex items-start space-x-2">
-                    <div className="p-1 bg-yellow-100 rounded-full mt-0.5">
-                      <Infinity size={14} className="text-yellow-600" />
+                    <div className="p-1 bg-blue-100 rounded-full mt-0.5">
+                      <Zap size={14} className="text-blue-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Pro Plan Active</p>
-                      <p className="text-gray-600">Unlimited conversations and models with priority access</p>
+                      <p className="font-medium text-gray-900">AI Model Comparison</p>
+                      <p className="text-gray-600">Compare responses from multiple AI models side by side</p>
                     </div>
                   </div>
-                ) : (
+                  
                   <div className="flex items-start space-x-2">
-                    <div className="p-1 bg-yellow-100 rounded-full mt-0.5">
-                      <Crown size={14} className="text-yellow-600" />
+                    <div className="p-1 bg-purple-100 rounded-full mt-0.5">
+                      <Globe size={14} className="text-purple-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Upgrade to Pro</p>
-                      <p className="text-gray-600">Get unlimited conversations and models</p>
+                      <p className="font-medium text-gray-900">Internet Search</p>
+                      <p className="text-gray-600">Enable real-time web search for up-to-date information</p>
                     </div>
                   </div>
-                )}
+                  
+                  <div className="flex items-start space-x-2">
+                    <div className="p-1 bg-pink-100 rounded-full mt-0.5">
+                      <Image size={14} className="text-pink-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">Image Generation</p>
+                      <p className="text-gray-600">Ask the AI to "generate an image of..." or "draw..."</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-2">
+                    <div className="p-1 bg-amber-100 rounded-full mt-0.5">
+                      <Upload size={14} className="text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">File Upload</p>
+                      <p className="text-gray-600">Upload images and documents for AI analysis</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-2">
+                    <div className="p-1 bg-green-100 rounded-full mt-0.5">
+                      <FileText size={14} className="text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">Write-up Agent</p>
+                      <p className="text-gray-600">Generate comprehensive documents with AI orchestration</p>
+                    </div>
+                  </div>
+                  
+                  {isProUser ? (
+                    <div className="flex items-start space-x-2">
+                      <div className="p-1 bg-yellow-100 rounded-full mt-0.5">
+                        <Infinity size={14} className="text-yellow-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Pro Plan Active</p>
+                        <p className="text-gray-600">Unlimited conversations and models with priority access</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start space-x-2">
+                      <div className="p-1 bg-yellow-100 rounded-full mt-0.5">
+                        <Crown size={14} className="text-yellow-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Upgrade to Pro</p>
+                        <p className="text-gray-600">Get unlimited conversations and models</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                  Click outside this box to close
+                </div>
               </div>
-              
-              <div className="mt-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                Click outside this box to close
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12 animate-fadeInUp">
+            <div className="bg-gradient-to-r from-emerald-500 to-blue-500 p-4 rounded-full mb-6">
+              <div className="text-white text-4xl">🤖</div>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">Start Mixing AI Models</h2>
+            <p className="text-gray-600 max-w-lg mb-6">
+              Ask a question, upload images, and compare AI responses from hundreds of different models.
+              Continue natural conversations with full context.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <div className="flex items-center bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                <Globe className="text-blue-500 mr-2" size={18} />
+                <span className="text-blue-700 text-sm">Internet search is available! Toggle it on to get real-time information.</span>
+              </div>
+              <div className="flex items-center bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
+                <Image className="text-purple-500 mr-2" size={18} />
+                <span className="text-purple-700 text-sm">Image generation is available! Ask the AI to "generate an image of..." or "draw...".</span>
+              </div>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 max-w-2xl w-full">
+              <div className="flex items-center justify-center mb-2">
+                <CheckCircle className="text-emerald-500 mr-2" size={18} />
+                <span className="font-medium text-emerald-700">
+                  {getEnabledTextModels()} AI models and {getEnabledImageModels()} image models ready for comparison!
+                </span>
+                {isProUser && <span className="ml-2 text-yellow-600">👑 Pro Power</span>}
+              </div>
+              <div className="text-sm text-emerald-600 text-center">
+                {isProUser ? "Unlimited conversations and models with Pro plan!" : "Free plan includes limited conversations and models."}
+              </div>
+              <div className="mt-3 flex flex-col sm:flex-row items-center justify-center gap-2 text-xs text-gray-600">
+                <div className="flex items-center">
+                  <Globe size={12} className="mr-1 text-blue-500" />
+                  <span>Internet search available for real-time information!</span>
+                </div>
+                <div className="flex items-center">
+                  <Image size={12} className="mr-1 text-purple-500" />
+                  <span>Image generation available! Just ask the AI to create images.</span>
+                </div>
+              </div>
+              {isProUser && (
+                <div className="mt-2 text-center text-xs text-yellow-600 font-medium">
+                  👑 Pro plan: unlimited everything!
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {messages.map((message, index) => (
           <MessageBubble key={message.id} message={message} />
         ))}
@@ -407,7 +490,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </button>
         </form>
 
-        {/* Pro Plan Indicator */}
+        {/* Pro Plan Indicator and Model Info */}
         <div className="mt-2 flex justify-center">
           <div className="flex items-center space-x-1 text-xs text-gray-500">
             {isProUser ? (
@@ -428,6 +511,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </>
             )}
           </div>
+        </div>
+        
+        {/* Small model info at bottom */}
+        <div className="mt-1 text-center text-xs text-gray-400">
+          <span>🤖 Try asking "Generate an image of..." or "Draw..." to create AI images</span>
         </div>
       </div>
     </div>
