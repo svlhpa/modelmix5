@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe } from 'lucide-react';
+import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { writeupService } from '../services/writeupService';
 
@@ -64,6 +64,8 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [showFullDocument, setShowFullDocument] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const currentTier = getCurrentTier();
@@ -183,7 +185,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const handleExport = async (format: 'pdf' | 'docx' | 'epub' | 'txt') => {
+  const handleExport = async (format: 'pdf' | 'docx' | 'txt') => {
     if (!currentProject) return;
 
     try {
@@ -192,6 +194,16 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
       console.error('Failed to export project:', error);
       setError(error instanceof Error ? error.message : 'Failed to export project');
     }
+  };
+
+  const toggleSectionExpansion = (sectionId: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionId)) {
+      newExpanded.delete(sectionId);
+    } else {
+      newExpanded.add(sectionId);
+    }
+    setExpandedSections(newExpanded);
   };
 
   const getTargetWordCount = () => {
@@ -579,35 +591,118 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
 
           {step === 'completed' && currentProject && (
             <div className="p-6 h-full overflow-y-auto">
-              <div className="max-w-4xl mx-auto text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle size={32} className="text-green-600" />
+              <div className="max-w-4xl mx-auto">
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle size={32} className="text-green-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Document Completed!</h3>
+                  <p className="text-gray-600 mb-6">
+                    Your {currentProject.wordCount.toLocaleString()}-word document is ready for export.
+                  </p>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Document Completed!</h3>
-                <p className="text-gray-600 mb-6">
-                  Your {currentProject.wordCount.toLocaleString()}-word document is ready for export.
-                </p>
 
+                {/* Document Review Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                      <Eye size={20} />
+                      <span>Document Review</span>
+                    </h4>
+                    <button
+                      onClick={() => setShowFullDocument(!showFullDocument)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                      {showFullDocument ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      <span>{showFullDocument ? 'Hide' : 'Show'} Full Document</span>
+                    </button>
+                  </div>
+
+                  {/* Section Overview */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {currentProject.sections.map((section) => (
+                      <div key={section.id} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-medium text-gray-900 text-sm">{section.title}</h5>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-500">{section.wordCount} words</span>
+                            <button
+                              onClick={() => toggleSectionExpansion(section.id)}
+                              className="p-1 rounded hover:bg-gray-100"
+                            >
+                              {expandedSections.has(section.id) ? 
+                                <ChevronUp size={14} /> : 
+                                <ChevronDown size={14} />
+                              }
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {expandedSections.has(section.id) && (
+                          <div className="text-xs text-gray-700 leading-relaxed max-h-40 overflow-y-auto">
+                            {section.content}
+                          </div>
+                        )}
+                        
+                        {!expandedSections.has(section.id) && (
+                          <div className="text-xs text-gray-600">
+                            {section.content.substring(0, 150)}...
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Full Document View */}
+                  {showFullDocument && (
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 max-h-96 overflow-y-auto">
+                      <div className="prose prose-sm max-w-none">
+                        <h1 className="text-2xl font-bold mb-6">{currentProject.title}</h1>
+                        {currentProject.sections.map((section) => (
+                          <div key={section.id} className="mb-8">
+                            <h2 className="text-xl font-semibold mb-4 border-b border-gray-200 pb-2">
+                              {section.title}
+                            </h2>
+                            <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                              {section.content}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Export Options */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
                   <h4 className="font-semibold text-gray-900 mb-4">Export Options</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
-                      { format: 'pdf', label: 'PDF', icon: FileText },
-                      { format: 'docx', label: 'Word', icon: FileCheck },
-                      { format: 'epub', label: 'ePub', icon: BookOpen },
-                      { format: 'txt', label: 'Text', icon: FileText }
-                    ].map(({ format, label, icon: Icon }) => (
+                      { format: 'pdf', label: 'PDF', icon: FileText, description: 'Portable Document Format' },
+                      { format: 'docx', label: 'Word', icon: FileCheck, description: 'Microsoft Word Document' },
+                      { format: 'txt', label: 'Text', icon: FileText, description: 'Plain Text File' }
+                    ].map(({ format, label, icon: Icon, description }) => (
                       <button
                         key={format}
                         onClick={() => handleExport(format as any)}
-                        className="flex flex-col items-center space-y-2 p-4 border border-gray-200 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200"
+                        className="flex flex-col items-center space-y-2 p-4 border border-gray-200 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200 hover:scale-105"
                       >
                         <Icon size={24} className="text-emerald-600" />
                         <span className="text-sm font-medium">{label}</span>
+                        <span className="text-xs text-gray-500 text-center">{description}</span>
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center space-x-2 text-red-700">
+                      <AlertCircle size={16} />
+                      <span className="text-sm">{error}</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-center space-x-3">
                   <button
@@ -615,6 +710,8 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                       setStep('setup');
                       setCurrentProject(null);
                       setPrompt('');
+                      setExpandedSections(new Set());
+                      setShowFullDocument(false);
                     }}
                     className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                   >

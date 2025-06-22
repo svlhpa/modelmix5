@@ -188,7 +188,7 @@ class WriteupService {
     project.updatedAt = new Date();
   }
 
-  async exportProject(projectId: string, format: 'pdf' | 'docx' | 'epub' | 'txt'): Promise<void> {
+  async exportProject(projectId: string, format: 'pdf' | 'docx' | 'txt'): Promise<void> {
     const project = this.projects.get(projectId);
     if (!project) throw new Error('Project not found');
 
@@ -202,12 +202,49 @@ class WriteupService {
     console.log(`📄 Exporting ${project.title} as ${format.toUpperCase()}`);
     console.log(`📊 Total content length: ${fullContent.length} characters`);
     
-    // Generate the actual file
-    const blob = new Blob([fullContent], { type: 'text/plain' });
+    // Generate the actual file based on format
+    let blob: Blob;
+    let filename: string;
+    
+    switch (format) {
+      case 'pdf':
+        // For PDF, we'll create a simple HTML structure and let the browser handle PDF generation
+        const htmlContent = this.generateHTMLForPDF(project, fullContent);
+        blob = new Blob([htmlContent], { type: 'text/html' });
+        filename = `${project.title}.html`;
+        
+        // Open in new window for PDF printing
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(htmlContent);
+          newWindow.document.close();
+          setTimeout(() => {
+            newWindow.print();
+          }, 500);
+        }
+        return;
+        
+      case 'docx':
+        // For DOCX, we'll create a proper Word document structure
+        const docxContent = this.generateDOCXContent(project, fullContent);
+        blob = new Blob([docxContent], { 
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+        });
+        filename = `${project.title}.docx`;
+        break;
+        
+      case 'txt':
+      default:
+        blob = new Blob([fullContent], { type: 'text/plain' });
+        filename = `${project.title}.txt`;
+        break;
+    }
+    
+    // Download the file
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${project.title}.${format === 'docx' ? 'txt' : format}`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -821,6 +858,78 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     console.log(`📊 Total word count: ${this.countWords(fullContent)} words`);
     
     return fullContent;
+  }
+
+  private generateHTMLForPDF(project: WriteupProject, content: string): string {
+    // Create a properly formatted HTML document for PDF printing
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${project.title}</title>
+  <style>
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 12pt;
+      line-height: 1.5;
+      margin: 1in;
+      color: #000;
+    }
+    h1 {
+      font-size: 18pt;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 24pt;
+    }
+    h2 {
+      font-size: 14pt;
+      font-weight: bold;
+      margin-top: 24pt;
+      margin-bottom: 12pt;
+      page-break-after: avoid;
+    }
+    p {
+      margin-bottom: 12pt;
+      text-align: justify;
+    }
+    .page-break {
+      page-break-before: always;
+    }
+    @media print {
+      body {
+        margin: 0.5in;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>${project.title}</h1>
+  ${project.sections.map(section => `
+    <h2>${section.title}</h2>
+    ${section.content.split('\n').map(para => 
+      para.trim() ? `<p>${para}</p>` : ''
+    ).join('')}
+  `).join('')}
+</body>
+</html>`;
+
+    return html;
+  }
+
+  private generateDOCXContent(project: WriteupProject, content: string): string {
+    // For simplicity in this implementation, we'll create a formatted text file
+    // that can be opened in Word. In a real implementation, you would use a library
+    // like docx-js to create a proper DOCX file.
+    
+    let docContent = `${project.title.toUpperCase()}\n\n`;
+    
+    project.sections.forEach(section => {
+      if (section.content && section.content.trim().length > 0) {
+        docContent += `${section.title.toUpperCase()}\n\n${section.content}\n\n`;
+      }
+    });
+    
+    return docContent;
   }
 
   private delay(ms: number): Promise<void> {
