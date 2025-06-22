@@ -11,7 +11,6 @@ export const useChat = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   const currentSession = sessions.find(s => s.id === currentSessionId);
 
@@ -36,9 +35,7 @@ export const useChat = () => {
 
   const loadSessions = async () => {
     try {
-      console.log('Loading chat sessions...');
       const loadedSessions = await databaseService.loadChatSessions();
-      console.log(`Loaded ${loadedSessions.length} sessions`);
       setSessions(loadedSessions);
       
       // Auto-select the first session if available
@@ -66,37 +63,11 @@ export const useChat = () => {
     }
   };
 
-  // Check if a session is empty (has no messages)
-  const isSessionEmpty = useCallback((session: ChatSession): boolean => {
-    return session.messages.length === 0;
-  }, []);
-
-  // Find an empty session if one exists
-  const findEmptySession = useCallback((): ChatSession | undefined => {
-    return sessions.find(isSessionEmpty);
-  }, [sessions, isSessionEmpty]);
-
   const createNewSession = useCallback(async () => {
     if (!user) return null;
-    if (isCreatingSession) return null; // Prevent multiple simultaneous creations
 
     try {
-      setIsCreatingSession(true);
-      console.log('Creating new chat session...');
-      
-      // Check if there's already an empty session we can use
-      const emptySession = findEmptySession();
-      if (emptySession) {
-        console.log('Found existing empty session, using it:', emptySession.id);
-        setCurrentSessionId(emptySession.id);
-        setIsCreatingSession(false);
-        return emptySession.id;
-      }
-      
-      // Create a new session
       const sessionId = await databaseService.createChatSession('New Chat');
-      console.log('Created new session with ID:', sessionId);
-      
       const newSession: ChatSession = {
         id: sessionId,
         title: 'New Chat',
@@ -107,14 +78,12 @@ export const useChat = () => {
       
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(sessionId);
-      setIsCreatingSession(false);
       return sessionId;
     } catch (error) {
       console.error('Failed to create session:', error);
-      setIsCreatingSession(false);
       return null;
     }
-  }, [user, findEmptySession, isCreatingSession]);
+  }, [user]);
 
   // CRITICAL: Simplified sendMessage - only returns responses, doesn't modify session
   const sendMessage = useCallback(async (content: string, images: string[] = [], useInternetSearch: boolean = false, fileContext?: string): Promise<APIResponse[]> => {
@@ -273,8 +242,6 @@ export const useChat = () => {
     sendMessage,
     selectResponse,
     deleteSession,
-    saveConversationTurn,
-    findEmptySession,
-    isSessionEmpty
+    saveConversationTurn
   };
 };

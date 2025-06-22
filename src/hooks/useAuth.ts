@@ -7,24 +7,16 @@ export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [justLoggedIn, setJustLoggedIn] = useState(false);
 
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       const sessionUser = session?.user ?? null;
-      const previousUser = user;
       
       // CRITICAL: For testing - accept users even without email confirmation
       if (sessionUser) {
         setUser(sessionUser);
         loadUserProfile(sessionUser.id);
-        
-        // Set justLoggedIn flag if this is a new login (not just a page refresh)
-        if (!previousUser && sessionUser) {
-          console.log('Initial login detected');
-          setJustLoggedIn(true);
-        }
       } else {
         setUserProfile(null);
         setLoading(false);
@@ -36,18 +28,11 @@ export const useAuth = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
-      const previousUser = user;
       
       // CRITICAL: For testing - accept users even without email confirmation
       if (sessionUser) {
         setUser(sessionUser);
         loadUserProfile(sessionUser.id);
-        
-        // Set justLoggedIn flag if this is a new login
-        if (!previousUser && sessionUser) {
-          console.log('Auth state change: new login detected');
-          setJustLoggedIn(true);
-        }
       } else {
         setUser(null);
         setUserProfile(null);
@@ -56,7 +41,7 @@ export const useAuth = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [user]);
+  }, []);
 
   const loadUserProfile = async (userId: string) => {
     try {
@@ -124,12 +109,6 @@ export const useAuth = () => {
     };
   };
 
-  // Reset the justLoggedIn flag
-  const clearJustLoggedInFlag = () => {
-    console.log('Clearing justLoggedIn flag');
-    setJustLoggedIn(false);
-  };
-
   return {
     user,
     userProfile,
@@ -139,7 +118,5 @@ export const useAuth = () => {
     getCurrentTier,
     getUsageInfo,
     refreshProfile,
-    justLoggedIn,
-    clearJustLoggedInFlag
   };
 };

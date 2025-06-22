@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
 import { SettingsModal } from './components/SettingsModal';
@@ -16,7 +16,7 @@ import { tierService } from './services/tierService';
 import { APISettings, ModelSettings } from './types';
 
 function App() {
-  const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile, justLoggedIn, clearJustLoggedInFlag } = useAuth();
+  const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile } = useAuth();
   const {
     sessions,
     currentSession,
@@ -27,9 +27,7 @@ function App() {
     sendMessage,
     selectResponse,
     deleteSession,
-    saveConversationTurn,
-    findEmptySession,
-    isSessionEmpty
+    saveConversationTurn
   } = useChat();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -58,55 +56,11 @@ function App() {
     image_models: {}
   });
 
-  const handleNewChat = useCallback(async () => {
-    if (!user) {
-      setShowAuth(true);
-      return;
-    }
-
-    // Check usage limits
-    const { canUse } = await tierService.checkUsageLimit();
-    if (!canUse) {
-      setShowTierUpgrade(true);
-      return;
-    }
-
-    createNewSession();
-  }, [user, createNewSession, setShowAuth, setShowTierUpgrade]);
-
   useEffect(() => {
     if (user) {
       loadSettings();
     }
   }, [user]);
-
-  // Smart auto-create new chat when user logs in
-  useEffect(() => {
-    if (justLoggedIn && user) {
-      console.log('User just logged in, checking session state...');
-      
-      // Check if there are any sessions
-      if (sessions.length === 0) {
-        console.log('No sessions found, creating a new one');
-        handleNewChat();
-      } else {
-        // Check if there's an empty session we can use
-        const emptySession = findEmptySession();
-        if (emptySession) {
-          console.log('Found an empty session, using it:', emptySession.id);
-          setCurrentSessionId(emptySession.id);
-        } else if (currentSession && !isSessionEmpty(currentSession)) {
-          console.log('Current session has content, creating a new one');
-          handleNewChat();
-        } else {
-          console.log('Using current session');
-        }
-      }
-      
-      // Clear the flag to prevent creating more sessions on refresh
-      clearJustLoggedInFlag();
-    }
-  }, [justLoggedIn, user, sessions, currentSession, findEmptySession, isSessionEmpty, handleNewChat, clearJustLoggedInFlag, setCurrentSessionId]);
 
   const loadSettings = async () => {
     try {
@@ -122,6 +76,22 @@ function App() {
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
+  };
+
+  const handleNewChat = async () => {
+    if (!user) {
+      setShowAuth(true);
+      return;
+    }
+
+    // Check usage limits
+    const { canUse } = await tierService.checkUsageLimit();
+    if (!canUse) {
+      setShowTierUpgrade(true);
+      return;
+    }
+
+    createNewSession();
   };
 
   const handleSaveSettings = async (settings: APISettings, models: ModelSettings) => {
