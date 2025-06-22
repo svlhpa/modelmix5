@@ -90,7 +90,7 @@ function App() {
       // Clear the flag to prevent creating more sessions on refresh
       clearJustLoggedInFlag();
     }
-  }, [justLoggedIn, user, sessions, currentSession]);
+  }, [justLoggedIn, user, sessions, currentSession, findEmptySession, isSessionEmpty, handleNewChat, clearJustLoggedInFlag]);
 
   const loadSettings = async () => {
     try {

@@ -13,11 +13,18 @@ export const useAuth = () => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       const sessionUser = session?.user ?? null;
+      const previousUser = user;
       
       // CRITICAL: For testing - accept users even without email confirmation
       if (sessionUser) {
         setUser(sessionUser);
         loadUserProfile(sessionUser.id);
+        
+        // Set justLoggedIn flag if this is a new login (not just a page refresh)
+        if (!previousUser && sessionUser) {
+          console.log('Initial login detected');
+          setJustLoggedIn(true);
+        }
       } else {
         setUserProfile(null);
         setLoading(false);
@@ -37,7 +44,8 @@ export const useAuth = () => {
         loadUserProfile(sessionUser.id);
         
         // Set justLoggedIn flag if this is a new login
-        if (!previousUser) {
+        if (!previousUser && sessionUser) {
+          console.log('Auth state change: new login detected');
           setJustLoggedIn(true);
         }
       } else {
@@ -48,7 +56,7 @@ export const useAuth = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [user]);
 
   const loadUserProfile = async (userId: string) => {
     try {
@@ -118,6 +126,7 @@ export const useAuth = () => {
 
   // Reset the justLoggedIn flag
   const clearJustLoggedInFlag = () => {
+    console.log('Clearing justLoggedIn flag');
     setJustLoggedIn(false);
   };
 
