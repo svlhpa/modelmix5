@@ -11,9 +11,12 @@ export const useAuth = () => {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserProfile(session.user.id);
+      const sessionUser = session?.user ?? null;
+      
+      // CRITICAL: For testing - accept users even without email confirmation
+      if (sessionUser) {
+        setUser(sessionUser);
+        loadUserProfile(sessionUser.id);
       } else {
         setUserProfile(null);
         setLoading(false);
@@ -24,10 +27,14 @@ export const useAuth = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserProfile(session.user.id);
+      const sessionUser = session?.user ?? null;
+      
+      // CRITICAL: For testing - accept users even without email confirmation
+      if (sessionUser) {
+        setUser(sessionUser);
+        loadUserProfile(sessionUser.id);
       } else {
+        setUser(null);
         setUserProfile(null);
         setLoading(false);
       }
@@ -44,7 +51,16 @@ export const useAuth = () => {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If profile doesn't exist, it might be a new user - wait a moment and try again
+        if (error.code === 'PGRST116') {
+          console.log('Profile not found, waiting for creation...');
+          setTimeout(() => loadUserProfile(userId), 1000);
+          return;
+        }
+        throw error;
+      }
+      
       setUserProfile(data);
     } catch (error) {
       console.error('Failed to load user profile:', error);
