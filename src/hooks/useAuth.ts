@@ -7,6 +7,7 @@ export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
 
   useEffect(() => {
     // Get initial session
@@ -28,11 +29,17 @@ export const useAuth = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
+      const previousUser = user;
       
       // CRITICAL: For testing - accept users even without email confirmation
       if (sessionUser) {
         setUser(sessionUser);
         loadUserProfile(sessionUser.id);
+        
+        // Set justLoggedIn flag if this is a new login
+        if (!previousUser) {
+          setJustLoggedIn(true);
+        }
       } else {
         setUser(null);
         setUserProfile(null);
@@ -109,6 +116,11 @@ export const useAuth = () => {
     };
   };
 
+  // Reset the justLoggedIn flag
+  const clearJustLoggedInFlag = () => {
+    setJustLoggedIn(false);
+  };
+
   return {
     user,
     userProfile,
@@ -118,5 +130,7 @@ export const useAuth = () => {
     getCurrentTier,
     getUsageInfo,
     refreshProfile,
+    justLoggedIn,
+    clearJustLoggedInFlag
   };
 };

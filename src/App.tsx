@@ -16,7 +16,7 @@ import { tierService } from './services/tierService';
 import { APISettings, ModelSettings } from './types';
 
 function App() {
-  const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile } = useAuth();
+  const { user, userProfile, isSuperAdmin, getCurrentTier, getUsageInfo, refreshProfile, justLoggedIn, clearJustLoggedInFlag } = useAuth();
   const {
     sessions,
     currentSession,
@@ -61,6 +61,14 @@ function App() {
       loadSettings();
     }
   }, [user]);
+
+  // Auto-create new chat when user logs in
+  useEffect(() => {
+    if (justLoggedIn && user) {
+      handleNewChat();
+      clearJustLoggedInFlag();
+    }
+  }, [justLoggedIn, user]);
 
   const loadSettings = async () => {
     try {
