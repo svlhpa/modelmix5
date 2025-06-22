@@ -67,22 +67,27 @@ function App() {
   // Smart auto-create new chat when user logs in
   useEffect(() => {
     if (justLoggedIn && user) {
+      console.log('User just logged in, checking session state...');
+      
       // Check if there are any sessions
       if (sessions.length === 0) {
-        // No sessions, create a new one
+        console.log('No sessions found, creating a new one');
         handleNewChat();
       } else {
         // Check if there's an empty session we can use
         const emptySession = findEmptySession();
         if (emptySession) {
-          // Use the existing empty session
+          console.log('Found an empty session, using it:', emptySession.id);
           setCurrentSessionId(emptySession.id);
         } else if (currentSession && !isSessionEmpty(currentSession)) {
-          // Current session has content, create a new one
+          console.log('Current session has content, creating a new one');
           handleNewChat();
+        } else {
+          console.log('Using current session');
         }
-        // Otherwise, keep the current session
       }
+      
+      // Clear the flag to prevent creating more sessions on refresh
       clearJustLoggedInFlag();
     }
   }, [justLoggedIn, user, sessions, currentSession]);
