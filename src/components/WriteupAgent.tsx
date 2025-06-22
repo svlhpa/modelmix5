@@ -32,6 +32,7 @@ interface WriteupSection {
   status: 'pending' | 'writing' | 'completed' | 'reviewing' | 'error';
   wordCount: number;
   model: string;
+  modelProvider?: string;
   summary?: string;
   reviewNotes?: string;
 }
@@ -221,6 +222,11 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
     if (progress < 50) return 'bg-orange-500';
     if (progress < 75) return 'bg-yellow-500';
     return 'bg-green-500';
+  };
+
+  const getModelIcon = (modelProvider?: string) => {
+    if (modelProvider === 'openrouter') return '🔀';
+    return '🤖';
   };
 
   if (!isOpen) return null;
@@ -525,7 +531,15 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                       }`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-gray-900">{section.title}</h4>
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-medium text-gray-900">{section.title}</h4>
+                          {section.modelProvider && (
+                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600 flex items-center space-x-1">
+                              <span>{getModelIcon(section.modelProvider)}</span>
+                              <span>{section.modelProvider === 'openrouter' ? 'OpenRouter' : section.model}</span>
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center space-x-2">
                           {section.status === 'completed' && (
                             <CheckCircle size={16} className="text-green-600" />
@@ -623,7 +637,15 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                     {currentProject.sections.map((section) => (
                       <div key={section.id} className="bg-white border border-gray-200 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-medium text-gray-900 text-sm">{section.title}</h5>
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <h5 className="font-medium text-gray-900 text-sm truncate">{section.title}</h5>
+                            {section.modelProvider && (
+                              <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full text-gray-600 flex items-center space-x-0.5 flex-shrink-0">
+                                <span>{getModelIcon(section.modelProvider)}</span>
+                                <span className="truncate max-w-[60px]">{section.model.split('/').pop()}</span>
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center space-x-2">
                             <span className="text-xs text-gray-500">{section.wordCount} words</span>
                             <button

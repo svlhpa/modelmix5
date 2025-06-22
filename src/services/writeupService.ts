@@ -1,5 +1,6 @@
 import { globalApiService } from './globalApiService';
 import { UserTier } from '../types';
+import { openRouterService } from './openRouterService';
 
 interface WriteupProject {
   id: string;
@@ -25,6 +26,7 @@ interface WriteupSection {
   status: 'pending' | 'writing' | 'completed' | 'reviewing' | 'error';
   wordCount: number;
   model: string;
+  modelProvider?: string; // Added to track if it's openrouter or traditional
   summary?: string;
   reviewNotes?: string;
 }
@@ -49,15 +51,64 @@ interface CreateProjectParams {
 class WriteupService {
   private projects: Map<string, WriteupProject> = new Map();
   private activeWritingProcesses: Map<string, boolean> = new Map();
+  private openRouterModels: string[] = [];
 
   // Model assignments based on quality, speed, and cost
   private modelAssignments = {
     planner: 'openai', // Best for structured planning
-    writer: ['openai', 'gemini', 'deepseek'], // Rotate for variety
+    writer: ['openai', 'gemini', 'deepseek'], // Traditional models
+    openRouterWriter: [], // Will be populated with OpenRouter models
     reviewer: 'gemini', // Good for critical analysis
     stylist: 'openai', // Best for style consistency
     formatter: 'deepseek' // Efficient for formatting tasks
   };
+
+  constructor() {
+    // Initialize OpenRouter models
+    this.initializeOpenRouterModels();
+  }
+
+  private async initializeOpenRouterModels() {
+    try {
+      const models = await openRouterService.getAvailableModels();
+      
+      // Filter for models good at long-form content
+      this.openRouterModels = models
+        .filter(model => 
+          // Filter for models with large context windows
+          model.context_length >= 16000 &&
+          // Exclude models not suitable for long-form writing
+          !model.id.includes('embedding') &&
+          !model.id.includes('whisper') &&
+          !model.id.includes('tts') &&
+          !model.id.includes('dall-e') &&
+          !model.id.includes('stable-diffusion')
+        )
+        .map(model => model.id);
+      
+      console.log(`Loaded ${this.openRouterModels.length} OpenRouter models for writing`);
+      
+      // Add top 10 models to writer rotation
+      this.modelAssignments.openRouterWriter = this.openRouterModels.slice(0, 10);
+      
+      console.log('OpenRouter models for writing:', this.modelAssignments.openRouterWriter);
+    } catch (error) {
+      console.error('Failed to load OpenRouter models:', error);
+      // Fallback to some known good models
+      this.modelAssignments.openRouterWriter = [
+        'anthropic/claude-3-haiku',
+        'anthropic/claude-3-5-sonnet',
+        'meta-llama/llama-3-70b-instruct',
+        'google/gemini-1.5-pro',
+        'mistralai/mistral-large',
+        'deepseek/deepseek-coder',
+        'anthropic/claude-3-opus',
+        'meta-llama/llama-3.1-8b-instruct',
+        'google/gemma-2-27b-it',
+        'mistralai/mixtral-8x7b-instruct'
+      ];
+    }
+  }
 
   async createProject(params: CreateProjectParams): Promise<WriteupProject> {
     const projectId = `writeup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -92,7 +143,7 @@ class WriteupService {
       console.log('🧠 Starting outline generation...');
       const outline = await this.generateOutline(params.prompt, params.settings, params.userTier);
       project.outline = outline;
-      project.sections = this.createSectionsFromOutline(outline, params.prompt);
+      project.sections = this.createSectionsFromOutline(outline, params.prompt, params.settings);
       project.totalSections = project.sections.length;
       project.status = 'writing';
       project.progress = 10; // Planning complete
@@ -285,7 +336,14 @@ class WriteupService {
     const apiKey = await globalApiService.getGlobalApiKey(this.modelAssignments.planner, userTier);
     console.log(`🔑 API key for ${this.modelAssignments.planner}:`, apiKey ? 'Available' : 'Not available');
     
+    // If no traditional API key, try OpenRouter
+    let openRouterKey = null;
     if (!apiKey) {
+      openRouterKey = await globalApiService.getGlobalApiKey('openrouter', userTier);
+      console.log('🔑 OpenRouter API key:', openRouterKey ? 'Available' : 'Not available');
+    }
+    
+    if (!apiKey && !openRouterKey) {
       console.log('⚠️ No API key available, using fallback outline generation');
       // Fallback: create a meaningful outline without AI
       return this.createFallbackOutline(prompt, settings);
@@ -296,13 +354,26 @@ class WriteupService {
 
 Please provide a structured outline with clear sections that would be appropriate for a ${settings.format} in ${settings.style} style.
 
-Respond with a simple list of section titles, one per line. Make sure each section is substantial and meaningful.`;
+Respond with a simple list of section titles, one per line. Make sure each section is substantial and meaningful.
+
+IMPORTANT: For ${settings.targetLength} length documents (${this.getTargetWordCount(settings)} words), we need approximately ${this.getExpectedSectionCount(settings)} sections.`;
 
     try {
-      console.log(`🧠 Calling ${this.modelAssignments.planner} for outline generation...`);
-      const response = await this.callModel(this.modelAssignments.planner, systemPrompt, userPrompt, apiKey);
-      console.log('📋 Outline response received:', response.substring(0, 200) + '...');
-      return this.parseOutlineResponse(response);
+      if (apiKey) {
+        console.log(`🧠 Calling ${this.modelAssignments.planner} for outline generation...`);
+        const response = await this.callModel(this.modelAssignments.planner, systemPrompt, userPrompt, apiKey);
+        console.log('📋 Outline response received:', response.substring(0, 200) + '...');
+        return this.parseOutlineResponse(response, settings);
+      } else if (openRouterKey) {
+        console.log('🧠 Calling OpenRouter for outline generation...');
+        // Use a good OpenRouter model for planning
+        const plannerModel = 'anthropic/claude-3-5-sonnet';
+        const response = await this.callOpenRouterModel(plannerModel, systemPrompt, userPrompt, openRouterKey);
+        console.log('📋 Outline response received from OpenRouter:', response.substring(0, 200) + '...');
+        return this.parseOutlineResponse(response, settings);
+      }
+      
+      throw new Error('No API key available for outline generation');
     } catch (error) {
       console.error('❌ Outline generation failed:', error);
       console.log('🔄 Falling back to default outline...');
@@ -313,7 +384,20 @@ Respond with a simple list of section titles, one per line. Make sure each secti
   private createFallbackOutline(prompt: string, settings: WriteupSettings): any {
     console.log('🔄 Creating fallback outline for format:', settings.format);
     
-    const sections = this.getDefaultSections(settings.format).map(title => ({
+    // Get appropriate number of sections based on target length
+    const sectionCount = this.getExpectedSectionCount(settings);
+    console.log(`📊 Target section count: ${sectionCount}`);
+    
+    // Get default sections for the format
+    let defaultSections = this.getDefaultSections(settings.format);
+    
+    // If we need more sections than the default provides, expand with sub-sections
+    if (defaultSections.length < sectionCount) {
+      defaultSections = this.expandSectionsToTargetCount(defaultSections, sectionCount);
+    }
+    
+    // Take only the number of sections we need
+    const sections = defaultSections.slice(0, sectionCount).map(title => ({
       title,
       summary: `Content for ${title} section related to: ${prompt}`
     }));
@@ -322,7 +406,50 @@ Respond with a simple list of section titles, one per line. Make sure each secti
     return { sections };
   }
 
-  private createSectionsFromOutline(outline: any, originalPrompt: string): WriteupSection[] {
+  private expandSectionsToTargetCount(baseSections: string[], targetCount: number): string[] {
+    const expanded: string[] = [...baseSections];
+    
+    // Keep adding subsections until we reach the target count
+    while (expanded.length < targetCount) {
+      // Find sections that can be expanded with subsections
+      for (let i = 0; i < baseSections.length && expanded.length < targetCount; i++) {
+        const section = baseSections[i];
+        
+        // Add subsections based on the section type
+        if (section.includes('Introduction')) {
+          expanded.push('Background and Context');
+          expanded.push('Scope and Objectives');
+          expanded.push('Methodology Overview');
+        } else if (section.includes('Analysis') || section.includes('Main Content')) {
+          expanded.push(`Detailed Analysis: Part ${expanded.length}`);
+          expanded.push(`Case Studies and Examples: Set ${expanded.length}`);
+          expanded.push(`Critical Perspectives: Group ${expanded.length}`);
+        } else if (section.includes('Conclusion')) {
+          expanded.push('Summary of Key Findings');
+          expanded.push('Implications and Significance');
+          expanded.push('Future Directions');
+        } else {
+          // Generic subsection
+          expanded.push(`${section} - Detailed Examination ${expanded.length}`);
+          expanded.push(`${section} - Practical Applications ${expanded.length}`);
+        }
+        
+        // Break if we've reached the target
+        if (expanded.length >= targetCount) break;
+      }
+      
+      // If we still haven't reached the target, add generic sections
+      if (expanded.length < targetCount) {
+        expanded.push(`Additional Analysis ${expanded.length}`);
+        expanded.push(`Supplementary Material ${expanded.length}`);
+        expanded.push(`Extended Discussion ${expanded.length}`);
+      }
+    }
+    
+    return expanded.slice(0, targetCount);
+  }
+
+  private createSectionsFromOutline(outline: any, originalPrompt: string, settings: WriteupSettings): WriteupSection[] {
     const sections: WriteupSection[] = [];
     
     console.log('🏗️ Creating sections from outline:', outline);
@@ -330,52 +457,147 @@ Respond with a simple list of section titles, one per line. Make sure each secti
     // Create sections based on outline structure
     if (outline.sections && Array.isArray(outline.sections)) {
       outline.sections.forEach((section: any, index: number) => {
+        // Determine if we should use OpenRouter for this section
+        const { model, provider } = this.selectWriterModel(index, settings);
+        
         sections.push({
           id: `section-${index + 1}`,
           title: section.title || `Section ${index + 1}`,
           content: '',
           status: 'pending',
           wordCount: 0,
-          model: this.selectWriterModel(index),
+          model,
+          modelProvider: provider,
           summary: section.summary || `Content for ${section.title} related to: ${originalPrompt}`
         });
       });
     } else {
-      // Fallback: create meaningful sections based on format
-      const defaultSections = this.getDefaultSections('research-paper');
-      defaultSections.forEach((title, index) => {
+      // Fallback: create meaningful sections based on format and target length
+      const sectionCount = this.getExpectedSectionCount(settings);
+      const defaultSections = this.getDefaultSections(settings.format);
+      const expanded = this.expandSectionsToTargetCount(defaultSections, sectionCount);
+      
+      expanded.forEach((title, index) => {
+        // Determine if we should use OpenRouter for this section
+        const { model, provider } = this.selectWriterModel(index, settings);
+        
         sections.push({
           id: `section-${index + 1}`,
           title,
           content: '',
           status: 'pending',
           wordCount: 0,
-          model: this.selectWriterModel(index),
+          model,
+          modelProvider: provider,
           summary: `Content for ${title} related to: ${originalPrompt}`
         });
       });
     }
 
-    console.log('✅ Created sections:', sections.map(s => `${s.title} (${s.model})`));
+    console.log('✅ Created sections:', sections.map(s => `${s.title} (${s.modelProvider}/${s.model})`));
     return sections;
   }
 
   private getDefaultSections(format: string): string[] {
     switch (format) {
       case 'research-paper':
-        return ['Introduction', 'Theoretical Frameworks and Philosophical Underpinnings', 'Psychological Benefits of Kindness', 'Social and Cultural Dimensions of Kindness', 'Practical Applications and Real-World Examples', 'Challenges and Barriers to Kindness', 'Future Directions and Implications', 'Conclusion'];
+        return [
+          'Introduction', 
+          'Literature Review',
+          'Theoretical Framework',
+          'Methodology',
+          'Results',
+          'Analysis and Discussion',
+          'Implications',
+          'Limitations',
+          'Future Research Directions',
+          'Conclusion'
+        ];
       case 'report':
-        return ['Executive Summary', 'Introduction', 'Background Analysis', 'Key Findings', 'Detailed Analysis', 'Recommendations', 'Implementation Strategy', 'Conclusion'];
+        return [
+          'Executive Summary', 
+          'Introduction', 
+          'Background Analysis', 
+          'Methodology',
+          'Key Findings', 
+          'Detailed Analysis', 
+          'Recommendations', 
+          'Implementation Strategy', 
+          'Risk Assessment',
+          'Conclusion'
+        ];
       case 'novel':
-        return ['Chapter 1: The Beginning', 'Chapter 2: Rising Action', 'Chapter 3: Conflict Emerges', 'Chapter 4: Climax', 'Chapter 5: Resolution'];
+        return [
+          'Prologue',
+          'Chapter 1: Introduction of Characters',
+          'Chapter 2: Setting the Scene',
+          'Chapter 3: Initial Conflict',
+          'Chapter 4: Character Development',
+          'Chapter 5: Rising Action',
+          'Chapter 6: Plot Twist',
+          'Chapter 7: Climax',
+          'Chapter 8: Falling Action',
+          'Chapter 9: Resolution',
+          'Epilogue'
+        ];
       case 'article':
-        return ['Introduction', 'Background Context', 'Main Analysis', 'Supporting Evidence', 'Implications', 'Conclusion'];
+        return [
+          'Introduction', 
+          'Background Context', 
+          'Main Analysis', 
+          'Supporting Evidence', 
+          'Counter Arguments',
+          'Case Studies',
+          'Implications', 
+          'Conclusion'
+        ];
       case 'manual':
-        return ['Overview', 'Getting Started', 'Basic Operations', 'Advanced Features', 'Best Practices', 'Troubleshooting', 'Appendix'];
+        return [
+          'Overview', 
+          'Getting Started', 
+          'Basic Operations', 
+          'Advanced Features', 
+          'Troubleshooting',
+          'Best Practices', 
+          'Frequently Asked Questions',
+          'Glossary',
+          'Appendix'
+        ];
       case 'proposal':
-        return ['Executive Summary', 'Problem Statement', 'Proposed Solution', 'Implementation Plan', 'Budget and Resources', 'Timeline', 'Expected Outcomes', 'Conclusion'];
+        return [
+          'Executive Summary', 
+          'Problem Statement', 
+          'Proposed Solution', 
+          'Implementation Plan', 
+          'Budget and Resources', 
+          'Timeline', 
+          'Risk Assessment',
+          'Expected Outcomes', 
+          'Evaluation Metrics',
+          'Conclusion'
+        ];
       default:
         return ['Introduction', 'Main Content', 'Analysis', 'Conclusion'];
+    }
+  }
+
+  private getExpectedSectionCount(settings: WriteupSettings): number {
+    // Calculate appropriate number of sections based on target length
+    switch (settings.targetLength) {
+      case 'short': // 100-200 pages
+        return 15; // ~15 sections for 25k-50k words
+      case 'medium': // 200-400 pages
+        return 25; // ~25 sections for 50k-100k words
+      case 'long': // 400-600 pages
+        return 40; // ~40 sections for 100k-150k words
+      case 'custom':
+        if (settings.customWordCount) {
+          // Roughly 1 section per 2,000 words
+          return Math.max(10, Math.ceil(settings.customWordCount / 2000));
+        }
+        return 20; // Default if custom but no word count specified
+      default:
+        return 20; // Default for medium length
     }
   }
 
@@ -395,6 +617,7 @@ Respond with a simple list of section titles, one per line. Make sure each secti
       project.currentSection = i;
       
       console.log(`✍️ Writing section ${i + 1}/${project.sections.length}: ${section.title}`);
+      console.log(`🤖 Using model: ${section.modelProvider}/${section.model}`);
       
       if (onProgress) onProgress(project);
 
@@ -434,8 +657,17 @@ Respond with a simple list of section titles, one per line. Make sure each secti
   }
 
   private async writeSection(project: WriteupProject, section: WriteupSection, context?: string): Promise<void> {
-    console.log(`🤖 Writing section: ${section.title} using model: ${section.model}`);
+    console.log(`🤖 Writing section: ${section.title} using ${section.modelProvider}/${section.model}`);
     
+    // Determine if we're using OpenRouter or traditional API
+    if (section.modelProvider === 'openrouter') {
+      await this.writeOpenRouterSection(project, section, context);
+    } else {
+      await this.writeTraditionalSection(project, section, context);
+    }
+  }
+
+  private async writeTraditionalSection(project: WriteupProject, section: WriteupSection, context?: string): Promise<void> {
     // Try to get API key for the assigned model
     const apiKey = await globalApiService.getGlobalApiKey(section.model, 'tier1');
     console.log(`🔑 API key for ${section.model}:`, apiKey ? 'Available' : 'Not available');
@@ -450,9 +682,18 @@ Respond with a simple list of section titles, one per line. Make sure each secti
           if (altKey) {
             console.log(`✅ Found alternative API key for ${altModel}`);
             section.model = altModel;
-            return this.writeSection(project, section, context);
+            return this.writeTraditionalSection(project, section, context);
           }
         }
+      }
+      
+      // Try OpenRouter as a last resort
+      const openRouterKey = await globalApiService.getGlobalApiKey('openrouter', 'tier1');
+      if (openRouterKey && this.modelAssignments.openRouterWriter.length > 0) {
+        console.log('✅ Falling back to OpenRouter model');
+        section.model = this.modelAssignments.openRouterWriter[0];
+        section.modelProvider = 'openrouter';
+        return this.writeOpenRouterSection(project, section, context);
       }
       
       // No API keys available, use fallback content
@@ -466,9 +707,11 @@ Respond with a simple list of section titles, one per line. Make sure each secti
     const systemPrompt = this.buildWriterPrompt(project.settings, section.title, context);
     const userPrompt = `Write a comprehensive "${section.title}" section for the following topic: ${project.prompt}
 
-This section should be substantial and detailed, aiming for 800-1200 words. Make sure it provides valuable, in-depth content that flows well with the overall document.
+This section should be substantial and detailed, aiming for 1500-2500 words. Make sure it provides valuable, in-depth content that flows well with the overall document.
 
-Focus on creating engaging, informative content that matches the ${project.settings.style} style and ${project.settings.tone} tone.`;
+Focus on creating engaging, informative content that matches the ${project.settings.style} style and ${project.settings.tone} tone.
+
+IMPORTANT: This is for a ${this.getTargetWordCount(project.settings)} word document, so each section needs to be substantial.`;
 
     try {
       console.log(`🤖 Calling ${section.model} API for section: ${section.title}`);
@@ -491,6 +734,102 @@ Focus on creating engaging, informative content that matches the ${project.setti
       console.error(`❌ Failed to write section ${section.title}:`, error);
       
       // Use fallback content instead of failing
+      section.content = this.generateFallbackContent(section.title, project.prompt, project.settings);
+      section.wordCount = this.countWords(section.content);
+      section.status = 'completed';
+      
+      console.log(`🔄 Used fallback content: ${section.wordCount} words`);
+    }
+  }
+
+  private async writeOpenRouterSection(project: WriteupProject, section: WriteupSection, context?: string): Promise<void> {
+    // Get OpenRouter API key
+    const apiKey = await globalApiService.getGlobalApiKey('openrouter', 'tier1');
+    console.log(`🔑 OpenRouter API key:`, apiKey ? 'Available' : 'Not available');
+    
+    if (!apiKey) {
+      console.log('❌ No OpenRouter API key available, trying traditional models...');
+      
+      // Try traditional models as fallback
+      for (const altModel of this.modelAssignments.writer) {
+        const altKey = await globalApiService.getGlobalApiKey(altModel, 'tier1');
+        if (altKey) {
+          console.log(`✅ Found alternative API key for ${altModel}`);
+          section.model = altModel;
+          section.modelProvider = 'traditional';
+          return this.writeTraditionalSection(project, section, context);
+        }
+      }
+      
+      // No API keys available, use fallback content
+      console.log('❌ No API keys available, generating fallback content');
+      section.content = this.generateFallbackContent(section.title, project.prompt, project.settings);
+      section.wordCount = this.countWords(section.content);
+      section.status = 'completed';
+      return;
+    }
+
+    const systemPrompt = this.buildWriterPrompt(project.settings, section.title, context);
+    const userPrompt = `Write a comprehensive "${section.title}" section for the following topic: ${project.prompt}
+
+This section should be substantial and detailed, aiming for 1500-2500 words. Make sure it provides valuable, in-depth content that flows well with the overall document.
+
+Focus on creating engaging, informative content that matches the ${project.settings.style} style and ${project.settings.tone} tone.
+
+IMPORTANT: This is for a ${this.getTargetWordCount(project.settings)} word document, so each section needs to be substantial.`;
+
+    try {
+      console.log(`🤖 Calling OpenRouter model ${section.model} for section: ${section.title}`);
+      
+      const content = await this.callOpenRouterModel(section.model, systemPrompt, userPrompt, apiKey);
+      
+      if (!content || content.trim().length === 0) {
+        throw new Error('Empty response from OpenRouter model');
+      }
+      
+      section.content = content.trim();
+      section.wordCount = this.countWords(section.content);
+      section.status = 'completed';
+      
+      console.log(`✅ Section content generated: ${section.wordCount} words`);
+      console.log(`📝 Content preview: ${section.content.substring(0, 150)}...`);
+      
+      // Increment global usage
+      await globalApiService.incrementGlobalUsage('openrouter');
+    } catch (error) {
+      console.error(`❌ Failed to write section ${section.title} with OpenRouter:`, error);
+      
+      // Try a different OpenRouter model
+      if (this.modelAssignments.openRouterWriter.length > 1) {
+        const currentIndex = this.modelAssignments.openRouterWriter.indexOf(section.model);
+        const nextIndex = (currentIndex + 1) % this.modelAssignments.openRouterWriter.length;
+        const nextModel = this.modelAssignments.openRouterWriter[nextIndex];
+        
+        console.log(`🔄 Trying alternative OpenRouter model: ${nextModel}`);
+        section.model = nextModel;
+        
+        try {
+          const content = await this.callOpenRouterModel(section.model, systemPrompt, userPrompt, apiKey);
+          
+          if (!content || content.trim().length === 0) {
+            throw new Error('Empty response from alternative OpenRouter model');
+          }
+          
+          section.content = content.trim();
+          section.wordCount = this.countWords(section.content);
+          section.status = 'completed';
+          
+          console.log(`✅ Section content generated with alternative model: ${section.wordCount} words`);
+          
+          // Increment global usage
+          await globalApiService.incrementGlobalUsage('openrouter');
+          return;
+        } catch (altError) {
+          console.error(`❌ Alternative OpenRouter model also failed:`, altError);
+        }
+      }
+      
+      // Use fallback content as last resort
       section.content = this.generateFallbackContent(section.title, project.prompt, project.settings);
       section.wordCount = this.countWords(section.content);
       section.status = 'completed';
@@ -596,14 +935,35 @@ The ongoing development in this area suggests that continued research and analys
   }
 
   private async reviewSection(section: WriteupSection): Promise<string> {
+    // Try to get API key for reviewer model
     const apiKey = await globalApiService.getGlobalApiKey(this.modelAssignments.reviewer, 'tier1');
-    if (!apiKey) return 'Review skipped - no API key available';
+    
+    // If no traditional API key, try OpenRouter
+    let openRouterKey = null;
+    if (!apiKey) {
+      openRouterKey = await globalApiService.getGlobalApiKey('openrouter', 'tier1');
+    }
+    
+    if (!apiKey && !openRouterKey) {
+      return 'Review skipped - no API key available';
+    }
 
     const systemPrompt = `You are a critical reviewer. Analyze the following text for clarity, coherence, and quality. Provide brief feedback in 2-3 sentences.`;
     
     try {
-      const review = await this.callModel(this.modelAssignments.reviewer, systemPrompt, section.content, apiKey);
-      await globalApiService.incrementGlobalUsage(this.modelAssignments.reviewer);
+      let review;
+      if (apiKey) {
+        review = await this.callModel(this.modelAssignments.reviewer, systemPrompt, section.content, apiKey);
+        await globalApiService.incrementGlobalUsage(this.modelAssignments.reviewer);
+      } else if (openRouterKey) {
+        // Use a good OpenRouter model for reviewing
+        const reviewerModel = 'anthropic/claude-3-haiku';
+        review = await this.callOpenRouterModel(reviewerModel, systemPrompt, section.content, openRouterKey);
+        await globalApiService.incrementGlobalUsage('openrouter');
+      } else {
+        return 'Review skipped - no API key available';
+      }
+      
       return review;
     } catch (error) {
       return 'Review failed';
@@ -619,9 +979,68 @@ The ongoing development in this area suggests that continued research and analys
     return words.slice(0, 100).join(' ') + '...';
   }
 
-  private selectWriterModel(index: number): string {
-    // Rotate between available writer models
-    return this.modelAssignments.writer[index % this.modelAssignments.writer.length];
+  private selectWriterModel(index: number, settings: WriteupSettings): { model: string, provider: string } {
+    // Determine if we should use OpenRouter or traditional models
+    const useOpenRouter = this.shouldUseOpenRouter(index, settings);
+    
+    if (useOpenRouter && this.modelAssignments.openRouterWriter.length > 0) {
+      // Select an OpenRouter model based on the section index
+      const openRouterIndex = index % this.modelAssignments.openRouterWriter.length;
+      return {
+        model: this.modelAssignments.openRouterWriter[openRouterIndex],
+        provider: 'openrouter'
+      };
+    } else {
+      // Use traditional models
+      const traditionalIndex = index % this.modelAssignments.writer.length;
+      return {
+        model: this.modelAssignments.writer[traditionalIndex],
+        provider: 'traditional'
+      };
+    }
+  }
+
+  private shouldUseOpenRouter(index: number, settings: WriteupSettings): boolean {
+    // For longer documents, use more OpenRouter models to handle the workload
+    // This helps distribute the work and ensures we can generate enough content
+    
+    // If EU models only is selected, check if we have EU-compliant OpenRouter models
+    if (settings.euModelsOnly) {
+      // For simplicity, we'll assume only certain models are EU-compliant
+      // In a real implementation, you'd check the actual hosting location
+      const euCompliantModels = this.modelAssignments.openRouterWriter.filter(model => 
+        model.includes('mistral') || model.includes('llama') || model.includes('mixtral')
+      );
+      
+      if (euCompliantModels.length === 0) {
+        return false; // No EU-compliant OpenRouter models available
+      }
+    }
+    
+    switch (settings.targetLength) {
+      case 'short': // 100-200 pages
+        // Use OpenRouter for 40% of sections
+        return index % 5 >= 3;
+      case 'medium': // 200-400 pages
+        // Use OpenRouter for 60% of sections
+        return index % 5 >= 2;
+      case 'long': // 400-600 pages
+        // Use OpenRouter for 80% of sections
+        return index % 5 >= 1;
+      case 'custom':
+        if (settings.customWordCount && settings.customWordCount > 50000) {
+          // For very large custom documents, use OpenRouter for 80% of sections
+          return index % 5 >= 1;
+        } else if (settings.customWordCount && settings.customWordCount > 25000) {
+          // For medium custom documents, use OpenRouter for 60% of sections
+          return index % 5 >= 2;
+        }
+        // For smaller custom documents, use OpenRouter for 40% of sections
+        return index % 5 >= 3;
+      default:
+        // Default to 50% OpenRouter usage
+        return index % 2 === 0;
+    }
   }
 
   private buildPlannerPrompt(settings: WriteupSettings): string {
@@ -633,6 +1052,8 @@ Style: ${settings.style}
 Tone: ${settings.tone}
 
 Create a structured outline with clear sections that would be appropriate for this type of document. Focus on creating a logical flow and comprehensive coverage of the topic.
+
+IMPORTANT: For a document of this length (${this.getTargetWordCount(settings)} words), we need approximately ${this.getExpectedSectionCount(settings)} distinct sections.
 
 Respond with a simple list of section titles, one per line. Do not use JSON format. Make each section substantial and meaningful.`;
   }
@@ -646,7 +1067,9 @@ Style guidelines:
 - Tone: ${settings.tone}
 - Include references: ${settings.includeReferences ? 'Yes' : 'No'}
 
-Write a comprehensive, well-structured section that flows naturally and maintains consistency. Aim for substantial content (800-1200 words minimum). Use proper headings, paragraphs, and formatting to make the content readable and engaging.`;
+Write a comprehensive, well-structured section that flows naturally and maintains consistency. Aim for substantial content (1500-2500 words). Use proper headings, paragraphs, and formatting to make the content readable and engaging.
+
+IMPORTANT: This is for a ${this.getTargetWordCount(settings)} word document, so each section needs to be substantial and in-depth.`;
 
     if (context) {
       prompt += `\n\nContext from previous sections:\n${context}`;
@@ -655,7 +1078,7 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     return prompt;
   }
 
-  private parseOutlineResponse(response: string): any {
+  private parseOutlineResponse(response: string, settings: WriteupSettings): any {
     try {
       // Try to parse as JSON first
       const parsed = JSON.parse(response);
@@ -677,16 +1100,26 @@ Write a comprehensive, well-structured section that flows naturally and maintain
       summary: `Content for ${line}`
     }));
     
-    // Ensure we have at least some sections
-    if (sections.length === 0) {
-      return {
-        sections: [
-          { title: 'Introduction', summary: 'Opening section' },
-          { title: 'Main Content', summary: 'Core content' },
-          { title: 'Analysis', summary: 'Analysis and discussion' },
-          { title: 'Conclusion', summary: 'Concluding remarks' }
-        ]
-      };
+    // Ensure we have enough sections for the target length
+    const targetSectionCount = this.getExpectedSectionCount(settings);
+    
+    if (sections.length < targetSectionCount) {
+      console.log(`⚠️ Not enough sections generated (${sections.length}/${targetSectionCount}). Adding more...`);
+      
+      // Get default sections for the format
+      const defaultSections = this.getDefaultSections(settings.format);
+      
+      // Expand to get more sections
+      const expanded = this.expandSectionsToTargetCount(defaultSections, targetSectionCount);
+      
+      // Add sections until we reach the target count
+      while (sections.length < targetSectionCount) {
+        const additionalSection = expanded[sections.length % expanded.length];
+        sections.push({
+          title: `${additionalSection} ${sections.length + 1}`,
+          summary: `Additional content for ${additionalSection}`
+        });
+      }
     }
     
     return { sections };
@@ -714,6 +1147,22 @@ Write a comprehensive, well-structured section that flows naturally and maintain
     }
   }
 
+  private async callOpenRouterModel(model: string, systemPrompt: string, userPrompt: string, apiKey: string): Promise<string> {
+    console.log(`🔗 Making OpenRouter API call to ${model}...`);
+    
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+    
+    try {
+      return await openRouterService.callModel(model, messages, apiKey);
+    } catch (error) {
+      console.error(`❌ OpenRouter API error for ${model}:`, error);
+      throw error;
+    }
+  }
+
   private async callOpenAI(messages: any[], apiKey: string): Promise<string> {
     console.log('🤖 Calling OpenAI API...');
     
@@ -726,7 +1175,7 @@ Write a comprehensive, well-structured section that flows naturally and maintain
       body: JSON.stringify({
         model: 'gpt-4o',
         messages,
-        max_tokens: 2000,
+        max_tokens: 4000, // Increased for longer content
         temperature: 0.7
       })
     });
@@ -772,7 +1221,7 @@ Write a comprehensive, well-structured section that flows naturally and maintain
         contents,
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2000
+          maxOutputTokens: 4000 // Increased for longer content
         }
       })
     });
@@ -807,7 +1256,7 @@ Write a comprehensive, well-structured section that flows naturally and maintain
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages,
-        max_tokens: 2000,
+        max_tokens: 4000, // Increased for longer content
         temperature: 0.7
       })
     });
