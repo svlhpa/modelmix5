@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { UsageIndicator } from './UsageIndicator';
@@ -43,6 +43,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleMobile
 }) => {
   const { user, userProfile, signOut, isSuperAdmin, getCurrentTier, getUsageInfo } = useAuth();
+  const [featuresExpanded, setFeaturesExpanded] = useState(false);
+  const [userMenuExpanded, setUserMenuExpanded] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -102,67 +104,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="font-medium">New Chat</span>
                   </button>
                   
-                  <button
-                    onClick={() => {
-                      onOpenDebateClub();
-                      onToggleMobile();
-                    }}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                    style={{ animationDelay: '0.15s' }}
-                  >
-                    <Mic size={18} />
-                    <span className="font-medium">AI Debate Club</span>
-                  </button>
-
-                  {/* AI Video Call Button - Conditional for Pro Users */}
-                  {isProUser ? (
+                  {/* Features Submenu - Mobile */}
+                  <div className="animate-fadeInUp" style={{ animationDelay: '0.15s' }}>
                     <button
-                      onClick={() => {
-                        onOpenVideoCall();
-                        onToggleMobile();
-                      }}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                      style={{ animationDelay: '0.2s' }}
+                      onClick={() => setFeaturesExpanded(!featuresExpanded)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-105 transform"
                     >
-                      <Video size={18} />
-                      <span className="font-medium">AI Video Call</span>
+                      <div className="flex items-center space-x-3">
+                        <Sparkles size={18} />
+                        <span className="font-medium">Features</span>
+                      </div>
+                      {featuresExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
-                  ) : (
-                    <div className="relative animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
-                      <button
-                        disabled
-                        className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed"
-                      >
-                        <Video size={18} />
-                        <span className="font-medium">AI Video Call</span>
-                        <Crown size={14} className="text-yellow-400 ml-auto" />
-                      </button>
-                      <div className="absolute inset-0 flex items-center justify-center">
+                    
+                    {featuresExpanded && (
+                      <div className="mt-2 ml-4 space-y-1 animate-slideDown">
                         <button
                           onClick={() => {
-                            onOpenTierUpgrade();
+                            onOpenDebateClub();
                             onToggleMobile();
                           }}
-                          className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                         >
-                          Pro Only
+                          <Mic size={16} />
+                          <span>AI Debate Club</span>
+                        </button>
+
+                        {isProUser ? (
+                          <button
+                            onClick={() => {
+                              onOpenVideoCall();
+                              onToggleMobile();
+                            }}
+                            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                          >
+                            <Video size={16} />
+                            <span>AI Video Call</span>
+                          </button>
+                        ) : (
+                          <div className="relative">
+                            <button
+                              disabled
+                              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
+                            >
+                              <Video size={16} />
+                              <span>AI Video Call</span>
+                              <Crown size={12} className="text-yellow-400 ml-auto" />
+                            </button>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <button
+                                onClick={() => {
+                                  onOpenTierUpgrade();
+                                  onToggleMobile();
+                                }}
+                                className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                              >
+                                Pro Only
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            onOpenWriteupAgent();
+                            onToggleMobile();
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                        >
+                          <FileText size={16} />
+                          <span>Write-up Agent</span>
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Write-up Agent Button */}
-                  <button
-                    onClick={() => {
-                      onOpenWriteupAgent();
-                      onToggleMobile();
-                    }}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                    style={{ animationDelay: '0.25s' }}
-                  >
-                    <FileText size={18} />
-                    <span className="font-medium">Write-up Agent</span>
-                  </button>
+                    )}
+                  </div>
 
                   {/* Mobile Upgrade to Pro Button for Free Users */}
                   {!isProUser && (
@@ -172,7 +187,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onToggleMobile();
                       }}
                       className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                      style={{ animationDelay: '0.3s' }}
+                      style={{ animationDelay: '0.2s' }}
                     >
                       <Crown size={18} />
                       <span className="font-medium">Upgrade to Pro</span>
@@ -185,7 +200,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {user ? (
               <>
                 {/* Usage Indicator */}
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
                   <UsageIndicator
                     usage={usage}
                     limit={limit}
@@ -197,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
 
-                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+                <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
                   <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
@@ -218,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             ? 'bg-gray-700'
                             : 'hover:bg-gray-800'
                         }`}
-                        style={{ animationDelay: `${0.45 + index * 0.05}s` }}
+                        style={{ animationDelay: `${0.35 + index * 0.05}s` }}
                         onClick={() => {
                           onSelectSession(session.id);
                           onToggleMobile();
@@ -254,7 +269,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ))}
                     
                     {sessions.length === 0 && (
-                      <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
+                      <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
                         <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                         <p className="text-sm">No conversations yet</p>
                         <p className="text-xs">Start a new chat to begin</p>
@@ -263,22 +278,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 border-t border-gray-700 space-y-2">
-                  {[
-                    { onClick: () => { onOpenAnalytics(); onToggleMobile(); }, icon: BarChart3, label: 'Analytics' },
-                    { onClick: () => { onOpenSettings(); onToggleMobile(); }, icon: Settings, label: 'Settings' }
-                  ].map((item, index) => (
-                    <button
-                      key={item.label}
-                      onClick={item.onClick}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                      style={{ animationDelay: `${0.5 + index * 0.1}s` }}
-                    >
-                      <item.icon size={18} />
-                      <span className="font-medium">{item.label}</span>
-                    </button>
-                  ))}
-                  
+                {/* User Menu - Mobile */}
+                <div className="p-4 border-t border-gray-700">
                   {/* SuperAdmin Dashboard Button */}
                   {isSuperAdmin() && onOpenAdmin && (
                     <button
@@ -286,44 +287,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onOpenAdmin();
                         onToggleMobile();
                       }}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-105 transform animate-fadeInUp"
-                      style={{ animationDelay: '0.7s' }}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-105 transform animate-fadeInUp mb-2"
+                      style={{ animationDelay: '0.4s' }}
                     >
                       <Shield size={18} className="text-red-400" />
                       <span className="font-medium text-red-400">Admin Dashboard</span>
                     </button>
                   )}
                   
-                  <div className="pt-2 border-t border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.8s' }}>
-                    <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
-                      <div className="flex items-center space-x-2">
-                        {isSuperAdmin() ? (
-                          <Shield size={16} className="text-red-400" />
-                        ) : isProUser ? (
-                          <Crown size={16} className="text-yellow-400" />
-                        ) : (
-                          <User size={16} />
-                        )}
-                        <span className="truncate">{user.email}</span>
-                      </div>
-                      {isSuperAdmin() && (
-                        <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse">
-                          ADMIN
-                        </span>
-                      )}
-                      {isProUser && !isSuperAdmin() && (
-                        <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse">
-                          PRO
-                        </span>
-                      )}
-                    </div>
+                  {/* User Menu Dropdown */}
+                  <div className="animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
                     <button
-                      onClick={handleSignOut}
-                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 hover:scale-105 transform"
+                      onClick={() => setUserMenuExpanded(!userMenuExpanded)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200"
                     >
-                      <LogOut size={18} />
-                      <span className="font-medium">Sign Out</span>
+                      <div className="flex items-center space-x-2 min-w-0">
+                        {isSuperAdmin() ? (
+                          <Shield size={16} className="text-red-400 flex-shrink-0" />
+                        ) : isProUser ? (
+                          <Crown size={16} className="text-yellow-400 flex-shrink-0" />
+                        ) : (
+                          <User size={16} className="flex-shrink-0" />
+                        )}
+                        <span className="text-sm truncate">{user.email}</span>
+                        {isSuperAdmin() && (
+                          <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse flex-shrink-0">
+                            ADMIN
+                          </span>
+                        )}
+                        {isProUser && !isSuperAdmin() && (
+                          <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse flex-shrink-0">
+                            PRO
+                          </span>
+                        )}
+                      </div>
+                      {userMenuExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
+                    
+                    {userMenuExpanded && (
+                      <div className="mt-2 ml-4 space-y-1 animate-slideDown">
+                        <button
+                          onClick={() => {
+                            onOpenAnalytics();
+                            onToggleMobile();
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                        >
+                          <BarChart3 size={16} />
+                          <span>Analytics</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            onOpenSettings();
+                            onToggleMobile();
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                        >
+                          <Settings size={16} />
+                          <span>Settings</span>
+                        </button>
+                        
+                        <button
+                          onClick={handleSignOut}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 text-sm"
+                        >
+                          <LogOut size={16} />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -358,74 +391,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Logo variant="icon" size="sm" className="animate-fadeInUp" />
         {user ? (
           <>
-            {[
-              { onClick: onNewChat, icon: Plus, title: 'New Chat', bgClass: 'bg-gray-800 hover:bg-gray-700' },
-              { onClick: onOpenDebateClub, icon: Mic, title: 'AI Debate Club', bgClass: 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' },
-              // AI Video Call - Conditional for Pro Users
-              ...(isProUser ? [{
-                onClick: onOpenVideoCall, 
-                icon: Video, 
-                title: 'AI Video Call', 
-                bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
-              }] : [{
-                onClick: onOpenTierUpgrade, 
-                icon: Video, 
-                title: 'AI Video Call (Pro Only)', 
-                bgClass: 'bg-gray-700 opacity-50 cursor-not-allowed relative'
-              }]),
-              { onClick: onOpenWriteupAgent, icon: FileText, title: 'Write-up Agent', bgClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' },
-              { onClick: onOpenAnalytics, icon: BarChart3, title: 'Analytics', bgClass: 'hover:bg-gray-800' },
-              { onClick: onOpenSettings, icon: Settings, title: 'Settings', bgClass: 'hover:bg-gray-800' }
-            ].map((item, index) => (
-              <button
-                key={item.title}
-                onClick={item.onClick}
-                disabled={!isProUser && item.title.includes('Pro Only')}
-                className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 transform animate-fadeInUp ${item.bgClass} ${
-                  !isProUser && item.title.includes('Pro Only') ? 'relative' : ''
-                }`}
-                style={{ animationDelay: `${0.1 + index * 0.1}s` }}
-                title={item.title}
-              >
-                <item.icon size={20} />
-                {!isProUser && item.title.includes('Pro Only') && (
-                  <Crown size={10} className="absolute -top-1 -right-1 text-yellow-400" />
-                )}
-              </button>
-            ))}
+            <button
+              onClick={onNewChat}
+              className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
+              style={{ animationDelay: '0.1s' }}
+              title="New Chat"
+            >
+              <Plus size={20} />
+            </button>
             
-            {/* SuperAdmin Dashboard Button */}
-            {isSuperAdmin() && onOpenAdmin && (
-              <button
-                onClick={onOpenAdmin}
-                className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.7s' }}
-                title="Admin Dashboard"
-              >
-                <Shield size={20} className="text-red-400" />
-              </button>
-            )}
+            {/* Features Icon - Collapsed */}
+            <button
+              onClick={() => setFeaturesExpanded(!featuresExpanded)}
+              className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
+              style={{ animationDelay: '0.15s' }}
+              title="Features"
+            >
+              <Sparkles size={20} />
+            </button>
 
             {/* Tier Upgrade Button */}
             {!isProUser && (
               <button
                 onClick={onOpenTierUpgrade}
                 className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-yellow-900/20 border border-yellow-700/30 hover:scale-110 transform animate-fadeInUp"
-                style={{ animationDelay: '0.8s' }}
+                style={{ animationDelay: '0.2s' }}
                 title="Upgrade to Pro"
               >
                 <Crown size={20} className="text-yellow-400" />
               </button>
             )}
             
+            {/* SuperAdmin Dashboard Button */}
+            {isSuperAdmin() && onOpenAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-110 transform animate-fadeInUp"
+                style={{ animationDelay: '0.25s' }}
+                title="Admin Dashboard"
+              >
+                <Shield size={20} className="text-red-400" />
+              </button>
+            )}
+            
             <div className="flex-1"></div>
+            
+            {/* User Icon - Collapsed */}
             <button
-              onClick={handleSignOut}
+              onClick={() => setUserMenuExpanded(!userMenuExpanded)}
               className="p-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-110 transform animate-fadeInUp"
-              style={{ animationDelay: '0.9s' }}
-              title="Sign Out"
+              style={{ animationDelay: '0.3s' }}
+              title={user.email}
             >
-              <LogOut size={20} />
+              {isSuperAdmin() ? (
+                <Shield size={20} className="text-red-400" />
+              ) : isProUser ? (
+                <Crown size={20} className="text-yellow-400" />
+              ) : (
+                <User size={20} />
+              )}
             </button>
           </>
         ) : (
@@ -458,62 +482,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="font-medium">New Chat</span>
             </button>
             
-            <button
-              onClick={onOpenDebateClub}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-              style={{ animationDelay: '0.15s' }}
-            >
-              <Mic size={18} />
-              <span className="font-medium">AI Debate Club</span>
-            </button>
-
-            {/* AI Video Call Button - Conditional for Pro Users */}
-            {isProUser ? (
+            {/* Features Submenu - Desktop */}
+            <div className="animate-fadeInUp" style={{ animationDelay: '0.15s' }}>
               <button
-                onClick={onOpenVideoCall}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: '0.2s' }}
+                onClick={() => setFeaturesExpanded(!featuresExpanded)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-105 transform"
               >
-                <Video size={18} />
-                <span className="font-medium">AI Video Call</span>
+                <div className="flex items-center space-x-3">
+                  <Sparkles size={18} />
+                  <span className="font-medium">Features</span>
+                </div>
+                {featuresExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
-            ) : (
-              <div className="relative animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
-                <button
-                  disabled
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed"
-                >
-                  <Video size={18} />
-                  <span className="font-medium">AI Video Call</span>
-                  <Crown size={14} className="text-yellow-400 ml-auto" />
-                </button>
-                <div className="absolute inset-0 flex items-center justify-center">
+              
+              {featuresExpanded && (
+                <div className="mt-2 ml-4 space-y-1 animate-slideDown">
                   <button
-                    onClick={onOpenTierUpgrade}
-                    className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                    onClick={onOpenDebateClub}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                   >
-                    Pro Only
+                    <Mic size={16} />
+                    <span>AI Debate Club</span>
+                  </button>
+
+                  {isProUser ? (
+                    <button
+                      onClick={onOpenVideoCall}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                    >
+                      <Video size={16} />
+                      <span>AI Video Call</span>
+                    </button>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        disabled
+                        className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
+                      >
+                        <Video size={16} />
+                        <span>AI Video Call</span>
+                        <Crown size={12} className="text-yellow-400 ml-auto" />
+                      </button>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <button
+                          onClick={onOpenTierUpgrade}
+                          className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                        >
+                          Pro Only
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={onOpenWriteupAgent}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                  >
+                    <FileText size={16} />
+                    <span>Write-up Agent</span>
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Write-up Agent Button */}
-            <button
-              onClick={onOpenWriteupAgent}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-              style={{ animationDelay: '0.25s' }}
-            >
-              <FileText size={18} />
-              <span className="font-medium">Write-up Agent</span>
-            </button>
+              )}
+            </div>
 
             {/* Desktop Upgrade to Pro Button for Free Users */}
             {!isProUser && (
               <button
                 onClick={onOpenTierUpgrade}
                 className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: '0.3s' }}
+                style={{ animationDelay: '0.2s' }}
               >
                 <Crown size={18} />
                 <span className="font-medium">Upgrade to Pro</span>
@@ -526,7 +563,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {user ? (
         <>
           {/* Usage Indicator */}
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.25s' }}>
             <UsageIndicator
               usage={usage}
               limit={limit}
@@ -535,7 +572,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
 
-          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+          <div className="p-4 border-b border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
@@ -556,7 +593,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? 'bg-gray-700'
                       : 'hover:bg-gray-800'
                   }`}
-                  style={{ animationDelay: `${0.45 + index * 0.05}s` }}
+                  style={{ animationDelay: `${0.35 + index * 0.05}s` }}
                   onClick={() => onSelectSession(session.id)}
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -589,7 +626,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ))}
               
               {sessions.length === 0 && (
-                <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
+                <div className="text-center py-8 text-gray-400 animate-fadeInUp" style={{ animationDelay: '0.35s' }}>
                   <MessageCircle size={32} className="mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No conversations yet</p>
                   <p className="text-xs">Start a new chat to begin</p>
@@ -598,65 +635,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          <div className="p-4 border-t border-gray-700 space-y-2">
-            {[
-              { onClick: onOpenAnalytics, icon: BarChart3, label: 'Analytics' },
-              { onClick: onOpenSettings, icon: Settings, label: 'Settings' }
-            ].map((item, index) => (
-              <button
-                key={item.label}
-                onClick={item.onClick}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: `${0.5 + index * 0.1}s` }}
-              >
-                <item.icon size={18} />
-                <span className="font-medium">{item.label}</span>
-              </button>
-            ))}
-            
-            {/* SuperAdmin Dashboard Button */}
-            {isSuperAdmin() && onOpenAdmin && (
+          {/* SuperAdmin Dashboard Button */}
+          {isSuperAdmin() && onOpenAdmin && (
+            <div className="p-4 border-t border-gray-700">
               <button
                 onClick={onOpenAdmin}
                 className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 bg-red-900/20 border border-red-700/30 hover:scale-105 transform animate-fadeInUp"
-                style={{ animationDelay: '0.7s' }}
+                style={{ animationDelay: '0.4s' }}
               >
                 <Shield size={18} className="text-red-400" />
                 <span className="font-medium text-red-400">Admin Dashboard</span>
               </button>
-            )}
-            
-            <div className="pt-2 border-t border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.9s' }}>
-              <div className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400">
-                <div className="flex items-center space-x-2">
-                  {isSuperAdmin() ? (
-                    <Shield size={16} className="text-red-400" />
-                  ) : isProUser ? (
-                    <Crown size={16} className="text-yellow-400" />
-                  ) : (
-                    <User size={16} />
-                  )}
-                  <span className="truncate">{user.email}</span>
-                </div>
+            </div>
+          )}
+          
+          {/* User Menu Dropdown */}
+          <div className="p-4 border-t border-gray-700 animate-fadeInUp" style={{ animationDelay: '0.45s' }}>
+            <button
+              onClick={() => setUserMenuExpanded(!userMenuExpanded)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-2 min-w-0">
+                {isSuperAdmin() ? (
+                  <Shield size={16} className="text-red-400 flex-shrink-0" />
+                ) : isProUser ? (
+                  <Crown size={16} className="text-yellow-400 flex-shrink-0" />
+                ) : (
+                  <User size={16} className="flex-shrink-0" />
+                )}
+                <span className="text-sm truncate">{user.email}</span>
                 {isSuperAdmin() && (
-                  <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse">
+                  <span className="text-xs bg-red-900/30 text-red-400 px-2 py-0.5 rounded-full animate-pulse flex-shrink-0">
                     ADMIN
                   </span>
                 )}
                 {isProUser && !isSuperAdmin() && (
-                  <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse">
+                  <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full animate-pulse flex-shrink-0">
                     PRO
                   </span>
                 )}
               </div>
-              <button
-                onClick={handleSignOut}
-                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 hover:scale-105 transform"
-              >
-                <LogOut size={18} />
-                <span className="font-medium">Sign Out</span>
-              </button>
-            </div>
+              {userMenuExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            
+            {userMenuExpanded && (
+              <div className="mt-2 ml-4 space-y-1 animate-slideDown">
+                <button
+                  onClick={onOpenAnalytics}
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                >
+                  <BarChart3 size={16} />
+                  <span>Analytics</span>
+                </button>
+                
+                <button
+                  onClick={onOpenSettings}
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                >
+                  <Settings size={16} />
+                  <span>Settings</span>
+                </button>
+                
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-red-400 hover:text-red-300 text-sm"
+                >
+                  <LogOut size={16} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
           </div>
         </>
       ) : (
