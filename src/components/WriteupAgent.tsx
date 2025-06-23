@@ -120,7 +120,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
       setCurrentProject(project);
       setStep('writing');
       
-      // Start the writing process
+      // Start the writing process with real-time progress updates
       await startWritingProcess(project);
     } catch (error) {
       console.error('Failed to start project:', error);
@@ -135,8 +135,17 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
     try {
       setIsGenerating(true);
       
-      // Start the orchestrated writing process
+      // Start the orchestrated writing process with real-time updates
       await writeupService.startWriting(project.id, (updatedProject) => {
+        console.log('Progress update received:', {
+          progress: updatedProject.progress,
+          currentSection: updatedProject.currentSection,
+          totalSections: updatedProject.totalSections,
+          status: updatedProject.status,
+          wordCount: updatedProject.wordCount
+        });
+        
+        // CRITICAL: Update the current project state immediately
         setCurrentProject(updatedProject);
         
         if (updatedProject.status === 'completed') {
@@ -179,7 +188,9 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
       await writeupService.handleSectionAction(currentProject.id, sectionId, action);
       // Reload project to get updated state
       const updatedProject = await writeupService.getProject(currentProject.id);
-      setCurrentProject(updatedProject);
+      if (updatedProject) {
+        setCurrentProject(updatedProject);
+      }
     } catch (error) {
       console.error('Failed to handle section action:', error);
       setError(error instanceof Error ? error.message : 'Failed to process section action');
@@ -255,18 +266,36 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
             </button>
           </div>
 
-          {/* Progress Bar */}
+          {/* Enhanced Progress Bar with Real-time Updates */}
           {currentProject && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm mb-2">
                 <span>{currentProject.title}</span>
-                <span>{currentProject.progress}% Complete</span>
+                <div className="flex items-center space-x-4">
+                  <span>{currentProject.progress}% Complete</span>
+                  <span className="text-emerald-200">
+                    Section {currentProject.currentSection + 1} of {currentProject.totalSections}
+                  </span>
+                  <span className="text-emerald-200">
+                    {currentProject.wordCount.toLocaleString()} words
+                  </span>
+                </div>
               </div>
-              <div className="w-full bg-white/20 rounded-full h-2">
+              <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
                 <div
-                  className={`h-2 rounded-full transition-all duration-500 ${getProgressColor(currentProject.progress)}`}
+                  className={`h-3 rounded-full transition-all duration-500 ease-out ${getProgressColor(currentProject.progress)}`}
                   style={{ width: `${currentProject.progress}%` }}
                 />
+              </div>
+              {/* Real-time status indicator */}
+              <div className="flex items-center justify-between text-xs mt-2 text-emerald-200">
+                <span>Status: {currentProject.status}</span>
+                {isGenerating && (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                    <span>AI is writing...</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -491,7 +520,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                   <div>
                     <h3 className="font-semibold text-gray-900">{currentProject.title}</h3>
                     <p className="text-sm text-gray-600">
-                      {currentProject.wordCount.toLocaleString()} words • {currentProject.estimatedPages} pages • {currentProject.status}
+                      {currentProject.wordCount.toLocaleString()} words • {Math.round(currentProject.wordCount / 250)} pages • {currentProject.status}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -595,6 +624,12 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                     <div className="text-center py-8">
                       <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
                       <p className="text-gray-600">AI is working on your document...</p>
+                      {currentProject && (
+                        <div className="mt-2 text-sm text-gray-500">
+                          <p>Section {currentProject.currentSection + 1} of {currentProject.totalSections}</p>
+                          <p>{currentProject.wordCount.toLocaleString()} words written so far</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
