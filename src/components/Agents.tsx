@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bot, Zap, CheckCircle, AlertCircle, Loader2, Brain, Settings, RefreshCw, ArrowRight, Sparkles, Crown, FileText } from 'lucide-react';
+import { X, Bot, Zap, CheckCircle, AlertCircle, Loader2, Brain, Settings, RefreshCw, ArrowRight, Sparkles, Crown, FileText, Search, BarChart3 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { globalApiService } from '../services/globalApiService';
 import { EnhancedWriteupAgent } from './EnhancedWriteupAgent';
+import { ResearchAgent } from './ResearchAgent';
+import { ContentCreationAgent } from './ContentCreationAgent';
+import { DataAnalysisAgent } from './DataAnalysisAgent';
 
 interface AgentsProps {
   isOpen: boolean;
@@ -17,6 +20,7 @@ interface Agent {
   icon: React.ReactNode;
   status: 'available' | 'unavailable';
   action?: () => void;
+  featured?: boolean;
 }
 
 export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
@@ -28,7 +32,12 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testingAgent, setTestingAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Modal states for each agent
   const [showEnhancedWriteup, setShowEnhancedWriteup] = useState(false);
+  const [showResearchAgent, setShowResearchAgent] = useState(false);
+  const [showContentAgent, setShowContentAgent] = useState(false);
+  const [showDataAgent, setShowDataAgent] = useState(false);
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
@@ -57,31 +66,35 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
           capabilities: ['Multi-agent coordination', 'Parallel section writing', 'Quality assurance', 'Real-time progress tracking'],
           icon: <FileText size={24} className="text-indigo-500" />,
           status: apiKey ? 'available' : 'unavailable',
-          action: () => setShowEnhancedWriteup(true)
+          action: () => setShowEnhancedWriteup(true),
+          featured: true
         },
         {
           id: 'research-agent',
           name: 'Research Agent',
-          description: 'Conducts comprehensive research on any topic with multiple sources and fact-checking',
-          capabilities: ['Web search', 'Source verification', 'Citation generation', 'Fact-checking'],
-          icon: <Brain size={24} className="text-blue-500" />,
-          status: apiKey ? 'available' : 'unavailable'
+          description: 'Conducts comprehensive research on any topic with multiple sources and fact-checking using coordinated AI models',
+          capabilities: ['Multi-source research', 'Source verification', 'Citation generation', 'Fact-checking', 'Report compilation'],
+          icon: <Search size={24} className="text-blue-500" />,
+          status: apiKey ? 'available' : 'unavailable',
+          action: () => setShowResearchAgent(true)
         },
         {
           id: 'content-agent',
           name: 'Content Creation Agent',
-          description: 'Creates high-quality content with multi-step refinement and quality assurance',
-          capabilities: ['Multi-draft writing', 'Self-critique', 'SEO optimization', 'Style adaptation'],
+          description: 'Creates high-quality content with multi-step refinement, SEO optimization, and quality assurance through agent collaboration',
+          capabilities: ['Multi-draft writing', 'Self-critique', 'SEO optimization', 'Style adaptation', 'Quality review'],
           icon: <Sparkles size={24} className="text-purple-500" />,
-          status: apiKey ? 'available' : 'unavailable'
+          status: apiKey ? 'available' : 'unavailable',
+          action: () => setShowContentAgent(true)
         },
         {
           id: 'data-agent',
           name: 'Data Analysis Agent',
-          description: 'Analyzes complex datasets with multiple specialized models working together',
-          capabilities: ['Data cleaning', 'Statistical analysis', 'Visualization planning', 'Insight generation'],
-          icon: <Zap size={24} className="text-green-500" />,
-          status: apiKey ? 'available' : 'unavailable'
+          description: 'Analyzes complex datasets with multiple specialized models working together for comprehensive insights',
+          capabilities: ['Data cleaning', 'Statistical analysis', 'Visualization planning', 'Insight generation', 'Report creation'],
+          icon: <BarChart3 size={24} className="text-green-500" />,
+          status: apiKey ? 'available' : 'unavailable',
+          action: () => setShowDataAgent(true)
         }
       ];
       
@@ -255,7 +268,7 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
                                 {agent.status === 'available' ? 'Available' : 'Unavailable'}
                               </span>
                               <span className="text-xs text-gray-500">Pro Only</span>
-                              {agent.id === 'enhanced-writeup-agent' && (
+                              {agent.featured && (
                                 <span className="text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">Featured</span>
                               )}
                             </div>
@@ -369,10 +382,10 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
                           
                           {selectedAgent.id === 'research-agent' && (
                             <>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-blue-50 rounded-lg text-sm">
                                 "Research the latest advancements in quantum computing and provide a comprehensive report with verified sources"
                               </div>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-blue-50 rounded-lg text-sm">
                                 "Compare and contrast three different approaches to renewable energy storage with pros and cons of each"
                               </div>
                             </>
@@ -380,10 +393,10 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
                           
                           {selectedAgent.id === 'content-agent' && (
                             <>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-purple-50 rounded-lg text-sm">
                                 "Create a detailed blog post about sustainable gardening practices with SEO optimization for beginners"
                               </div>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-purple-50 rounded-lg text-sm">
                                 "Write a technical white paper on blockchain security measures with multiple drafts and self-critique"
                               </div>
                             </>
@@ -391,10 +404,10 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
                           
                           {selectedAgent.id === 'data-agent' && (
                             <>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-green-50 rounded-lg text-sm">
                                 "Analyze this customer feedback dataset and identify key trends and actionable insights"
                               </div>
-                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                              <div className="p-3 bg-green-50 rounded-lg text-sm">
                                 "Process this sales data to identify seasonal patterns and recommend inventory optimization strategies"
                               </div>
                             </>
@@ -420,10 +433,25 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
         </div>
       </div>
 
-      {/* Enhanced Write-up Agent Modal */}
+      {/* Agent Modal Components */}
       <EnhancedWriteupAgent
         isOpen={showEnhancedWriteup}
         onClose={() => setShowEnhancedWriteup(false)}
+      />
+      
+      <ResearchAgent
+        isOpen={showResearchAgent}
+        onClose={() => setShowResearchAgent(false)}
+      />
+      
+      <ContentCreationAgent
+        isOpen={showContentAgent}
+        onClose={() => setShowContentAgent(false)}
+      />
+      
+      <DataAnalysisAgent
+        isOpen={showDataAgent}
+        onClose={() => setShowDataAgent(false)}
       />
     </>
   );
