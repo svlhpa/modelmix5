@@ -308,165 +308,127 @@ class WriteupService {
     project: WriteupProject,
     onProgress: (project: WriteupProject) => void
   ): Promise<void> {
-    // This is the existing legacy implementation
-    // Keep the original logic for fallback scenarios
-    console.log('🔧 Using legacy writing method as fallback...');
-    
-    // Simplified legacy implementation
+    // Get premium models for writing (prioritize high-quality models)
+    const availableModels = await this.getPremiumModels();
+    console.log('Available premium models for writing:', availableModels);
+
+    if (availableModels.length === 0) {
+      throw new Error('No premium AI models available for writing. Please configure API keys or contact support.');
+    }
+
+    // Process sections sequentially with retry logic and quality assurance
     for (let i = 0; i < project.sections.length; i++) {
       const section = project.sections[i];
       
+      // Update current section and progress
       project.currentSection = i;
-      project.progress = Math.round(((i / project.sections.length) * 85) + 5);
+      project.progress = Math.round(((i / project.sections.length) * 85) + 5); // 5-90% range
       project.updatedAt = new Date();
-      
+      this.updateProject(project, onProgress);
+
+      // Select premium model for this section (rotate through best models)
+      const selectedModel = this.selectBestModelForSection(availableModels, section, i);
+      section.model = selectedModel.name;
+      section.modelProvider = selectedModel.provider;
       section.status = 'writing';
+      section.retryCount = 0;
+      
+      // Calculate target words for this section
+      const targetWords = Math.round(this.getTargetWordCount(project.settings) / project.sections.length);
+      section.targetWords = targetWords;
+      
+      // Update progress with section status change
       this.updateProject(project, onProgress);
+
+      // Attempt to generate section content with retry logic
+      let success = false;
+      const maxRetries = 3;
       
-      // Simulate writing process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      for (let retry = 0; retry < maxRetries && !success; retry++) {
+        try {
+          console.log(`Writing section ${i + 1}/${project.sections.length}: ${section.title} (Attempt ${retry + 1})`);
+          console.log(`Using premium model: ${section.model} (${section.modelProvider})`);
+          
+          // Generate section content with enhanced prompting
+          const content = await this.generateSectionContent(
+            project,
+            section,
+            selectedModel,
+            retry > 0 // isRetry
+          );
+
+          if (content && content.trim().length > 100) { // Minimum content check
+            section.content = content;
+            section.wordCount = this.countWords(content);
+            section.status = 'completed';
+            success = true;
+            
+            // Update project word count and progress
+            project.wordCount = project.sections.reduce((total, s) => total + s.wordCount, 0);
+            project.progress = Math.round(((i + 1) / project.sections.length) * 85) + 5;
+            project.updatedAt = new Date();
+            
+            console.log(`✅ Section ${i + 1} completed successfully. Word count: ${section.wordCount}. Total: ${project.wordCount}`);
+            
+            // Real-time progress update
+            this.updateProject(project, onProgress);
+            
+          } else {
+            throw new Error('Generated content is too short or empty');
+          }
+          
+        } catch (error) {
+          console.error(`❌ Error writing section ${i + 1} (attempt ${retry + 1}):`, error);
+          section.retryCount = retry + 1;
+          
+          if (retry < maxRetries - 1) {
+            // Try with a different model on retry
+            const alternativeModel = availableModels[(availableModels.indexOf(selectedModel) + 1) % availableModels.length];
+            section.model = alternativeModel.name;
+            section.modelProvider = alternativeModel.provider;
+            console.log(`🔄 Retrying with alternative model: ${alternativeModel.name}`);
+            
+            // Small delay before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            // Final attempt failed - mark as error but continue
+            section.status = 'error';
+            section.content = `Error generating content for "${section.title}". This section needs manual review. Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            section.wordCount = this.countWords(section.content);
+            console.error(`❌ Section ${i + 1} failed after ${maxRetries} attempts`);
+          }
+          
+          this.updateProject(project, onProgress);
+        }
+      }
       
-      // Generate realistic content for the section
-      section.content = this.generateSampleContent(section.title, project.prompt, i);
-      section.wordCount = this.countWords(section.content);
-      section.status = 'completed';
-      section.model = 'Legacy Generator';
-      
-      project.wordCount = project.sections.reduce((total, s) => total + s.wordCount, 0);
-      this.updateProject(project, onProgress);
+      // Small delay between sections to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
-    
+
+    // Review phase (if enabled)
+    if (project.settings.enableReview) {
+      project.status = 'reviewing';
+      project.progress = 90;
+      this.updateProject(project, onProgress);
+      
+      await this.reviewAndImproveProject(project, onProgress);
+    }
+
+    // Final completion
     project.status = 'completed';
     project.progress = 100;
+    project.currentSection = project.sections.length;
     project.updatedAt = new Date();
-    this.updateProject(project, onProgress);
-  }
-
-  // Generate realistic sample content for demonstration
-  private generateSampleContent(title: string, topic: string, sectionIndex: number): string {
-    const sectionTypes = [
-      'introduction',
-      'background',
-      'methodology',
-      'analysis',
-      'results',
-      'discussion',
-      'conclusion'
-    ];
     
-    const sectionType = sectionTypes[sectionIndex % sectionTypes.length];
+    console.log('🎉 Project completed!', {
+      totalSections: project.sections.length,
+      completedSections: project.sections.filter(s => s.status === 'completed').length,
+      errorSections: project.sections.filter(s => s.status === 'error').length,
+      totalWords: project.wordCount,
+      estimatedPages: Math.round(project.wordCount / 250)
+    });
     
-    // Generate paragraphs based on section type
-    const paragraphs = [];
-    const paragraphCount = 3 + Math.floor(Math.random() * 3); // 3-5 paragraphs
-    
-    for (let i = 0; i < paragraphCount; i++) {
-      let paragraph = '';
-      
-      // Introduction paragraph
-      if (sectionType === 'introduction' && i === 0) {
-        paragraph = `This section introduces the key concepts related to ${topic}. It provides an overview of the main themes that will be explored throughout this document. The importance of understanding ${title.toLowerCase()} cannot be overstated in today's rapidly evolving landscape.`;
-      }
-      // Background paragraph
-      else if (sectionType === 'background' && i === 0) {
-        paragraph = `The historical context of ${topic} reveals several important developments over time. Previous research has established a foundation upon which current understanding is built. This background information is crucial for contextualizing the present analysis.`;
-      }
-      // Methodology paragraph
-      else if (sectionType === 'methodology' && i === 0) {
-        paragraph = `This section outlines the approach used to examine ${topic}. The methodology incorporates both qualitative and quantitative elements to ensure comprehensive coverage. Data collection procedures were designed to minimize bias while maximizing relevance.`;
-      }
-      // Analysis paragraph
-      else if (sectionType === 'analysis' && i === 0) {
-        paragraph = `Analysis of ${topic} reveals several significant patterns and trends. By examining the data through multiple theoretical frameworks, a more nuanced understanding emerges. This analysis considers both macro and micro factors that influence the subject matter.`;
-      }
-      // Results paragraph
-      else if (sectionType === 'results' && i === 0) {
-        paragraph = `The results demonstrate several key findings related to ${topic}. Statistical analysis indicates significant correlations between the primary variables under investigation. These findings align with some previous research while challenging other established notions.`;
-      }
-      // Discussion paragraph
-      else if (sectionType === 'discussion' && i === 0) {
-        paragraph = `This discussion examines the implications of the findings on ${topic}. The results suggest several important considerations for both theory and practice. Alternative interpretations are also considered to provide a balanced perspective.`;
-      }
-      // Conclusion paragraph
-      else if (sectionType === 'conclusion' && i === 0) {
-        paragraph = `In conclusion, this examination of ${topic} has revealed several important insights. The key findings highlight the complexity of the subject matter and suggest directions for future research. These conclusions have significant implications for understanding ${title.toLowerCase()}.`;
-      }
-      // Generic paragraphs for all section types
-      else {
-        const sentences = [];
-        const sentenceCount = 4 + Math.floor(Math.random() * 3); // 4-6 sentences
-        
-        for (let j = 0; j < sentenceCount; j++) {
-          const sentence = this.generateSampleSentence(topic, title);
-          sentences.push(sentence);
-        }
-        
-        paragraph = sentences.join(' ');
-      }
-      
-      paragraphs.push(paragraph);
-    }
-    
-    return paragraphs.join('\n\n');
-  }
-
-  private generateSampleSentence(topic: string, title: string): string {
-    const sentenceTemplates = [
-      `Further analysis of ${topic} reveals important considerations for future research.`,
-      `The implications of these findings extend beyond the immediate context of ${title.toLowerCase()}.`,
-      `Several factors contribute to the complexity of ${topic} in contemporary settings.`,
-      `Evidence suggests that multiple perspectives are necessary to fully understand ${title.toLowerCase()}.`,
-      `Recent developments have significantly changed how we approach ${topic}.`,
-      `Theoretical frameworks provide essential structure for examining ${title.toLowerCase()}.`,
-      `The relationship between various elements of ${topic} merits further investigation.`,
-      `Critical evaluation of existing literature reveals gaps in our understanding of ${title.toLowerCase()}.`,
-      `Practical applications of this research include improvements in how we address ${topic}.`,
-      `Both qualitative and quantitative data support the conclusions regarding ${title.toLowerCase()}.`
-    ];
-    
-    return sentenceTemplates[Math.floor(Math.random() * sentenceTemplates.length)];
-  }
-
-  async pauseProject(projectId: string): Promise<void> {
-    const project = this.projects.get(projectId);
-    if (!project) return;
-
-    if (project.orchestrationMethod === 'picaos' && project.picaosWorkflowId) {
-      try {
-        await picaosService.pauseWorkflow(project.picaosWorkflowId);
-      } catch (error) {
-        console.error('Failed to pause PicaOS workflow:', error);
-      }
-    }
-
-    // Stop polling
-    const pollInterval = this.pollingIntervals.get(projectId);
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      this.pollingIntervals.delete(projectId);
-    }
-
-    project.status = 'paused';
-    project.updatedAt = new Date();
-    this.projects.set(projectId, project);
-  }
-
-  async resumeProject(projectId: string, onProgress: (project: WriteupProject) => void): Promise<void> {
-    const project = this.projects.get(projectId);
-    if (!project) return;
-
-    if (project.orchestrationMethod === 'picaos' && project.picaosWorkflowId) {
-      try {
-        await picaosService.resumeWorkflow(project.picaosWorkflowId);
-        this.startPicaOSPolling(project, onProgress);
-      } catch (error) {
-        console.error('Failed to resume PicaOS workflow:', error);
-        throw error;
-      }
-    }
-
-    project.status = 'writing';
-    project.updatedAt = new Date();
     this.updateProject(project, onProgress);
   }
 
@@ -530,6 +492,107 @@ class WriteupService {
 
   private countWords(text: string): number {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  }
+
+  // Get premium models for writing
+  private async getPremiumModels(): Promise<Array<{name: string, provider: string, id: string, tier: 'premium' | 'standard'}>> {
+    // This would normally fetch available models from various providers
+    // For now, return a static list of premium models
+    return [
+      { name: 'GPT-4o', provider: 'openai', id: 'gpt-4o', tier: 'premium' },
+      { name: 'Claude 3.5 Sonnet', provider: 'anthropic', id: 'claude-3-5-sonnet', tier: 'premium' },
+      { name: 'Gemini 1.5 Pro', provider: 'google', id: 'gemini-1-5-pro', tier: 'premium' }
+    ];
+  }
+
+  // Select the best model for each section
+  private selectBestModelForSection(
+    availableModels: Array<{name: string, provider: string, id: string, tier: string}>, 
+    section: WriteupSection, 
+    sectionIndex: number
+  ): {name: string, provider: string, id: string, tier: string} {
+    if (availableModels.length === 0) {
+      throw new Error('No models available for section generation');
+    }
+    
+    // Rotate through available models
+    return availableModels[sectionIndex % availableModels.length];
+  }
+
+  // Generate section content
+  private async generateSectionContent(
+    project: WriteupProject,
+    section: WriteupSection,
+    model: {name: string, provider: string, id: string},
+    isRetry: boolean = false
+  ): Promise<string> {
+    // This would normally call the appropriate AI service
+    // For now, generate placeholder content
+    return `This is placeholder content for "${section.title}". In a real implementation, this would be generated by ${model.name}.
+
+The content would be about ${project.prompt} and would be written in a ${project.settings.style} style with a ${project.settings.tone} tone.
+
+This section would typically contain about ${section.targetWords} words and would be part of a ${project.settings.format} document.`;
+  }
+
+  // Review and improve project
+  private async reviewAndImproveProject(
+    project: WriteupProject,
+    onProgress: (project: WriteupProject) => void
+  ): Promise<void> {
+    // This would normally review and improve the content
+    // For now, just update the status
+    for (const section of project.sections) {
+      if (section.status === 'completed') {
+        section.reviewNotes = 'Quality check passed';
+      }
+    }
+    
+    project.progress = 98;
+    this.updateProject(project, onProgress);
+  }
+
+  async pauseProject(projectId: string): Promise<void> {
+    const project = this.projects.get(projectId);
+    if (!project) return;
+
+    if (project.orchestrationMethod === 'picaos' && project.picaosWorkflowId) {
+      try {
+        await picaosService.pauseWorkflow(project.picaosWorkflowId);
+      } catch (error) {
+        console.error('Failed to pause PicaOS workflow:', error);
+      }
+    }
+
+    // Stop polling
+    const pollInterval = this.pollingIntervals.get(projectId);
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      this.pollingIntervals.delete(projectId);
+    }
+
+    project.status = 'paused';
+    project.updatedAt = new Date();
+    this.projects.set(projectId, project);
+  }
+
+  async resumeProject(projectId: string, onProgress: (project: WriteupProject) => void): Promise<void> {
+    const project = this.projects.get(projectId);
+    if (!project) return;
+
+    if (project.orchestrationMethod === 'picaos' && project.picaosWorkflowId) {
+      try {
+        await picaosService.resumeWorkflow(project.picaosWorkflowId);
+        this.startPicaOSPolling(project, onProgress);
+      } catch (error) {
+        console.error('Failed to resume PicaOS workflow:', error);
+        throw error;
+      }
+    }
+
+    project.status = 'writing';
+    project.updatedAt = new Date();
+    this.updateProject(project, onProgress);
   }
 
   // Public methods

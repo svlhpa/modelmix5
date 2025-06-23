@@ -73,6 +73,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   // Admin Settings State
   const [getStartedVideoUrl, setGetStartedVideoUrl] = useState('');
+  const [picaosApiKey, setPicaosApiKey] = useState('');
   const [videoStats, setVideoStats] = useState({
     totalUsers: 0,
     usersWhoWatchedCurrent: 0,
@@ -80,14 +81,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     currentVideoUrl: ''
   });
   const [savingVideo, setSavingVideo] = useState(false);
-  const [videoSaved, setVideoSaved] = useState(false);
-  
-  // PicaOS Settings
-  const [picaosApiKey, setPicaosApiKey] = useState('');
   const [savingPicaosKey, setSavingPicaosKey] = useState(false);
+  const [videoSaved, setVideoSaved] = useState(false);
   const [picaosKeySaved, setPicaosKeySaved] = useState(false);
-  const [picaosConnectionStatus, setPicaosConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
-  const [testingPicaosConnection, setTestingPicaosConnection] = useState(false);
+  const [picaosStatus, setPicaosStatus] = useState({ status: '', message: '' });
+  const [checkingPicaosStatus, setCheckingPicaosStatus] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -122,42 +120,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   const loadAdminSettings = async () => {
     try {
-      const [videoUrl, stats, picaosKey] = await Promise.all([
+      const [videoUrl, stats, picaosKey, picaosDeployStatus] = await Promise.all([
         adminSettingsService.getGetStartedVideoUrl(),
         adminSettingsService.getVideoViewStats(),
-        adminSettingsService.getPicaosApiKey()
+        adminSettingsService.getPicaosApiKey(),
+        picaosService.getDeploymentStatus()
       ]);
       
       setGetStartedVideoUrl(videoUrl);
       setVideoStats(stats);
       setPicaosApiKey(picaosKey || '');
-      
-      // Test PicaOS connection if we have a key
-      if (picaosKey) {
-        testPicaosConnection();
-      } else {
-        setPicaosConnectionStatus('unknown');
-      }
+      setPicaosStatus(picaosDeployStatus);
     } catch (error) {
       console.error('Failed to load admin settings:', error);
-    }
-  };
-  
-  const testPicaosConnection = async () => {
-    if (!picaosApiKey) {
-      setPicaosConnectionStatus('unknown');
-      return;
-    }
-    
-    setTestingPicaosConnection(true);
-    try {
-      const isConnected = await picaosService.testConnection();
-      setPicaosConnectionStatus(isConnected ? 'connected' : 'failed');
-    } catch (error) {
-      console.error('Failed to test PicaOS connection:', error);
-      setPicaosConnectionStatus('failed');
-    } finally {
-      setTestingPicaosConnection(false);
     }
   };
 
@@ -258,10 +233,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       setSavingVideo(false);
     }
   };
-  
+
   const handleSavePicaosApiKey = async () => {
     if (!picaosApiKey.trim()) return;
-    
+
     setSavingPicaosKey(true);
     setPicaosKeySaved(false);
     
@@ -269,8 +244,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       await adminSettingsService.updatePicaosApiKey(picaosApiKey.trim());
       setPicaosKeySaved(true);
       
-      // Test connection with new key
-      await testPicaosConnection();
+      // Check status after saving
+      await checkPicaosStatus();
       
       // Hide success message after 3 seconds
       setTimeout(() => setPicaosKeySaved(false), 3000);
@@ -278,6 +253,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       console.error('Failed to save PicaOS API key:', error);
     } finally {
       setSavingPicaosKey(false);
+    }
+  };
+
+  const checkPicaosStatus = async () => {
+    setCheckingPicaosStatus(true);
+    try {
+      const status = await picaosService.getDeploymentStatus();
+      setPicaosStatus(status);
+    } catch (error) {
+      console.error('Failed to check PicaOS status:', error);
+    } finally {
+      setCheckingPicaosStatus(false);
     }
   };
 
@@ -1001,13 +988,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     </div>
                   </div>
                 </div>
-                
-                {/* PicaOS Configuration */}
+
+                {/* PicaOS API Key Settings */}
                 <div className="bg-white border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center space-x-3 mb-4">
-                    <Cpu className="text-purple-600" size={24} />
+                    <Cpu className="text-indigo-600" size={24} />
                     <div>
-                      <h4 className="font-medium text-gray-900">PicaOS Configuration</h4>
+                      <h4 className="font-medium text-gray-900">PicaOS API Key</h4>
                       <p className="text-sm text-gray-500">Configure PicaOS AI orchestration for Pro users</p>
                     </div>
                   </div>
@@ -1016,17 +1003,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">PicaOS API Key</label>
                       <div className="flex space-x-3">
-                        <input
-                          type="password"
-                          value={picaosApiKey}
-                          onChange={(e) => setPicaosApiKey(e.target.value)}
-                          placeholder="pk_live_..."
-                          className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
+                        <div className="relative flex-1">
+                          <input
+                            type={showKeys['picaos'] ? 'text' : 'password'}
+                            value={picaosApiKey}
+                            onChange={(e) => setPicaosApiKey(e.target.value)}
+                            placeholder="pk_live_..."
+                            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <button
+                            onClick={() => toggleShowKey('picaos')}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            {showKeys['picaos'] ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
                         <button
                           onClick={handleSavePicaosApiKey}
                           disabled={!picaosApiKey.trim() || savingPicaosKey}
-                          className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {savingPicaosKey ? (
                             <>
@@ -1040,6 +1035,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                             </>
                           )}
                         </button>
+                        <button
+                          onClick={checkPicaosStatus}
+                          disabled={checkingPicaosStatus}
+                          className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {checkingPicaosStatus ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>Checking...</span>
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={16} />
+                              <span>Check Status</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                       
                       {picaosKeySaved && (
@@ -1048,84 +1060,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           <span className="text-sm">PicaOS API key saved successfully!</span>
                         </div>
                       )}
-                      
-                      {/* Connection Status */}
-                      <div className="mt-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm text-gray-700">Connection Status:</span>
-                          {testingPicaosConnection ? (
-                            <div className="flex items-center space-x-2 text-gray-600">
-                              <div className="w-3 h-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin"></div>
-                              <span className="text-sm">Testing connection...</span>
-                            </div>
-                          ) : (
-                            <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${
-                              picaosConnectionStatus === 'connected' ? 'bg-green-100 text-green-800' :
-                              picaosConnectionStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {picaosConnectionStatus === 'connected' ? (
-                                <>
-                                  <CheckCircle size={12} />
-                                  <span>Connected</span>
-                                </>
-                              ) : picaosConnectionStatus === 'failed' ? (
-                                <>
-                                  <X size={12} />
-                                  <span>Connection Failed</span>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                                  <span>Not Configured</span>
-                                </>
-                              )}
-                            </div>
-                          )}
-                          
-                          <button
-                            onClick={testPicaosConnection}
-                            disabled={!picaosApiKey || testingPicaosConnection}
-                            className="text-xs text-purple-600 hover:text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Test Connection
-                          </button>
+                    </div>
+
+                    {/* PicaOS Status */}
+                    <div className={`p-4 rounded-lg ${
+                      picaosStatus.status === 'deployed' ? 'bg-green-50 border border-green-200' :
+                      picaosStatus.status === 'connection_failed' ? 'bg-red-50 border border-red-200' :
+                      picaosStatus.status === 'not_configured' ? 'bg-yellow-50 border border-yellow-200' :
+                      'bg-gray-50 border border-gray-200'
+                    }`}>
+                      <div className="flex items-center space-x-3">
+                        {picaosStatus.status === 'deployed' ? (
+                          <CheckCircle size={20} className="text-green-600" />
+                        ) : picaosStatus.status === 'connection_failed' ? (
+                          <X size={20} className="text-red-600" />
+                        ) : (
+                          <Cpu size={20} className="text-gray-600" />
+                        )}
+                        <div>
+                          <h5 className={`font-medium ${
+                            picaosStatus.status === 'deployed' ? 'text-green-800' :
+                            picaosStatus.status === 'connection_failed' ? 'text-red-800' :
+                            'text-gray-800'
+                          }`}>
+                            PicaOS Status: {picaosStatus.status === 'deployed' ? 'Connected' : 
+                                          picaosStatus.status === 'connection_failed' ? 'Connection Failed' :
+                                          picaosStatus.status === 'not_configured' ? 'Not Configured' : 'Unknown'}
+                          </h5>
+                          <p className="text-sm text-gray-600">{picaosStatus.message}</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                      <h5 className="font-medium text-purple-800 mb-2">About PicaOS</h5>
-                      <p className="text-sm text-purple-700 mb-3">
-                        PicaOS is an advanced AI orchestration platform that intelligently coordinates multiple AI models to produce higher quality content. It's available exclusively for Pro users.
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                      <h5 className="font-medium text-indigo-800 mb-2">About PicaOS</h5>
+                      <p className="text-sm text-indigo-700 mb-3">
+                        PicaOS is an advanced AI orchestration platform that coordinates multiple AI models to produce higher quality content. It's available exclusively for Pro users.
                       </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-start space-x-2">
-                          <Zap size={16} className="text-purple-600 mt-0.5" />
-                          <span>Intelligent model selection</span>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <Layers size={16} className="text-purple-600 mt-0.5" />
-                          <span>Multi-model orchestration</span>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <CheckCircle size={16} className="text-purple-600 mt-0.5" />
-                          <span>Automatic quality control</span>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <Settings size={16} className="text-purple-600 mt-0.5" />
-                          <span>Advanced workflow management</span>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 p-3 bg-purple-100 rounded-lg">
-                        <p className="text-sm text-purple-800 font-medium">Implementation Notes:</p>
-                        <ul className="mt-1 text-xs text-purple-700 space-y-1">
-                          <li>• PicaOS API requires a valid API key from <a href="https://pica-os.com" target="_blank" rel="noopener noreferrer" className="underline">pica-os.com</a></li>
-                          <li>• The API key can be set globally here or in the global_api_keys table</li>
-                          <li>• Only Pro users can access PicaOS features</li>
-                          <li>• The system will automatically fall back to legacy generation if PicaOS is unavailable</li>
-                        </ul>
+                      <div className="text-xs text-indigo-600 bg-indigo-100 p-2 rounded">
+                        <p><strong>API Key Format:</strong> PicaOS API keys typically start with "pk_live_" or "pk_test_"</p>
+                        <p><strong>Documentation:</strong> <a href="https://docs.picaos.com" target="_blank" rel="noopener noreferrer" className="underline">https://docs.picaos.com</a></p>
                       </div>
                     </div>
                   </div>
