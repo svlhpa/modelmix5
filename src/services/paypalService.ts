@@ -27,17 +27,25 @@ interface PayPalCaptureResponse {
 
 class PayPalService {
   private clientId: string;
+  private clientSecret: string;
   private environment: 'sandbox' | 'production';
   private baseUrl: string;
   private sdkLoaded: boolean = false;
 
   constructor() {
-    // Use environment variables or default to sandbox
+    // Use environment variables for production
     this.clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
+    this.clientSecret = import.meta.env.VITE_PAYPAL_CLIENT_SECRET || '';
     this.environment = import.meta.env.VITE_PAYPAL_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
     this.baseUrl = this.environment === 'production' 
       ? 'https://api-m.paypal.com' 
       : 'https://api-m.sandbox.paypal.com';
+
+    console.log('PayPal Service initialized:', {
+      environment: this.environment,
+      clientId: this.clientId ? `${this.clientId.substring(0, 10)}...` : 'Not set',
+      baseUrl: this.baseUrl
+    });
   }
 
   // Load PayPal SDK dynamically
@@ -56,27 +64,31 @@ class PayPalService {
       }
 
       const script = document.createElement('script');
-      // Add subscription support to the SDK
+      // Production-ready SDK configuration
       script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&currency=USD&intent=subscription&vault=true&disable-funding=credit,card`;
       script.async = true;
       
       script.onload = () => {
         this.sdkLoaded = true;
+        console.log('PayPal SDK loaded successfully for', this.environment);
         // Add a small delay to ensure PayPal SDK is fully initialized
         setTimeout(() => resolve(), 500);
       };
-      script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
+      script.onerror = () => {
+        console.error('Failed to load PayPal SDK');
+        reject(new Error('Failed to load PayPal SDK'));
+      };
       
       document.head.appendChild(script);
     });
   }
 
-  // Initialize PayPal buttons
+  // Initialize PayPal buttons for production
   async initializePayPalButtons(
     containerId: string, 
     onSuccess: (details: any) => void, 
     onError: (error: any) => void,
-    isRecurring: boolean = false
+    isRecurring: boolean = true // Default to recurring for Pro plan
   ): Promise<void> {
     try {
       await this.loadPayPalSDK();
@@ -112,10 +124,12 @@ class PayPalService {
           tagline: false
         },
         createOrder: (data: any, actions: any) => {
+          console.log('Creating PayPal order for environment:', this.environment);
+          
           if (isRecurring) {
             // For recurring payments, create a subscription
             return actions.subscription.create({
-              plan_id: this.getSubscriptionPlanId(), // You'll need to create this plan in PayPal
+              plan_id: this.getSubscriptionPlanId(),
               application_context: {
                 brand_name: 'ModelMix',
                 locale: 'en-US',
@@ -143,21 +157,29 @@ class PayPalService {
         },
         onApprove: async (data: any, actions: any) => {
           try {
+            console.log('PayPal payment approved:', data);
+            
             if (isRecurring) {
               // For subscriptions, the subscription is automatically activated
               const subscription = await actions.subscription.get();
+              console.log('Subscription details:', subscription);
+              
               onSuccess({
                 subscriptionID: data.subscriptionID,
                 subscription,
-                orderID: data.orderID
+                orderID: data.orderID,
+                environment: this.environment
               });
             } else {
               // For one-time payments
               const order = await actions.order.capture();
+              console.log('Order captured:', order);
+              
               onSuccess({
                 orderID: data.orderID,
                 order,
-                paymentID: order.purchase_units[0]?.payments?.captures[0]?.id
+                paymentID: order.purchase_units[0]?.payments?.captures[0]?.id,
+                environment: this.environment
               });
             }
           } catch (error) {
@@ -178,6 +200,7 @@ class PayPalService {
       // Render the buttons with error handling
       try {
         await buttons.render(`#${containerId}`);
+        console.log('PayPal buttons rendered successfully');
       } catch (renderError) {
         console.error('PayPal render error:', renderError);
         throw new Error('Failed to render PayPal buttons');
@@ -188,18 +211,21 @@ class PayPalService {
     }
   }
 
-  // Get subscription plan ID (you'll need to create this in PayPal Dashboard)
+  // Get subscription plan ID for production
   private getSubscriptionPlanId(): string {
-    // For sandbox, you'll need to create a subscription plan in PayPal Dashboard
-    // and replace this with the actual plan ID
+    // IMPORTANT: You need to create a subscription plan in your PayPal Business Dashboard
+    // and replace this with your actual production plan ID
     if (this.environment === 'production') {
-      return 'P-XXXXXXXXXXXXXXXXXXXX'; // Replace with your production plan ID
+      // TODO: Replace with your actual production plan ID from PayPal Dashboard
+      // This should be created in your PayPal Business account under Products & Plans
+      return 'P-REPLACE_WITH_YOUR_PRODUCTION_PLAN_ID';
     } else {
-      return 'P-XXXXXXXXXXXXXXXXXXXX'; // Replace with your sandbox plan ID
+      // Sandbox plan ID (for testing)
+      return 'P-REPLACE_WITH_YOUR_SANDBOX_PLAN_ID';
     }
   }
 
-  // Create a subscription plan (this would typically be done server-side)
+  // Create a subscription plan (this would typically be done server-side or via PayPal Dashboard)
   async createSubscriptionPlan(): Promise<string> {
     try {
       const response = await fetch(`${this.baseUrl}/v1/billing/plans`, {
@@ -250,6 +276,7 @@ class PayPalService {
       }
 
       const plan = await response.json();
+      console.log('Created subscription plan:', plan.id);
       return plan.id;
     } catch (error) {
       console.error('Error creating subscription plan:', error);
@@ -280,6 +307,7 @@ class PayPalService {
       }
 
       const product = await response.json();
+      console.log('Created product:', product.id);
       return product.id;
     } catch (error) {
       console.error('Error creating product:', error);
@@ -289,8 +317,7 @@ class PayPalService {
 
   // Get access token for PayPal API calls
   private async getAccessToken(): Promise<string> {
-    const clientSecret = import.meta.env.VITE_PAYPAL_CLIENT_SECRET;
-    if (!clientSecret) {
+    if (!this.clientSecret) {
       throw new Error('PayPal client secret not configured');
     }
 
@@ -298,7 +325,7 @@ class PayPalService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${this.clientId}:${clientSecret}`)}`
+        'Authorization': `Basic ${btoa(`${this.clientId}:${this.clientSecret}`)}`
       },
       body: 'grant_type=client_credentials'
     });
@@ -313,7 +340,17 @@ class PayPalService {
 
   // Validate PayPal configuration
   isConfigured(): boolean {
-    return !!(this.clientId && this.clientId.trim() !== '' && this.clientId !== 'your-paypal-client-id');
+    const isValid = !!(this.clientId && this.clientId.trim() !== '' && 
+                      this.clientSecret && this.clientSecret.trim() !== '');
+    
+    console.log('PayPal configuration check:', {
+      hasClientId: !!this.clientId,
+      hasClientSecret: !!this.clientSecret,
+      environment: this.environment,
+      isValid
+    });
+    
+    return isValid;
   }
 
   // Get environment info
@@ -321,8 +358,20 @@ class PayPalService {
     return {
       environment: this.environment,
       clientId: this.clientId ? `${this.clientId.substring(0, 10)}...` : 'Not set',
-      configured: this.isConfigured()
+      configured: this.isConfigured(),
+      baseUrl: this.baseUrl
     };
+  }
+
+  // Test API connection
+  async testConnection(): Promise<boolean> {
+    try {
+      const token = await this.getAccessToken();
+      return !!token;
+    } catch (error) {
+      console.error('PayPal connection test failed:', error);
+      return false;
+    }
   }
 }
 
