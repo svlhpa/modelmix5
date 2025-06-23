@@ -1099,7 +1099,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       </p>
                       <div className="text-xs text-indigo-600 bg-indigo-100 p-2 rounded">
                         <p><strong>API Key Format:</strong> PicaOS API keys typically start with "pk_live_" or "pk_test_"</p>
-                        <p><strong>Documentation:</strong> <a href="https://docs.picaos.com" target="_blank" rel="noopener noreferrer" className="underline">https://docs.picaos.com</a></p>
+                        <p><strong>Documentation:</strong> <a href="https://docs.picaos.com" target=\"_blank" rel="noopener noreferrer\" className="underline">https://docs.picaos.com</a></p>
                       </div>
                     </div>
                   </div>
