@@ -15,7 +15,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   onError,
   disabled = false,
   className = '',
-  isRecurring = true // Default to recurring for Pro plan
+  isRecurring = false // Changed to false for one-time payments
 }) => {
   const paypalRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
@@ -24,11 +24,19 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
   const [containerId] = useState(`paypal-button-container-${Math.random().toString(36).substr(2, 9)}`);
   const [retryCount, setRetryCount] = useState(0);
   const [connectionTested, setConnectionTested] = useState(false);
+  const [initializationAttempts, setInitializationAttempts] = useState(0);
 
   useEffect(() => {
-    // Test connection and initialize
+    // Reset state on retry
+    if (retryCount > 0) {
+      setLoading(true);
+      setError(null);
+      setConnectionTested(false);
+    }
+
     const initializePayPal = async () => {
       try {
+        console.log(`PayPal initialization attempt ${initializationAttempts + 1}`);
         setLoading(true);
         setError(null);
 
@@ -41,8 +49,10 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         }
 
         setIsConfigured(true);
+        console.log('PayPal configuration verified');
 
         // Test API connection
+        console.log('Testing PayPal API connection...');
         const connectionOk = await paypalService.testConnection();
         setConnectionTested(connectionOk);
         
@@ -52,37 +62,45 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           return;
         }
 
+        console.log('PayPal API connection successful');
+
+        // Wait for container to be ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         // Initialize PayPal buttons
+        console.log('Initializing PayPal buttons...');
         await initializeButtons();
+        
+        console.log('PayPal initialization completed successfully');
+        setLoading(false);
+        
       } catch (error) {
         console.error('PayPal initialization error:', error);
         setError(error instanceof Error ? error.message : 'Failed to initialize PayPal');
         setLoading(false);
+      } finally {
+        setInitializationAttempts(prev => prev + 1);
       }
     };
 
-    // Longer delay to ensure DOM is ready
+    // Delay initialization to ensure DOM is ready
     const timer = setTimeout(() => {
       initializePayPal();
-    }, 500);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [retryCount]);
 
   const initializeButtons = async () => {
     try {
-      // Ensure the container exists before initializing
+      // Ensure the container exists
       if (!paypalRef.current) {
         throw new Error('Payment container not ready');
       }
 
-      // Clear any existing content
-      paypalRef.current.innerHTML = '';
+      console.log('Container found, initializing PayPal buttons...');
 
-      // Add another delay to ensure everything is ready
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Initialize PayPal buttons with the container reference
+      // Initialize PayPal buttons
       await paypalService.initializePayPalButtons(
         containerId,
         (details) => {
@@ -98,16 +116,14 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         isRecurring
       );
 
-      setLoading(false);
     } catch (error) {
       console.error('Failed to initialize PayPal buttons:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load payment system';
-      setError(errorMessage);
-      setLoading(false);
+      throw error;
     }
   };
 
   const handleRetry = () => {
+    console.log('Retrying PayPal initialization...');
     setRetryCount(prev => prev + 1);
   };
 
@@ -146,11 +162,14 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
                 Please verify your PayPal Client ID and Secret are correct for the production environment.
               </p>
             )}
-            {error.includes('create') && (
+            {error.includes('SDK') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
-                This error usually means the PayPal SDK is not fully loaded. Try refreshing the page or check your internet connection.
+                PayPal SDK failed to load. Please check your internet connection and try again.
               </p>
             )}
+            <p className="text-xs mt-1 text-red-600">
+              Attempt {initializationAttempts} - You can retry the setup below.
+            </p>
           </div>
         </div>
         <button
@@ -170,7 +189,10 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         <div className="flex items-center justify-center p-8 bg-gray-50 border border-gray-200 rounded-lg">
           <div className="flex items-center space-x-3 text-gray-600">
             <Loader2 size={20} className="animate-spin" />
-            <span>Loading PayPal...</span>
+            <div className="text-center">
+              <div>Loading PayPal...</div>
+              <div className="text-xs mt-1">Attempt {initializationAttempts + 1}</div>
+            </div>
           </div>
         </div>
       )}
@@ -195,7 +217,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           </div>
           <p className="text-xs text-gray-500">
             Secure payment powered by PayPal
-            {isRecurring && <span className="block">Recurring monthly subscription</span>}
+            <span className="block">One-time payment for monthly access</span>
           </p>
           <div className="flex items-center justify-center space-x-1 mt-1">
             <CheckCircle size={12} className="text-green-500" />
