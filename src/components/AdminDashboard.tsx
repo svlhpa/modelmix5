@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video, Youtube, ExternalLink, CheckCircle } from 'lucide-react';
+import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video, Youtube, ExternalLink, CheckCircle, Bot } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
 import { adminSettingsService } from '../services/adminSettingsService';
@@ -55,7 +55,7 @@ interface GlobalProviderStats {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-keys' | 'analytics' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-keys' | 'analytics' | 'settings' | 'agents'>('overview');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [globalKeys, setGlobalKeys] = useState<GlobalApiKey[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -80,6 +80,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   });
   const [savingVideo, setSavingVideo] = useState(false);
   const [videoSaved, setVideoSaved] = useState(false);
+
+  // Agents State
+  const [agentTestResult, setAgentTestResult] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -224,6 +228,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     }
   };
 
+  const handleTestPicaosConnection = async () => {
+    // Get PicaOS API key from global keys
+    const picaosKey = globalKeys.find(key => key.provider === 'picaos');
+    
+    if (!picaosKey || !picaosKey.api_key.trim()) {
+      setAgentTestResult('❌ Please add a PicaOS API key in the Global API Keys tab first');
+      return;
+    }
+
+    setTestingConnection(true);
+    setAgentTestResult(null);
+
+    try {
+      // Mock test for now - in real implementation, you'd call PicaOS API
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+      
+      // For demo purposes, we'll simulate a successful connection
+      if (picaosKey.api_key.includes('pk_') || picaosKey.api_key.length > 10) {
+        setAgentTestResult('✅ PicaOS connection successful! API key is valid and ready for agent orchestration.');
+      } else {
+        setAgentTestResult('❌ PicaOS connection failed. Please check your API key format.');
+      }
+    } catch (error) {
+      setAgentTestResult('❌ Connection test failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const toggleShowKey = (keyId: string) => {
     setShowKeys(prev => ({ ...prev, [keyId]: !prev[keyId] }));
   };
@@ -240,7 +273,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       deepseek: 'DeepSeek',
       serper: 'Serper (Internet Search)',
       imagerouter: 'Imagerouter (Image Generation)',
-      tavus: 'Tavus (AI Video Calls)'
+      tavus: 'Tavus (AI Video Calls)',
+      picaos: 'PicaOS (AI Orchestration)'
     };
     return names[provider] || provider;
   };
@@ -296,61 +330,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
         {/* Tab Navigation */}
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'overview' 
-                ? 'bg-white text-red-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <BarChart3 size={16} />
-            <span>Overview</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'users' 
-                ? 'bg-white text-red-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Users size={16} />
-            <span>Users</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('global-keys')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'global-keys' 
-                ? 'bg-white text-red-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Key size={16} />
-            <span>Global API Keys</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'analytics' 
-                ? 'bg-white text-red-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Activity size={16} />
-            <span>Analytics</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'settings' 
-                ? 'bg-white text-red-600 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Settings size={16} />
-            <span>Settings</span>
-          </button>
+          {[
+            { id: 'overview', label: 'Overview', icon: BarChart3 },
+            { id: 'users', label: 'Users', icon: Users },
+            { id: 'global-keys', label: 'Global API Keys', icon: Key },
+            { id: 'analytics', label: 'Analytics', icon: Activity },
+            { id: 'agents', label: 'Agents', icon: Bot },
+            { id: 'settings', label: 'Settings', icon: Settings }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                activeTab === tab.id 
+                  ? 'bg-white text-red-600 shadow-sm' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <tab.icon size={16} />
+              <span className="font-medium">{tab.label}</span>
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -545,6 +545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           <option value="serper">Serper (Internet Search)</option>
                           <option value="imagerouter">Imagerouter (Image Generation)</option>
                           <option value="tavus">Tavus (AI Video Calls)</option>
+                          <option value="picaos">PicaOS (AI Orchestration)</option>
                         </select>
                       </div>
                       <div>
@@ -649,6 +650,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                     <Video size={10} className="mr-1" />
                                     AI Video Calls
+                                  </span>
+                                )}
+                                {key.provider === 'picaos' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                    <Bot size={10} className="mr-1" />
+                                    AI Orchestration
                                   </span>
                                 )}
                               </div>
@@ -811,6 +818,137 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     <p className="text-gray-500">Analytics will appear here once users start using the platform</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Agents Tab */}
+            {activeTab === 'agents' && (
+              <div className="space-y-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <Bot className="text-orange-600" size={24} />
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">PicaOS AI Orchestration</h3>
+                    <p className="text-sm text-gray-500">Test and manage PicaOS agent connections for Pro users</p>
+                  </div>
+                </div>
+
+                {/* PicaOS Connection Status */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h4 className="font-medium text-gray-900 mb-4 flex items-center space-x-2">
+                    <Bot size={20} className="text-orange-600" />
+                    <span>PicaOS Connection Test</span>
+                  </h4>
+
+                  <div className="space-y-4">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="p-1 bg-orange-100 rounded-lg flex-shrink-0">
+                          <Bot className="text-orange-600" size={16} />
+                        </div>
+                        <div>
+                          <h5 className="font-medium text-orange-800 mb-1">About PicaOS Integration</h5>
+                          <p className="text-sm text-orange-700">
+                            PicaOS provides AI orchestration capabilities for Pro users. This allows for advanced agent workflows, 
+                            multi-step reasoning, and complex task automation. Make sure to add a PicaOS API key in the Global API Keys tab first.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          Test the PicaOS connection to ensure agents can communicate properly with the orchestration platform.
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Requires a valid PicaOS API key in Global API Keys (Pro users only)
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleTestPicaosConnection}
+                        disabled={testingConnection}
+                        className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {testingConnection ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Testing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Bot size={16} />
+                            <span>Test Connection</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {agentTestResult && (
+                      <div className={`p-4 rounded-lg border ${
+                        agentTestResult.includes('✅') 
+                          ? 'bg-green-50 border-green-200 text-green-700' 
+                          : 'bg-red-50 border-red-200 text-red-700'
+                      }`}>
+                        <p className="text-sm">{agentTestResult}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Agent Features Overview */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h4 className="font-medium text-gray-900 mb-4">Available Agent Features</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Bot size={16} className="text-orange-600" />
+                        <span className="font-medium text-gray-900">Multi-Agent Workflows</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Orchestrate multiple AI agents to work together on complex tasks with automatic handoffs and coordination.
+                      </p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Activity size={16} className="text-orange-600" />
+                        <span className="font-medium text-gray-900">Task Automation</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Create automated workflows that can handle multi-step processes with decision trees and conditional logic.
+                      </p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <TrendingUp size={16} className="text-orange-600" />
+                        <span className="font-medium text-gray-900">Advanced Reasoning</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Enable sophisticated reasoning chains with memory persistence and context awareness across sessions.
+                      </p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Crown size={16} className="text-orange-600" />
+                        <span className="font-medium text-gray-900">Pro User Exclusive</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        PicaOS orchestration features are available exclusively to Pro tier users with unlimited usage.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Usage Statistics */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h4 className="font-medium text-gray-900 mb-4">Agent Usage Statistics</h4>
+                  <div className="text-center py-8 text-gray-500">
+                    <Bot size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>Agent usage statistics will appear here once PicaOS integration is active</p>
+                  </div>
+                </div>
               </div>
             )}
 

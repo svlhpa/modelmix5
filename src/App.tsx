@@ -10,6 +10,7 @@ import { DebateClub } from './components/DebateClub';
 import { AIVideoCall } from './components/AIVideoCall';
 import { WriteupAgent } from './components/WriteupAgent';
 import { GetStartedModal } from './components/GetStartedModal';
+import { Agents } from './components/Agents';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { useGetStartedVideo } from './hooks/useGetStartedVideo';
@@ -43,6 +44,7 @@ function App() {
   const [showDebateClub, setShowDebateClub] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showWriteupAgent, setShowWriteupAgent] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -164,6 +166,14 @@ function App() {
   const handleOpenWriteupAgent = () => {
     if (user) {
       setShowWriteupAgent(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
+  const handleOpenAgents = () => {
+    if (user) {
+      setShowAgents(true);
     } else {
       setShowAuth(true);
     }
@@ -313,6 +323,11 @@ function App() {
       <WriteupAgent
         isOpen={showWriteupAgent}
         onClose={() => setShowWriteupAgent(false)}
+      />
+
+      <Agents
+        isOpen={showAgents}
+        onClose={() => setShowAgents(false)}
       />
 
       <TierUpgradeModal
