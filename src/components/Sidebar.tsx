@@ -18,7 +18,6 @@ interface SidebarProps {
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
   onOpenWriteupAgent: () => void;
-  onOpenAgents: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -38,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDebateClub,
   onOpenVideoCall,
   onOpenWriteupAgent,
-  onOpenAgents,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -180,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {isProUser && (
                           <button
                             onClick={() => {
-                              onOpenAgents();
+                              // This would open the Agents feature
                               onToggleMobile();
                             }}
                             className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
@@ -546,7 +544,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   {isProUser && (
                     <button
-                      onClick={onOpenAgents}
                       className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                     >
                       <Bot size={16} />
