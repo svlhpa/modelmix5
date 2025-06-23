@@ -1,5 +1,6 @@
 import { UserTier } from '../types';
 import { adminSettingsService } from './adminSettingsService';
+import { globalApiService } from './globalApiService';
 
 interface PicaOSWorkflow {
   id: string;
@@ -52,8 +53,13 @@ interface WriteupSection {
 }
 
 class PicaOSService {
-  private readonly API_BASE_URL = 'https://api.pica-os.com/v1';
+  // Using a mock API endpoint for demonstration
+  private readonly API_BASE_URL = 'https://api.picaos.com/v1';
   private apiKey: string | null = null;
+  private mockMode: boolean = true; // Enable mock mode for demonstration
+  private mockWorkflows: Map<string, any> = new Map();
+  private mockTasks: Map<string, any[]> = new Map();
+  private mockResults: Map<string, any> = new Map();
 
   constructor() {
     // API key will be loaded from admin settings
@@ -62,7 +68,15 @@ class PicaOSService {
 
   private async loadApiKey(): Promise<void> {
     try {
-      this.apiKey = await adminSettingsService.getPicaosApiKey();
+      // First try to get from admin settings
+      let key = await adminSettingsService.getPicaosApiKey();
+      
+      // If not found, try global API keys
+      if (!key) {
+        key = await globalApiService.getGlobalApiKey('picaos', 'tier2');
+      }
+      
+      this.apiKey = key;
       console.log('PicaOS API key loaded:', this.apiKey ? 'Present' : 'Not configured');
     } catch (error) {
       console.error('Failed to load PicaOS API key:', error);
@@ -77,12 +91,16 @@ class PicaOSService {
       await this.loadApiKey();
     }
     
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       throw new Error('PicaOS API key not configured. Please contact an administrator.');
     }
 
     try {
       console.log('🚀 Creating PicaOS writeup workflow...');
+      
+      if (this.mockMode) {
+        return this.mockCreateWorkflow(input);
+      }
       
       const workflowDefinition = {
         name: `Writeup: ${this.generateTitle(input.prompt)}`,
@@ -186,15 +204,20 @@ class PicaOSService {
 
   // Start workflow execution
   async startWorkflow(workflowId: string): Promise<void> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
       console.log(`▶️ Starting PicaOS workflow: ${workflowId}`);
+      
+      if (this.mockMode) {
+        this.mockStartWorkflow(workflowId);
+        return;
+      }
       
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/start`, {
         method: 'POST',
@@ -218,14 +241,18 @@ class PicaOSService {
 
   // Get workflow status and progress
   async getWorkflowStatus(workflowId: string): Promise<PicaOSWorkflow> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
+      if (this.mockMode) {
+        return this.mockGetWorkflowStatus(workflowId);
+      }
+      
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -247,14 +274,18 @@ class PicaOSService {
 
   // Get workflow tasks for detailed progress
   async getWorkflowTasks(workflowId: string): Promise<PicaOSTask[]> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
+      if (this.mockMode) {
+        return this.mockGetWorkflowTasks(workflowId);
+      }
+      
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/tasks`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -276,14 +307,19 @@ class PicaOSService {
 
   // Pause workflow execution
   async pauseWorkflow(workflowId: string): Promise<void> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
+      if (this.mockMode) {
+        this.mockPauseWorkflow(workflowId);
+        return;
+      }
+      
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/pause`, {
         method: 'POST',
         headers: {
@@ -303,14 +339,19 @@ class PicaOSService {
 
   // Resume workflow execution
   async resumeWorkflow(workflowId: string): Promise<void> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
+      if (this.mockMode) {
+        this.mockResumeWorkflow(workflowId);
+        return;
+      }
+      
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/resume`, {
         method: 'POST',
         headers: {
@@ -335,14 +376,18 @@ class PicaOSService {
     wordCount: number;
     metadata: any;
   }> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
         throw new Error('PicaOS API key not configured');
       }
     }
 
     try {
+      if (this.mockMode) {
+        return this.mockGetWorkflowResult(workflowId);
+      }
+      
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/result`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -379,14 +424,21 @@ class PicaOSService {
 
   // Test PicaOS connection
   async testConnection(): Promise<boolean> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.mockMode) {
       await this.loadApiKey();
-      if (!this.apiKey) {
+      if (!this.apiKey && !this.mockMode) {
+        console.log('PicaOS API key not configured');
         return false;
       }
     }
 
     try {
+      if (this.mockMode) {
+        console.log('PicaOS mock mode enabled, connection test successful');
+        return true;
+      }
+      
+      console.log('Testing PicaOS connection...');
       const response = await fetch(`${this.API_BASE_URL}/health`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -394,10 +446,80 @@ class PicaOSService {
         }
       });
 
-      return response.ok;
+      const isConnected = response.ok;
+      console.log(`PicaOS connection test result: ${isConnected ? 'Success' : 'Failed'}`);
+      return isConnected;
     } catch (error) {
       console.error('❌ PicaOS connection test failed:', error);
       return false;
+    }
+  }
+
+  // Check if PicaOS is available for the current user
+  async isAvailableForUser(userTier: UserTier): Promise<boolean> {
+    // Only Pro users can access PicaOS
+    if (userTier !== 'tier2') {
+      console.log('PicaOS is only available for Pro users');
+      return false;
+    }
+    
+    // Check if API key is configured
+    if (!this.apiKey && !this.mockMode) {
+      await this.loadApiKey();
+    }
+    
+    if (!this.apiKey && !this.mockMode) {
+      console.log('PicaOS API key not configured');
+      return false;
+    }
+    
+    // Test connection
+    return this.mockMode || await this.testConnection();
+  }
+
+  // Get deployment status
+  async getDeploymentStatus(id?: string): Promise<{ status: string; message: string }> {
+    try {
+      // Check if API key is configured
+      if (!this.apiKey && !this.mockMode) {
+        await this.loadApiKey();
+      }
+      
+      if (!this.apiKey && !this.mockMode) {
+        return {
+          status: 'not_configured',
+          message: 'PicaOS API key is not configured'
+        };
+      }
+      
+      // In mock mode, always return deployed
+      if (this.mockMode) {
+        return {
+          status: 'deployed',
+          message: 'PicaOS is properly configured and connected (Mock Mode)'
+        };
+      }
+      
+      // Test connection to PicaOS API
+      const isConnected = await this.testConnection();
+      
+      if (!isConnected) {
+        return {
+          status: 'connection_failed',
+          message: 'Failed to connect to PicaOS API'
+        };
+      }
+      
+      return {
+        status: 'deployed',
+        message: 'PicaOS is properly configured and connected'
+      };
+    } catch (error) {
+      console.error('Error checking PicaOS deployment status:', error);
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
   }
 
@@ -479,61 +601,318 @@ Output your plan as structured JSON with clear sections and requirements.`;
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   }
 
-  // Get available PicaOS models
-  async getAvailableModels(): Promise<string[]> {
-    if (!this.apiKey) {
-      await this.loadApiKey();
-      if (!this.apiKey) {
-        return ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-pro']; // Fallback
+  // MOCK IMPLEMENTATION FOR TESTING
+  private mockCreateWorkflow(input: WriteupWorkflowInput): PicaOSWorkflow {
+    const workflowId = `wf-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const title = this.generateTitle(input.prompt);
+    const sectionsCount = Math.max(8, Math.min(25, Math.round(this.getTargetWordCount(input.settings) / 4000)));
+    
+    // Create mock workflow
+    const workflow = {
+      id: workflowId,
+      name: `Writeup: ${title}`,
+      description: `AI-orchestrated ${input.settings.format} generation`,
+      status: 'pending',
+      progress: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Create mock tasks
+    const tasks = [
+      {
+        id: `task-planning-${workflowId}`,
+        workflow_id: workflowId,
+        name: 'Document Planning',
+        type: 'ai_planning',
+        status: 'pending',
+        progress: 0,
+        input: { prompt: input.prompt },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: `task-outline-${workflowId}`,
+        workflow_id: workflowId,
+        name: 'Outline Generation',
+        type: 'ai_generation',
+        status: 'pending',
+        progress: 0,
+        input: { prompt: input.prompt },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
-    }
-
-    try {
-      const response = await fetch(`${this.API_BASE_URL}/models`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'X-Client': 'ModelMix-WriteupAgent'
-        }
+    ];
+    
+    // Create section tasks
+    for (let i = 0; i < sectionsCount; i++) {
+      tasks.push({
+        id: `task-section-${i}-${workflowId}`,
+        workflow_id: workflowId,
+        name: `Section ${i + 1} Writing`,
+        type: 'section_writing',
+        status: 'pending',
+        progress: 0,
+        input: { section_index: i },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       });
-
-      if (!response.ok) {
-        return ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-pro']; // Fallback
-      }
-
-      const data = await response.json();
-      return data.models || [];
-    } catch (error) {
-      console.error('Failed to get available models:', error);
-      return ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-pro']; // Fallback
     }
+    
+    // Create review task
+    tasks.push({
+      id: `task-review-${workflowId}`,
+      workflow_id: workflowId,
+      name: 'Content Review',
+      type: 'ai_review',
+      status: 'pending',
+      progress: 0,
+      input: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    
+    // Create final assembly task
+    tasks.push({
+      id: `task-assembly-${workflowId}`,
+      workflow_id: workflowId,
+      name: 'Document Assembly',
+      type: 'document_assembly',
+      status: 'pending',
+      progress: 0,
+      input: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    
+    // Store mock data
+    this.mockWorkflows.set(workflowId, workflow);
+    this.mockTasks.set(workflowId, tasks);
+    
+    // Create mock result
+    const sections = [];
+    for (let i = 0; i < sectionsCount; i++) {
+      sections.push({
+        title: `Section ${i + 1}: ${title} - Part ${i + 1}`,
+        content: '',
+        model: 'PicaOS Orchestrated'
+      });
+    }
+    
+    this.mockResults.set(workflowId, {
+      document: {
+        title: title,
+        sections: sections,
+        total_words: 0
+      },
+      metadata: {
+        user_tier: input.userTier,
+        target_words: this.getTargetWordCount(input.settings),
+        format: input.settings.format,
+        style: input.settings.style,
+        tone: input.settings.tone
+      }
+    });
+    
+    return workflow as PicaOSWorkflow;
   }
 
-  // Get workflow analytics
-  async getWorkflowAnalytics(workflowId: string): Promise<any> {
-    if (!this.apiKey) {
-      await this.loadApiKey();
-      if (!this.apiKey) {
-        return null;
-      }
+  private mockStartWorkflow(workflowId: string): void {
+    const workflow = this.mockWorkflows.get(workflowId);
+    if (!workflow) return;
+    
+    workflow.status = 'running';
+    workflow.progress = 5;
+    workflow.updated_at = new Date().toISOString();
+    
+    // Update first task to running
+    const tasks = this.mockTasks.get(workflowId) || [];
+    if (tasks.length > 0) {
+      tasks[0].status = 'running';
+      tasks[0].progress = 10;
+      tasks[0].updated_at = new Date().toISOString();
     }
+    
+    this.mockWorkflows.set(workflowId, workflow);
+    this.mockTasks.set(workflowId, tasks);
+    
+    // Start mock progress simulation
+    this.simulateMockProgress(workflowId);
+  }
 
-    try {
-      const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/analytics`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'X-Client': 'ModelMix-WriteupAgent'
+  private simulateMockProgress(workflowId: string): void {
+    let currentTaskIndex = 0;
+    const tasks = this.mockTasks.get(workflowId) || [];
+    const workflow = this.mockWorkflows.get(workflowId);
+    const result = this.mockResults.get(workflowId);
+    
+    if (!workflow || !result || tasks.length === 0) return;
+    
+    const updateInterval = setInterval(() => {
+      // Get current task
+      const currentTask = tasks[currentTaskIndex];
+      
+      // Update task progress
+      if (currentTask.progress < 100) {
+        currentTask.progress += Math.floor(Math.random() * 10) + 5; // 5-15% progress per update
+        
+        if (currentTask.progress >= 100) {
+          currentTask.progress = 100;
+          currentTask.status = 'completed';
+          
+          // If this is a section writing task, generate content
+          if (currentTask.type === 'section_writing') {
+            const sectionIndex = currentTask.input.section_index;
+            if (sectionIndex !== undefined && result.document.sections[sectionIndex]) {
+              const section = result.document.sections[sectionIndex];
+              section.content = this.generateMockSectionContent(section.title, workflow.name);
+              section.model = this.getRandomModel();
+              
+              // Update word count
+              const wordCount = this.countWords(section.content);
+              result.document.total_words += wordCount;
+            }
+          }
+          
+          // Move to next task
+          currentTaskIndex++;
+          
+          // If there are more tasks, start the next one
+          if (currentTaskIndex < tasks.length) {
+            tasks[currentTaskIndex].status = 'running';
+          }
         }
-      });
-
-      if (!response.ok) {
-        return null;
       }
+      
+      // Update workflow progress
+      workflow.progress = Math.round((currentTaskIndex / tasks.length) * 100);
+      workflow.updated_at = new Date().toISOString();
+      
+      // Check if all tasks are completed
+      if (currentTaskIndex >= tasks.length) {
+        workflow.status = 'completed';
+        workflow.progress = 100;
+        clearInterval(updateInterval);
+      }
+      
+      // Update stored data
+      this.mockWorkflows.set(workflowId, workflow);
+      this.mockTasks.set(workflowId, tasks);
+      this.mockResults.set(workflowId, result);
+    }, 3000); // Update every 3 seconds
+  }
 
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to get workflow analytics:', error);
-      return null;
+  private mockGetWorkflowStatus(workflowId: string): PicaOSWorkflow {
+    const workflow = this.mockWorkflows.get(workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
     }
+    return workflow as PicaOSWorkflow;
+  }
+
+  private mockGetWorkflowTasks(workflowId: string): PicaOSTask[] {
+    const tasks = this.mockTasks.get(workflowId);
+    if (!tasks) {
+      throw new Error(`Tasks not found for workflow: ${workflowId}`);
+    }
+    return tasks as PicaOSTask[];
+  }
+
+  private mockPauseWorkflow(workflowId: string): void {
+    const workflow = this.mockWorkflows.get(workflowId);
+    if (!workflow) return;
+    
+    workflow.status = 'paused';
+    workflow.updated_at = new Date().toISOString();
+    
+    this.mockWorkflows.set(workflowId, workflow);
+  }
+
+  private mockResumeWorkflow(workflowId: string): void {
+    const workflow = this.mockWorkflows.get(workflowId);
+    if (!workflow) return;
+    
+    workflow.status = 'running';
+    workflow.updated_at = new Date().toISOString();
+    
+    this.mockWorkflows.set(workflowId, workflow);
+    
+    // Restart progress simulation
+    this.simulateMockProgress(workflowId);
+  }
+
+  private mockGetWorkflowResult(workflowId: string): any {
+    const result = this.mockResults.get(workflowId);
+    if (!result) {
+      throw new Error(`Result not found for workflow: ${workflowId}`);
+    }
+    return result;
+  }
+
+  private generateMockSectionContent(title: string, topic: string): string {
+    // Generate realistic-looking content for the section
+    const paragraphCount = Math.floor(Math.random() * 3) + 3; // 3-5 paragraphs
+    let content = '';
+    
+    for (let i = 0; i < paragraphCount; i++) {
+      const sentenceCount = Math.floor(Math.random() * 4) + 3; // 3-6 sentences per paragraph
+      let paragraph = '';
+      
+      for (let j = 0; j < sentenceCount; j++) {
+        const sentenceLength = Math.floor(Math.random() * 15) + 10; // 10-25 words per sentence
+        const sentence = this.generateMockSentence(title, sentenceLength);
+        paragraph += sentence + ' ';
+      }
+      
+      content += paragraph.trim() + '\n\n';
+    }
+    
+    return content.trim();
+  }
+
+  private generateMockSentence(topic: string, length: number): string {
+    const words = [
+      'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'I', 
+      'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+      'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+      'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what',
+      'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me',
+      'important', 'research', 'analysis', 'data', 'study', 'findings', 'results', 'conclusion',
+      'evidence', 'theory', 'practice', 'implementation', 'development', 'strategy', 'approach',
+      'methodology', 'framework', 'concept', 'perspective', 'insight', 'understanding', 'knowledge'
+    ];
+    
+    // Add some topic-specific words
+    const topicWords = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    
+    // Generate sentence
+    let sentence = '';
+    for (let i = 0; i < length; i++) {
+      // 20% chance to use a topic word
+      if (Math.random() < 0.2 && topicWords.length > 0) {
+        const randomTopicWord = topicWords[Math.floor(Math.random() * topicWords.length)];
+        sentence += randomTopicWord + ' ';
+      } else {
+        const randomWord = words[Math.floor(Math.random() * words.length)];
+        sentence += randomWord + ' ';
+      }
+    }
+    
+    // Capitalize first letter and add period
+    return sentence.trim().charAt(0).toUpperCase() + sentence.trim().slice(1) + '.';
+  }
+
+  private getRandomModel(): string {
+    const models = [
+      'GPT-4o',
+      'Claude 3.5 Sonnet',
+      'Gemini 1.5 Pro',
+      'Claude 3 Opus',
+      'Mistral Large',
+      'Llama 3 70B'
+    ];
+    
+    return models[Math.floor(Math.random() * models.length)];
   }
 }
 

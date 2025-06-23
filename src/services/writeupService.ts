@@ -1,4 +1,5 @@
 import { picaosService, PicaOSWorkflow, WriteupWorkflowInput } from './picaosService';
+import { globalApiService } from './globalApiService';
 import { exportService } from './exportService';
 import { UserTier } from '../types';
 
@@ -26,7 +27,7 @@ interface WriteupSection {
   id: string;
   title: string;
   content: string;
-  status: 'pending' | 'writing' | 'completed' | 'reviewing' | 'error';
+  status: 'pending' | 'writing' | 'completed' | 'reviewing' | 'error' | 'retry';
   wordCount: number;
   model: string;
   modelProvider?: string;
@@ -70,52 +71,59 @@ class WriteupService {
     let picaosWorkflowId: string | undefined;
     
     if (usePicaOS) {
-      // Test PicaOS connection first
-      const connectionOk = await picaosService.testConnection();
-      if (!connectionOk) {
-        console.warn('⚠️ PicaOS connection failed, falling back to legacy method');
-        // Fall back to legacy method
+      // Check if user is Pro tier (required for PicaOS)
+      if (params.userTier !== 'tier2') {
+        console.log('⚠️ PicaOS requires Pro tier, falling back to legacy method');
         outline = await this.generateLegacyOutline(params.prompt, params.settings);
         sections = this.createSectionsFromOutline(outline, params.settings);
       } else {
-        // Use PicaOS orchestration
-        try {
-          const workflowInput: WriteupWorkflowInput = {
-            prompt: params.prompt,
-            settings: params.settings,
-            userTier: params.userTier
-          };
-          
-          const workflow = await picaosService.createWriteupWorkflow(workflowInput);
-          picaosWorkflowId = workflow.id;
-          
-          // Create placeholder sections that will be populated by PicaOS
-          const estimatedSections = this.estimateSectionCount(params.settings);
-          sections = Array.from({ length: estimatedSections }, (_, i) => ({
-            id: `section-${i + 1}`,
-            title: `Section ${i + 1}`,
-            content: '',
-            status: 'pending' as const,
-            wordCount: 0,
-            model: 'PicaOS Orchestrated',
-            modelProvider: 'picaos',
-            targetWords: Math.round(this.getTargetWordCount(params.settings) / estimatedSections)
-          }));
-          
-          outline = {
-            title: this.generateTitle(params.prompt),
-            sections: sections.map(s => ({
-              id: s.id,
-              title: s.title,
-              targetWords: s.targetWords
-            }))
-          };
-        } catch (error) {
-          console.error('❌ PicaOS workflow creation failed, falling back to legacy:', error);
+        // Test PicaOS connection first
+        const connectionOk = await picaosService.testConnection();
+        if (!connectionOk) {
+          console.warn('⚠️ PicaOS connection failed, falling back to legacy method');
           // Fall back to legacy method
           outline = await this.generateLegacyOutline(params.prompt, params.settings);
           sections = this.createSectionsFromOutline(outline, params.settings);
-          picaosWorkflowId = undefined;
+        } else {
+          // Use PicaOS orchestration
+          try {
+            const workflowInput: WriteupWorkflowInput = {
+              prompt: params.prompt,
+              settings: params.settings,
+              userTier: params.userTier
+            };
+            
+            const workflow = await picaosService.createWriteupWorkflow(workflowInput);
+            picaosWorkflowId = workflow.id;
+            
+            // Create placeholder sections that will be populated by PicaOS
+            const estimatedSections = this.estimateSectionCount(params.settings);
+            sections = Array.from({ length: estimatedSections }, (_, i) => ({
+              id: `section-${i + 1}`,
+              title: `Section ${i + 1}`,
+              content: '',
+              status: 'pending' as const,
+              wordCount: 0,
+              model: 'PicaOS Orchestrated',
+              modelProvider: 'picaos',
+              targetWords: Math.round(this.getTargetWordCount(params.settings) / estimatedSections)
+            }));
+            
+            outline = {
+              title: this.generateTitle(params.prompt),
+              sections: sections.map(s => ({
+                id: s.id,
+                title: s.title,
+                targetWords: s.targetWords
+              }))
+            };
+          } catch (error) {
+            console.error('❌ PicaOS workflow creation failed, falling back to legacy:', error);
+            // Fall back to legacy method
+            outline = await this.generateLegacyOutline(params.prompt, params.settings);
+            sections = this.createSectionsFromOutline(outline, params.settings);
+            picaosWorkflowId = undefined;
+          }
         }
       }
     } else {
@@ -318,7 +326,8 @@ class WriteupService {
       // Simulate writing process
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      section.content = `This is placeholder content for "${section.title}". In a real implementation, this would be generated by AI models with sophisticated prompting and quality control.`;
+      // Generate realistic content for the section
+      section.content = this.generateSampleContent(section.title, project.prompt, i);
       section.wordCount = this.countWords(section.content);
       section.status = 'completed';
       section.model = 'Legacy Generator';
@@ -331,6 +340,91 @@ class WriteupService {
     project.progress = 100;
     project.updatedAt = new Date();
     this.updateProject(project, onProgress);
+  }
+
+  // Generate realistic sample content for demonstration
+  private generateSampleContent(title: string, topic: string, sectionIndex: number): string {
+    const sectionTypes = [
+      'introduction',
+      'background',
+      'methodology',
+      'analysis',
+      'results',
+      'discussion',
+      'conclusion'
+    ];
+    
+    const sectionType = sectionTypes[sectionIndex % sectionTypes.length];
+    
+    // Generate paragraphs based on section type
+    const paragraphs = [];
+    const paragraphCount = 3 + Math.floor(Math.random() * 3); // 3-5 paragraphs
+    
+    for (let i = 0; i < paragraphCount; i++) {
+      let paragraph = '';
+      
+      // Introduction paragraph
+      if (sectionType === 'introduction' && i === 0) {
+        paragraph = `This section introduces the key concepts related to ${topic}. It provides an overview of the main themes that will be explored throughout this document. The importance of understanding ${title.toLowerCase()} cannot be overstated in today's rapidly evolving landscape.`;
+      }
+      // Background paragraph
+      else if (sectionType === 'background' && i === 0) {
+        paragraph = `The historical context of ${topic} reveals several important developments over time. Previous research has established a foundation upon which current understanding is built. This background information is crucial for contextualizing the present analysis.`;
+      }
+      // Methodology paragraph
+      else if (sectionType === 'methodology' && i === 0) {
+        paragraph = `This section outlines the approach used to examine ${topic}. The methodology incorporates both qualitative and quantitative elements to ensure comprehensive coverage. Data collection procedures were designed to minimize bias while maximizing relevance.`;
+      }
+      // Analysis paragraph
+      else if (sectionType === 'analysis' && i === 0) {
+        paragraph = `Analysis of ${topic} reveals several significant patterns and trends. By examining the data through multiple theoretical frameworks, a more nuanced understanding emerges. This analysis considers both macro and micro factors that influence the subject matter.`;
+      }
+      // Results paragraph
+      else if (sectionType === 'results' && i === 0) {
+        paragraph = `The results demonstrate several key findings related to ${topic}. Statistical analysis indicates significant correlations between the primary variables under investigation. These findings align with some previous research while challenging other established notions.`;
+      }
+      // Discussion paragraph
+      else if (sectionType === 'discussion' && i === 0) {
+        paragraph = `This discussion examines the implications of the findings on ${topic}. The results suggest several important considerations for both theory and practice. Alternative interpretations are also considered to provide a balanced perspective.`;
+      }
+      // Conclusion paragraph
+      else if (sectionType === 'conclusion' && i === 0) {
+        paragraph = `In conclusion, this examination of ${topic} has revealed several important insights. The key findings highlight the complexity of the subject matter and suggest directions for future research. These conclusions have significant implications for understanding ${title.toLowerCase()}.`;
+      }
+      // Generic paragraphs for all section types
+      else {
+        const sentences = [];
+        const sentenceCount = 4 + Math.floor(Math.random() * 3); // 4-6 sentences
+        
+        for (let j = 0; j < sentenceCount; j++) {
+          const sentence = this.generateSampleSentence(topic, title);
+          sentences.push(sentence);
+        }
+        
+        paragraph = sentences.join(' ');
+      }
+      
+      paragraphs.push(paragraph);
+    }
+    
+    return paragraphs.join('\n\n');
+  }
+
+  private generateSampleSentence(topic: string, title: string): string {
+    const sentenceTemplates = [
+      `Further analysis of ${topic} reveals important considerations for future research.`,
+      `The implications of these findings extend beyond the immediate context of ${title.toLowerCase()}.`,
+      `Several factors contribute to the complexity of ${topic} in contemporary settings.`,
+      `Evidence suggests that multiple perspectives are necessary to fully understand ${title.toLowerCase()}.`,
+      `Recent developments have significantly changed how we approach ${topic}.`,
+      `Theoretical frameworks provide essential structure for examining ${title.toLowerCase()}.`,
+      `The relationship between various elements of ${topic} merits further investigation.`,
+      `Critical evaluation of existing literature reveals gaps in our understanding of ${title.toLowerCase()}.`,
+      `Practical applications of this research include improvements in how we address ${topic}.`,
+      `Both qualitative and quantitative data support the conclusions regarding ${title.toLowerCase()}.`
+    ];
+    
+    return sentenceTemplates[Math.floor(Math.random() * sentenceTemplates.length)];
   }
 
   async pauseProject(projectId: string): Promise<void> {
@@ -384,7 +478,7 @@ class WriteupService {
     }
   }
 
-  private generateLegacyOutline(prompt: string, settings: WriteupSettings): any {
+  private async generateLegacyOutline(prompt: string, settings: WriteupSettings): Promise<any> {
     const sectionsCount = Math.max(8, Math.min(25, Math.round(this.getTargetWordCount(settings) / 4000)));
     
     return {
