@@ -139,7 +139,8 @@ class GlobalApiService {
       deepseek: 'DeepSeek',
       serper: 'Serper (Internet Search)',
       imagerouter: 'Imagerouter (Image Generation)',
-      tavus: 'Tavus (AI Video Calls)'
+      tavus: 'Tavus (AI Video Calls)',
+      picaos: 'PicaOS (AI Orchestration)'
     };
     return names[provider] || provider;
   }
@@ -152,7 +153,8 @@ class GlobalApiService {
       deepseek: '🔍',
       serper: '🌐',
       imagerouter: '🎨',
-      tavus: '📹'
+      tavus: '📹',
+      picaos: '🧠'
     };
     return icons[provider] || '🔧';
   }

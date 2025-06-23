@@ -76,6 +76,19 @@ class AdminSettingsService {
     );
   }
 
+  // PicaOS API Key methods
+  async getPicaosApiKey(): Promise<string | null> {
+    return await this.getSetting('picaos_api_key');
+  }
+
+  async updatePicaosApiKey(apiKey: string): Promise<void> {
+    await this.updateSetting(
+      'picaos_api_key',
+      apiKey,
+      'PicaOS API key for AI orchestration (Pro users only)'
+    );
+  }
+
   // Get all users who haven't seen the current video
   async getUsersWhoHaventSeenCurrentVideo(): Promise<number> {
     const currentVideoUrl = await this.getGetStartedVideoUrl();

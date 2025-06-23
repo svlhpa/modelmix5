@@ -1,4 +1,5 @@
 import { UserTier } from '../types';
+import { adminSettingsService } from './adminSettingsService';
 
 interface PicaOSWorkflow {
   id: string;
@@ -52,15 +53,34 @@ interface WriteupSection {
 
 class PicaOSService {
   private readonly API_BASE_URL = 'https://api.pica-os.com/v1';
-  private readonly API_KEY: string;
+  private apiKey: string | null = null;
 
   constructor() {
-    // Use the provided PicaOS API key
-    this.API_KEY = 'sk_test_1_4CutzakR2pGDSJFSACOjegJgF5DPxgWtO5sCr9M0NHobi0cSLGYPDhPcA1HZMCA_cl1gMie4gTM_qd1ViR5SYDcr1KqG2lxI4wpfCi5VzaAMDL3iOvNQMq-F1R8jk7PDxVxwrKhgBXmLF9mUUAgeJbppGyp07PtoRXyYwb0TLJjz5aHXdKzoeq8Gg8saMuLYBtq3nltyeU3nU3IaQ2NCXGz5qcfNmQAsVQWTzi9Cqg';
+    // API key will be loaded from admin settings
+    this.loadApiKey();
+  }
+
+  private async loadApiKey(): Promise<void> {
+    try {
+      this.apiKey = await adminSettingsService.getPicaosApiKey();
+      console.log('PicaOS API key loaded:', this.apiKey ? 'Present' : 'Not configured');
+    } catch (error) {
+      console.error('Failed to load PicaOS API key:', error);
+      this.apiKey = null;
+    }
   }
 
   // Create a comprehensive writeup workflow in PicaOS
   async createWriteupWorkflow(input: WriteupWorkflowInput): Promise<PicaOSWorkflow> {
+    // Ensure API key is loaded
+    if (!this.apiKey) {
+      await this.loadApiKey();
+    }
+    
+    if (!this.apiKey) {
+      throw new Error('PicaOS API key not configured. Please contact an administrator.');
+    }
+
     try {
       console.log('🚀 Creating PicaOS writeup workflow...');
       
@@ -143,7 +163,7 @@ class PicaOSService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         },
         body: JSON.stringify(workflowDefinition)
@@ -166,13 +186,20 @@ class PicaOSService {
 
   // Start workflow execution
   async startWorkflow(workflowId: string): Promise<void> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       console.log(`▶️ Starting PicaOS workflow: ${workflowId}`);
       
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/start`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -191,10 +218,17 @@ class PicaOSService {
 
   // Get workflow status and progress
   async getWorkflowStatus(workflowId: string): Promise<PicaOSWorkflow> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -213,10 +247,17 @@ class PicaOSService {
 
   // Get workflow tasks for detailed progress
   async getWorkflowTasks(workflowId: string): Promise<PicaOSTask[]> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/tasks`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -235,11 +276,18 @@ class PicaOSService {
 
   // Pause workflow execution
   async pauseWorkflow(workflowId: string): Promise<void> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/pause`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -255,11 +303,18 @@ class PicaOSService {
 
   // Resume workflow execution
   async resumeWorkflow(workflowId: string): Promise<void> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/resume`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -280,10 +335,17 @@ class PicaOSService {
     wordCount: number;
     metadata: any;
   }> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        throw new Error('PicaOS API key not configured');
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/result`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -317,10 +379,17 @@ class PicaOSService {
 
   // Test PicaOS connection
   async testConnection(): Promise<boolean> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        return false;
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/health`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -412,10 +481,17 @@ Output your plan as structured JSON with clear sections and requirements.`;
 
   // Get available PicaOS models
   async getAvailableModels(): Promise<string[]> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        return ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-pro']; // Fallback
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/models`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
@@ -434,10 +510,17 @@ Output your plan as structured JSON with clear sections and requirements.`;
 
   // Get workflow analytics
   async getWorkflowAnalytics(workflowId: string): Promise<any> {
+    if (!this.apiKey) {
+      await this.loadApiKey();
+      if (!this.apiKey) {
+        return null;
+      }
+    }
+
     try {
       const response = await fetch(`${this.API_BASE_URL}/workflows/${workflowId}/analytics`, {
         headers: {
-          'Authorization': `Bearer ${this.API_KEY}`,
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-Client': 'ModelMix-WriteupAgent'
         }
       });
