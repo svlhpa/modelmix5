@@ -80,9 +80,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     currentVideoUrl: ''
   });
   const [savingVideo, setSavingVideo] = useState(false);
+  const [savingPicaos, setSavingPicaos] = useState(false);
   const [videoSaved, setVideoSaved] = useState(false);
-  const [savingPicaosKey, setSavingPicaosKey] = useState(false);
-  const [picaosKeySaved, setPicaosKeySaved] = useState(false);
+  const [picaosSaved, setPicaosSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -117,15 +117,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   const loadAdminSettings = async () => {
     try {
-      const [videoUrl, stats, picaosKey] = await Promise.all([
+      const [videoUrl, picaosKey, stats] = await Promise.all([
         adminSettingsService.getGetStartedVideoUrl(),
-        adminSettingsService.getVideoViewStats(),
-        adminSettingsService.getPicaosApiKey()
+        adminSettingsService.getPicaosApiKey(),
+        adminSettingsService.getVideoViewStats()
       ]);
       
       setGetStartedVideoUrl(videoUrl);
-      setVideoStats(stats);
       setPicaosApiKey(picaosKey || '');
+      setVideoStats(stats);
     } catch (error) {
       console.error('Failed to load admin settings:', error);
     }
@@ -230,21 +230,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   };
 
   const handleSavePicaosApiKey = async () => {
-    if (!picaosApiKey.trim()) return;
-
-    setSavingPicaosKey(true);
-    setPicaosKeySaved(false);
+    setSavingPicaos(true);
+    setPicaosSaved(false);
     
     try {
       await adminSettingsService.updatePicaosApiKey(picaosApiKey.trim());
-      setPicaosKeySaved(true);
+      setPicaosSaved(true);
       
       // Hide success message after 3 seconds
-      setTimeout(() => setPicaosKeySaved(false), 3000);
+      setTimeout(() => setPicaosSaved(false), 3000);
     } catch (error) {
       console.error('Failed to save PicaOS API key:', error);
     } finally {
-      setSavingPicaosKey(false);
+      setSavingPicaos(false);
     }
   };
 
@@ -294,11 +292,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   const isValidYouTubeUrl = (url: string): boolean => {
     return extractYouTubeVideoId(url) !== null;
-  };
-
-  const isValidPicaosApiKey = (key: string): boolean => {
-    return /^sk_test_\d+_[A-Za-z0-9_-]{80,}$/.test(key) || 
-           /^sk_live_\d+_[A-Za-z0-9_-]{80,}$/.test(key);
   };
 
   if (!isOpen) return null;
@@ -971,16 +964,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         </div>
                       )}
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h5 className="font-medium text-blue-800 mb-2">How it works</h5>
-                      <ul className="text-sm text-blue-700 space-y-1">
-                        <li>• When users sign up for the first time, they'll see this video in a popup</li>
-                        <li>• Once they watch it (or skip it), they won't see it again</li>
-                        <li>• If you change the video URL, all users will see the new video once</li>
-                        <li>• The system tracks which users have seen which videos</li>
-                      </ul>
-                    </div>
                   </div>
                 </div>
 
@@ -1000,29 +983,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       <div className="flex space-x-3">
                         <div className="relative flex-1">
                           <input
-                            type={showKeys['picaos'] ? 'text' : 'password'}
+                            type="password"
                             value={picaosApiKey}
                             onChange={(e) => setPicaosApiKey(e.target.value)}
-                            placeholder="sk_test_1_..."
-                            className={`w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                              picaosApiKey && !isValidPicaosApiKey(picaosApiKey)
-                                ? 'border-red-300 bg-red-50'
-                                : 'border-gray-300'
-                            }`}
+                            placeholder="sk_test_..."
+                            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                           <button
-                            onClick={() => setShowKeys(prev => ({ ...prev, picaos: !prev.picaos }))}
+                            onClick={() => setPicaosApiKey('')}
                             className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            title="Clear API key"
                           >
-                            {showKeys['picaos'] ? <EyeOff size={16} /> : <Eye size={16} />}
+                            {picaosApiKey ? <X size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
                         <button
                           onClick={handleSavePicaosApiKey}
-                          disabled={!picaosApiKey.trim() || !isValidPicaosApiKey(picaosApiKey) || savingPicaosKey}
+                          disabled={savingPicaos}
                           className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {savingPicaosKey ? (
+                          {savingPicaos ? (
                             <>
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                               <span>Saving...</span>
@@ -1036,11 +1016,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         </button>
                       </div>
                       
-                      {picaosApiKey && !isValidPicaosApiKey(picaosApiKey) && (
-                        <p className="text-sm text-red-600 mt-1">Please enter a valid PicaOS API key (starts with sk_test_1_ or sk_live_1_)</p>
-                      )}
-                      
-                      {picaosKeySaved && (
+                      {picaosSaved && (
                         <div className="flex items-center space-x-2 text-green-600 mt-2 animate-fadeIn">
                           <CheckCircle size={16} />
                           <span className="text-sm">PicaOS API key saved successfully!</span>
@@ -1051,25 +1027,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
                       <h5 className="font-medium text-indigo-800 mb-2">About PicaOS</h5>
                       <p className="text-sm text-indigo-700 mb-3">
-                        PicaOS is an advanced AI orchestration system that intelligently coordinates multiple AI models to produce higher quality content. It's used in the Write-up Agent feature for Pro users.
+                        PicaOS is an advanced AI orchestration system that intelligently coordinates multiple AI models to produce higher quality content. It's available exclusively for Pro users.
                       </p>
-                      <ul className="text-sm text-indigo-700 space-y-1">
-                        <li>• Only Pro users can access PicaOS orchestration</li>
-                        <li>• PicaOS API key is stored securely and used for all Pro users</li>
-                        <li>• Enables advanced document generation with multi-model orchestration</li>
-                        <li>• Provides better quality control and content coherence</li>
-                      </ul>
-                    </div>
-
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <div className="flex items-start space-x-2">
-                        <Crown className="text-yellow-600 mt-0.5" size={16} />
-                        <div>
-                          <h5 className="font-medium text-yellow-800 mb-1">Pro User Feature</h5>
-                          <p className="text-sm text-yellow-700">
-                            PicaOS orchestration is only available to Pro tier users. Free tier users will automatically fall back to the legacy writing method.
-                          </p>
-                        </div>
+                      <div className="text-xs text-indigo-600 bg-indigo-100 p-3 rounded-lg">
+                        <p className="font-medium mb-1">Key Features:</p>
+                        <ul className="space-y-1">
+                          <li>• Intelligent model selection for optimal results</li>
+                          <li>• Parallel processing for faster document generation</li>
+                          <li>• Automatic quality control and refinement</li>
+                          <li>• Coherent multi-section document creation</li>
+                          <li>• Token usage optimization and cost efficiency</li>
+                        </ul>
                       </div>
                     </div>
                   </div>
