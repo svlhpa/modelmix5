@@ -9,8 +9,10 @@ import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
 import { AIVideoCall } from './components/AIVideoCall';
 import { WriteupAgent } from './components/WriteupAgent';
+import { GetStartedModal } from './components/GetStartedModal';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
+import { useGetStartedVideo } from './hooks/useGetStartedVideo';
 import { aiService } from './services/aiService';
 import { tierService } from './services/tierService';
 import { APISettings, ModelSettings } from './types';
@@ -29,6 +31,9 @@ function App() {
     deleteSession,
     saveConversationTurn
   } = useChat();
+
+  // Get Started Video Hook
+  const { shouldShowVideo, videoUrl, loading: videoLoading, hideVideo, markVideoAsWatched } = useGetStartedVideo();
 
   const [showSettings, setShowSettings] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -167,6 +172,11 @@ function App() {
   const handleTierUpgradeClose = () => {
     setShowTierUpgrade(false);
     refreshProfile(); // Refresh profile to get updated tier info
+  };
+
+  const handleGetStartedVideoClose = async () => {
+    await markVideoAsWatched();
+    hideVideo();
   };
 
   if (!user) {
@@ -310,6 +320,16 @@ function App() {
         onClose={handleTierUpgradeClose}
         currentTier={getCurrentTier()}
       />
+
+      {/* Get Started Video Modal */}
+      {!videoLoading && shouldShowVideo && videoUrl && (
+        <GetStartedModal
+          isOpen={true}
+          onClose={handleGetStartedVideoClose}
+          videoUrl={videoUrl}
+          userId={user.id}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video } from 'lucide-react';
+import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video, Youtube, ExternalLink, CheckCircle } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
+import { adminSettingsService } from '../services/adminSettingsService';
 import { UserTier } from '../types';
 
 interface AdminDashboardProps {
@@ -54,7 +55,7 @@ interface GlobalProviderStats {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-keys' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-keys' | 'analytics' | 'settings'>('overview');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [globalKeys, setGlobalKeys] = useState<GlobalApiKey[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -68,6 +69,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     usage_limit: null as number | null
   });
   const [showNewKeyForm, setShowNewKeyForm] = useState(false);
+
+  // Admin Settings State
+  const [getStartedVideoUrl, setGetStartedVideoUrl] = useState('');
+  const [videoStats, setVideoStats] = useState({
+    totalUsers: 0,
+    usersWhoWatchedCurrent: 0,
+    usersWhoHaventWatched: 0,
+    currentVideoUrl: ''
+  });
+  const [savingVideo, setSavingVideo] = useState(false);
+  const [videoSaved, setVideoSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -90,11 +102,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       } else if (activeTab === 'analytics') {
         const analyticsData = await adminService.getGlobalProviderStats();
         setProviderStats(analyticsData);
+      } else if (activeTab === 'settings') {
+        await loadAdminSettings();
       }
     } catch (error) {
       console.error('Failed to load admin data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAdminSettings = async () => {
+    try {
+      const [videoUrl, stats] = await Promise.all([
+        adminSettingsService.getGetStartedVideoUrl(),
+        adminSettingsService.getVideoViewStats()
+      ]);
+      
+      setGetStartedVideoUrl(videoUrl);
+      setVideoStats(stats);
+    } catch (error) {
+      console.error('Failed to load admin settings:', error);
     }
   };
 
@@ -176,6 +204,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     }
   };
 
+  const handleSaveVideoUrl = async () => {
+    if (!getStartedVideoUrl.trim()) return;
+
+    setSavingVideo(true);
+    setVideoSaved(false);
+    
+    try {
+      await adminSettingsService.updateGetStartedVideoUrl(getStartedVideoUrl.trim());
+      await loadAdminSettings(); // Reload stats
+      setVideoSaved(true);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => setVideoSaved(false), 3000);
+    } catch (error) {
+      console.error('Failed to save video URL:', error);
+    } finally {
+      setSavingVideo(false);
+    }
+  };
+
   const toggleShowKey = (keyId: string) => {
     setShowKeys(prev => ({ ...prev, [keyId]: !prev[keyId] }));
   };
@@ -213,6 +261,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     return globalApiService.getUsageBarColor(percentage);
   };
 
+  const extractYouTubeVideoId = (url: string): string | null => {
+    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+  };
+
+  const isValidYouTubeUrl = (url: string): boolean => {
+    return extractYouTubeVideoId(url) !== null;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -225,7 +283,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Admin Dashboard</h2>
-              <p className="text-sm text-gray-500">Manage users, global API keys, and system analytics</p>
+              <p className="text-sm text-gray-500">Manage users, global API keys, and system settings</p>
             </div>
           </div>
           <button
@@ -281,6 +339,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
           >
             <Activity size={16} />
             <span>Analytics</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+              activeTab === 'settings' 
+                ? 'bg-white text-red-600 shadow-sm' 
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Settings size={16} />
+            <span>Settings</span>
           </button>
         </div>
 
@@ -742,6 +811,141 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     <p className="text-gray-500">Analytics will appear here once users start using the platform</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Settings Tab */}
+            {activeTab === 'settings' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-medium text-gray-900">Admin Settings</h3>
+                
+                {/* Get Started Video Settings */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Youtube className="text-red-600" size={24} />
+                    <div>
+                      <h4 className="font-medium text-gray-900">Get Started Video</h4>
+                      <p className="text-sm text-gray-500">YouTube video shown to new users when they first sign up</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">YouTube URL</label>
+                      <div className="flex space-x-3">
+                        <input
+                          type="url"
+                          value={getStartedVideoUrl}
+                          onChange={(e) => setGetStartedVideoUrl(e.target.value)}
+                          placeholder="https://youtu.be/..."
+                          className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 ${
+                            getStartedVideoUrl && !isValidYouTubeUrl(getStartedVideoUrl)
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300'
+                          }`}
+                        />
+                        <button
+                          onClick={handleSaveVideoUrl}
+                          disabled={!getStartedVideoUrl.trim() || !isValidYouTubeUrl(getStartedVideoUrl) || savingVideo}
+                          className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {savingVideo ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>Saving...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Save size={16} />
+                              <span>Save</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {getStartedVideoUrl && !isValidYouTubeUrl(getStartedVideoUrl) && (
+                        <p className="text-sm text-red-600 mt-1">Please enter a valid YouTube URL</p>
+                      )}
+                      
+                      {videoSaved && (
+                        <div className="flex items-center space-x-2 text-green-600 mt-2 animate-fadeIn">
+                          <CheckCircle size={16} />
+                          <span className="text-sm">Video URL saved successfully!</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Video Preview */}
+                    {getStartedVideoUrl && isValidYouTubeUrl(getStartedVideoUrl) && (
+                      <div className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h5 className="font-medium text-gray-900">Video Preview</h5>
+                          <button
+                            onClick={() => window.open(getStartedVideoUrl, '_blank')}
+                            className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
+                          >
+                            <ExternalLink size={14} />
+                            <span>Open in YouTube</span>
+                          </button>
+                        </div>
+                        <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                          <iframe
+                            src={`https://www.youtube.com/embed/${extractYouTubeVideoId(getStartedVideoUrl)}?rel=0&modestbranding=1`}
+                            className="w-full h-full"
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            title="Get Started Video Preview"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Video Statistics */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h5 className="font-medium text-gray-900 mb-3">Video Statistics</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-gray-900">{videoStats.totalUsers}</div>
+                          <div className="text-sm text-gray-500">Total Users</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">{videoStats.usersWhoWatchedCurrent}</div>
+                          <div className="text-sm text-gray-500">Watched Current Video</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-orange-600">{videoStats.usersWhoHaventWatched}</div>
+                          <div className="text-sm text-gray-500">Haven't Watched</div>
+                        </div>
+                      </div>
+                      
+                      {videoStats.totalUsers > 0 && (
+                        <div className="mt-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span>Watch Rate</span>
+                            <span>{((videoStats.usersWhoWatchedCurrent / videoStats.totalUsers) * 100).toFixed(1)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="h-2 bg-green-500 rounded-full transition-all duration-300"
+                              style={{ width: `${(videoStats.usersWhoWatchedCurrent / videoStats.totalUsers) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h5 className="font-medium text-blue-800 mb-2">How it works</h5>
+                      <ul className="text-sm text-blue-700 space-y-1">
+                        <li>• When users sign up for the first time, they'll see this video in a popup</li>
+                        <li>• Once they watch it (or skip it), they won't see it again</li>
+                        <li>• If you change the video URL, all users will see the new video once</li>
+                        <li>• The system tracks which users have seen which videos</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </>
