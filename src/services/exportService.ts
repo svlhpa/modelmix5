@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 
 interface WriteupProject {
@@ -145,13 +145,16 @@ class ExportService {
     }
   }
 
-  // Export as Word document using docx
+  // Export as Word document using docx - FIXED VERSION
   async exportToWord(project: WriteupProject): Promise<void> {
     try {
-      const children: any[] = [];
+      console.log('Starting Word export for project:', project.title);
+      
+      // Create paragraphs array
+      const paragraphs: Paragraph[] = [];
 
       // Title page
-      children.push(
+      paragraphs.push(
         new Paragraph({
           children: [
             new TextRun({
@@ -162,7 +165,10 @@ class ExportService {
           ],
           alignment: AlignmentType.CENTER,
           spacing: { after: 400 },
-        }),
+        })
+      );
+
+      paragraphs.push(
         new Paragraph({
           children: [
             new TextRun({
@@ -172,7 +178,10 @@ class ExportService {
           ],
           alignment: AlignmentType.CENTER,
           spacing: { after: 200 },
-        }),
+        })
+      );
+
+      paragraphs.push(
         new Paragraph({
           children: [
             new TextRun({
@@ -182,7 +191,10 @@ class ExportService {
           ],
           alignment: AlignmentType.CENTER,
           spacing: { after: 100 },
-        }),
+        })
+      );
+
+      paragraphs.push(
         new Paragraph({
           children: [
             new TextRun({
@@ -192,7 +204,10 @@ class ExportService {
           ],
           alignment: AlignmentType.CENTER,
           spacing: { after: 400 },
-        }),
+        })
+      );
+
+      paragraphs.push(
         new Paragraph({
           children: [
             new TextRun({
@@ -206,9 +221,9 @@ class ExportService {
       );
 
       // Page break before content
-      children.push(
+      paragraphs.push(
         new Paragraph({
-          children: [new TextRun({ text: '', break: 1 })],
+          children: [new TextRun({ text: '' })],
           pageBreakBefore: true,
         })
       );
@@ -216,8 +231,10 @@ class ExportService {
       // Process each section
       project.sections.forEach((section, index) => {
         if (section.content && section.content.trim()) {
+          console.log(`Processing section ${index + 1}: ${section.title}`);
+          
           // Section heading
-          children.push(
+          paragraphs.push(
             new Paragraph({
               children: [
                 new TextRun({
@@ -231,34 +248,44 @@ class ExportService {
             })
           );
 
-          // Section content - process markdown
-          const processedContent = this.processMarkdownForWord(section.content);
-          children.push(...processedContent);
+          // Section content - simplified processing
+          const cleanContent = this.cleanMarkdownForText(section.content);
+          const contentParagraphs = cleanContent.split('\n\n').filter(p => p.trim());
+
+          contentParagraphs.forEach(paragraph => {
+            if (paragraph.trim()) {
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: paragraph.trim(),
+                      size: 22, // 11pt in half-points
+                    }),
+                  ],
+                  spacing: { after: 200 },
+                })
+              );
+            }
+          });
 
           // Section separator
-          children.push(
+          paragraphs.push(
             new Paragraph({
               children: [new TextRun({ text: '' })],
               spacing: { after: 400 },
-              border: {
-                bottom: {
-                  color: 'CCCCCC',
-                  space: 1,
-                  style: BorderStyle.SINGLE,
-                  size: 6,
-                },
-              },
             })
           );
         }
       });
 
-      // Create document
+      console.log(`Created ${paragraphs.length} paragraphs for Word document`);
+
+      // Create document with simplified structure
       const doc = new Document({
         sections: [
           {
             properties: {},
-            children: children,
+            children: paragraphs,
           },
         ],
         title: project.title,
@@ -266,16 +293,25 @@ class ExportService {
         creator: 'ModelMix AI',
       });
 
-      // Generate and save
+      console.log('Document created, generating buffer...');
+
+      // Generate buffer and save
       const buffer = await Packer.toBuffer(doc);
+      console.log('Buffer generated, creating blob...');
+      
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
       
-      saveAs(blob, `${this.sanitizeFilename(project.title)}.docx`);
+      console.log('Blob created, saving file...');
+      const filename = `${this.sanitizeFilename(project.title)}.docx`;
+      saveAs(blob, filename);
+      
+      console.log('Word document saved successfully:', filename);
     } catch (error) {
-      console.error('Word export error:', error);
-      throw new Error('Failed to export Word document. Please try again.');
+      console.error('Word export error details:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      throw new Error(`Failed to export Word document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -335,112 +371,15 @@ class ExportService {
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
       .replace(/^\s*[-*+]\s+/gm, '• ') // Convert bullet points
       .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
       .trim();
-  }
-
-  // Helper function to process markdown for Word
-  private processMarkdownForWord(text: string): Paragraph[] {
-    const paragraphs: Paragraph[] = [];
-    const lines = text.split('\n');
-    let currentParagraph: TextRun[] = [];
-
-    const flushParagraph = () => {
-      if (currentParagraph.length > 0) {
-        paragraphs.push(
-          new Paragraph({
-            children: currentParagraph,
-            spacing: { after: 200 },
-          })
-        );
-        currentParagraph = [];
-      }
-    };
-
-    lines.forEach(line => {
-      const trimmedLine = line.trim();
-      
-      if (!trimmedLine) {
-        flushParagraph();
-        return;
-      }
-
-      // Handle headers
-      if (trimmedLine.startsWith('#')) {
-        flushParagraph();
-        const headerText = trimmedLine.replace(/^#+\s*/, '');
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: headerText,
-                bold: true,
-                size: 20,
-              }),
-            ],
-            spacing: { before: 300, after: 200 },
-          })
-        );
-        return;
-      }
-
-      // Handle bullet points
-      if (trimmedLine.match(/^\s*[-*+]\s+/)) {
-        flushParagraph();
-        const bulletText = trimmedLine.replace(/^\s*[-*+]\s+/, '');
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `• ${bulletText}`,
-              }),
-            ],
-            spacing: { after: 100 },
-          })
-        );
-        return;
-      }
-
-      // Process inline formatting
-      const processedText = this.processInlineFormatting(trimmedLine);
-      currentParagraph.push(...processedText);
-      currentParagraph.push(new TextRun({ text: ' ' }));
-    });
-
-    flushParagraph();
-    return paragraphs;
-  }
-
-  // Helper function to process inline formatting for Word
-  private processInlineFormatting(text: string): TextRun[] {
-    const runs: TextRun[] = [];
-    let currentIndex = 0;
-
-    // Simple regex patterns for bold and italic
-    const patterns = [
-      { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
-      { regex: /\*(.*?)\*/g, format: { italics: true } },
-      { regex: /`(.*?)`/g, format: { font: 'Courier New' } },
-    ];
-
-    let processedText = text;
-    
-    // Remove markdown and create formatted runs
-    patterns.forEach(pattern => {
-      processedText = processedText.replace(pattern.regex, (match, content) => {
-        return content;
-      });
-    });
-
-    // For now, just return plain text (can be enhanced for complex formatting)
-    runs.push(new TextRun({ text: processedText }));
-    
-    return runs;
   }
 
   // Helper function to sanitize filename
   private sanitizeFilename(filename: string): string {
     return filename
-      .replace(/[^a-z0-9]/gi, '_')
+      .replace(/[^a-z0-9\s]/gi, '_')
+      .replace(/\s+/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_|_$/g, '')
       .toLowerCase();
