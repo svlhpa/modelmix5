@@ -11,6 +11,7 @@ import { AIVideoCall } from './components/AIVideoCall';
 import { WriteupAgent } from './components/WriteupAgent';
 import { GetStartedModal } from './components/GetStartedModal';
 import { Agents } from './components/Agents';
+import { EnhancedWriteupAgent } from './components/EnhancedWriteupAgent';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { useGetStartedVideo } from './hooks/useGetStartedVideo';
@@ -45,6 +46,7 @@ function App() {
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showWriteupAgent, setShowWriteupAgent] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
+  const [showEnhancedWriteup, setShowEnhancedWriteup] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -171,6 +173,14 @@ function App() {
     }
   };
 
+  const handleOpenEnhancedWriteup = () => {
+    if (user) {
+      setShowEnhancedWriteup(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
   const handleOpenAgents = () => {
     if (user) {
       setShowAgents(true);
@@ -241,6 +251,16 @@ function App() {
         <WriteupAgent
           isOpen={showWriteupAgent}
           onClose={() => setShowWriteupAgent(false)}
+        />
+
+        <EnhancedWriteupAgent
+          isOpen={showEnhancedWriteup}
+          onClose={() => setShowEnhancedWriteup(false)}
+        />
+
+        <Agents
+          isOpen={showAgents}
+          onClose={() => setShowAgents(false)}
         />
 
         <TierUpgradeModal
@@ -323,6 +343,11 @@ function App() {
       <WriteupAgent
         isOpen={showWriteupAgent}
         onClose={() => setShowWriteupAgent(false)}
+      />
+
+      <EnhancedWriteupAgent
+        isOpen={showEnhancedWriteup}
+        onClose={() => setShowEnhancedWriteup(false)}
       />
 
       <Agents
