@@ -11,7 +11,6 @@ export default defineConfig({
     
     // PayPal environment variables - HARDCODED FOR PRODUCTION
     'import.meta.env.VITE_PAYPAL_CLIENT_ID': JSON.stringify('Ab3iofQucOsvAl7Wo-1UZjPstqls7jdt58YgOhdcPQ-jVk0oGaA-yGstQ7NX4DJEfzKGd4eULnTOsaYj'),
-    'import.meta.env.VITE_PAYPAL_CLIENT_SECRET': JSON.stringify('ELbqhJJDCXBBhMNZ8gF9QqhQvKoM8wjdQQvQvKoM8wjdQQvQvKoM8wjdQQvQvKoM8wjdQQvQvKoM8wjd'),
     'import.meta.env.VITE_PAYPAL_ENVIRONMENT': JSON.stringify('production')
   },
   optimizeDeps: {

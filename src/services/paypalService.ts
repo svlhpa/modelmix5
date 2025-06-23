@@ -25,7 +25,6 @@ interface PayPalSubscriptionResponse {
 
 class PayPalService {
   private clientId: string;
-  private clientSecret: string;
   private environment: 'sandbox' | 'production';
   private baseUrl: string;
   private sdkLoaded: boolean = false;
@@ -34,7 +33,6 @@ class PayPalService {
   constructor() {
     // Use environment variables for production
     this.clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
-    this.clientSecret = import.meta.env.VITE_PAYPAL_CLIENT_SECRET || '';
     this.environment = import.meta.env.VITE_PAYPAL_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
     this.baseUrl = this.environment === 'production' 
       ? 'https://api-m.paypal.com' 
@@ -201,97 +199,12 @@ class PayPalService {
     return this.subscriptionPlanId;
   }
 
-  // Get subscription details
-  async getSubscriptionDetails(subscriptionId: string): Promise<PayPalSubscriptionResponse> {
-    try {
-      const accessToken = await this.getAccessToken();
-      
-      const response = await fetch(`${this.baseUrl}/v1/billing/subscriptions/${subscriptionId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to get subscription details: ${response.status} - ${errorText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error getting subscription details:', error);
-      throw error;
-    }
-  }
-
-  // Cancel subscription
-  async cancelSubscription(subscriptionId: string, reason: string = 'User requested cancellation'): Promise<void> {
-    try {
-      const accessToken = await this.getAccessToken();
-      
-      const response = await fetch(`${this.baseUrl}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          reason: reason
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to cancel subscription: ${response.status} - ${errorText}`);
-      }
-
-      console.log('Subscription cancelled successfully');
-    } catch (error) {
-      console.error('Error cancelling subscription:', error);
-      throw error;
-    }
-  }
-
-  // Get access token for PayPal API calls
-  private async getAccessToken(): Promise<string> {
-    if (!this.clientSecret) {
-      throw new Error('PayPal client secret not configured');
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v1/oauth2/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${btoa(`${this.clientId}:${this.clientSecret}`)}`
-        },
-        body: 'grant_type=client_credentials'
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('PayPal token error:', errorText);
-        throw new Error(`Failed to get access token: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.access_token;
-    } catch (error) {
-      console.error('Error getting PayPal access token:', error);
-      throw error;
-    }
-  }
-
   // Validate PayPal configuration
   isConfigured(): boolean {
-    const isValid = !!(this.clientId && this.clientId.trim() !== '' && 
-                      this.clientSecret && this.clientSecret.trim() !== '');
+    const isValid = !!(this.clientId && this.clientId.trim() !== '');
     
     console.log('PayPal configuration check:', {
       hasClientId: !!this.clientId,
-      hasClientSecret: !!this.clientSecret,
       environment: this.environment,
       planId: this.subscriptionPlanId,
       isValid
@@ -311,40 +224,24 @@ class PayPalService {
     };
   }
 
-  // Test API connection
+  // Test API connection - simplified for client-side only
   async testConnection(): Promise<boolean> {
     try {
-      console.log('Testing PayPal API connection...');
-      const token = await this.getAccessToken();
-      console.log('PayPal connection test successful');
-      return !!token;
+      console.log('Testing PayPal SDK availability...');
+      await this.loadPayPalSDK();
+      return !!(window.paypal && window.paypal.Buttons);
     } catch (error) {
       console.error('PayPal connection test failed:', error);
       return false;
     }
   }
 
-  // Verify subscription plan exists
+  // Verify subscription plan exists - simplified for client-side
   async verifySubscriptionPlan(): Promise<boolean> {
     try {
-      const accessToken = await this.getAccessToken();
-      
-      const response = await fetch(`${this.baseUrl}/v1/billing/plans/${this.subscriptionPlanId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      if (response.ok) {
-        const plan = await response.json();
-        console.log('Subscription plan verified:', plan.name);
-        return true;
-      } else {
-        console.error('Subscription plan not found:', response.status);
-        return false;
-      }
+      // For client-side, we'll assume the plan exists if we have a valid plan ID
+      // The actual verification will happen when the subscription is created
+      return !!(this.subscriptionPlanId && this.subscriptionPlanId.startsWith('P-'));
     } catch (error) {
       console.error('Error verifying subscription plan:', error);
       return false;

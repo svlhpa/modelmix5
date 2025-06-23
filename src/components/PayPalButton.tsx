@@ -44,7 +44,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
 
         // Check if PayPal is configured
         if (!paypalService.isConfigured()) {
-          setError('PayPal is not configured. Please check your environment variables.');
+          setError('PayPal Client ID is not configured. Please check your environment variables.');
           setIsConfigured(false);
           setLoading(false);
           return;
@@ -53,31 +53,31 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         setIsConfigured(true);
         console.log('PayPal configuration verified');
 
-        // Test API connection
-        console.log('Testing PayPal API connection...');
+        // Test SDK loading
+        console.log('Testing PayPal SDK loading...');
         const connectionOk = await paypalService.testConnection();
         setConnectionTested(connectionOk);
         
         if (!connectionOk) {
-          setError('Failed to connect to PayPal API. Please check your credentials.');
+          setError('Failed to load PayPal SDK. Please check your internet connection and try again.');
           setLoading(false);
           return;
         }
 
-        console.log('PayPal API connection successful');
+        console.log('PayPal SDK loaded successfully');
 
-        // Verify subscription plan
-        console.log('Verifying subscription plan...');
+        // Verify subscription plan format
+        console.log('Verifying subscription plan format...');
         const planOk = await paypalService.verifySubscriptionPlan();
         setPlanVerified(planOk);
         
         if (!planOk) {
-          setError('Subscription plan not found. Please verify your plan ID is correct.');
+          setError('Invalid subscription plan ID format. Please verify your plan configuration.');
           setLoading(false);
           return;
         }
 
-        console.log('Subscription plan verified');
+        console.log('Subscription plan format verified');
 
         // Wait for container to be ready
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -91,7 +91,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         
       } catch (error) {
         console.error('PayPal initialization error:', error);
-        setError(error instanceof Error ? error.message : 'Failed to initialize PayPal');
+        setError(error instanceof Error ? error.message : 'Failed to initialize PayPal subscription system');
         setLoading(false);
       } finally {
         setInitializationAttempts(prev => prev + 1);
@@ -125,7 +125,7 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
         (error) => {
           console.error('PayPal subscription error:', error);
           const errorMessage = error?.message || error?.toString() || 'Subscription failed';
-          setError(errorMessage);
+          setError(`Subscription Error: ${errorMessage}`);
           onError(error);
         },
         isRecurring
@@ -150,12 +150,11 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <div>
             <p className="font-medium">Payment System Not Configured</p>
             <p className="text-sm">
-              PayPal subscription integration requires proper configuration.
+              PayPal subscription integration requires a valid Client ID.
             </p>
             <div className="mt-2 text-xs bg-amber-100 p-2 rounded">
-              <p><strong>Required Environment Variables:</strong></p>
-              <p>• VITE_PAYPAL_CLIENT_ID</p>
-              <p>• VITE_PAYPAL_CLIENT_SECRET</p>
+              <p><strong>Required Environment Variable:</strong></p>
+              <p>• VITE_PAYPAL_CLIENT_ID (Production Client ID)</p>
               <p>• VITE_PAYPAL_ENVIRONMENT=production</p>
             </div>
           </div>
@@ -172,19 +171,24 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
           <div>
             <p className="font-medium">Subscription Setup Error</p>
             <p className="text-sm">{error}</p>
-            {error.includes('credentials') && (
+            {error.includes('Client ID') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
-                Please verify your PayPal Client ID and Secret are correct for the production environment.
+                Please verify your PayPal Client ID is correct for the production environment.
               </p>
             )}
             {error.includes('plan') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
-                The subscription plan ID (P-2A58044182497992VNBMPFYI) was not found. Please verify it exists in your PayPal account.
+                The subscription plan ID (P-2A58044182497992VNBMPFYI) format appears invalid. Please verify it exists in your PayPal account.
               </p>
             )}
             {error.includes('SDK') && (
               <p className="text-xs mt-1 bg-red-100 p-2 rounded">
                 PayPal SDK failed to load. Please check your internet connection and try again.
+              </p>
+            )}
+            {error.includes('Subscription Error') && (
+              <p className="text-xs mt-1 bg-red-100 p-2 rounded">
+                This error occurred during the subscription creation process. The plan may not exist or may not be active in your PayPal account.
               </p>
             )}
             <p className="text-xs mt-1 text-red-600">
@@ -212,9 +216,9 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
             <div className="text-center">
               <div>Setting up PayPal Subscription...</div>
               <div className="text-xs mt-1">
-                {!connectionTested ? 'Testing connection...' : 
-                 !planVerified ? 'Verifying plan...' : 
-                 'Loading payment form...'}
+                {!connectionTested ? 'Loading PayPal SDK...' : 
+                 !planVerified ? 'Verifying plan format...' : 
+                 'Initializing payment form...'}
               </div>
               <div className="text-xs">Attempt {initializationAttempts + 1}</div>
             </div>
@@ -236,13 +240,13 @@ export const PayPalButton: React.FC<PayPalButtonProps> = ({
             {connectionTested && (
               <>
                 <CheckCircle size={12} className="text-green-500" />
-                <span className="text-xs text-green-600">Connected</span>
+                <span className="text-xs text-green-600">SDK Loaded</span>
               </>
             )}
             {planVerified && (
               <>
                 <Crown size={12} className="text-yellow-500" />
-                <span className="text-xs text-yellow-600">Plan Verified</span>
+                <span className="text-xs text-yellow-600">Plan Ready</span>
               </>
             )}
           </div>
