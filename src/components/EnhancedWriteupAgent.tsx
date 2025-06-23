@@ -60,7 +60,9 @@ export const EnhancedWriteupAgent: React.FC<EnhancedWriteupAgentProps> = ({ isOp
   const checkPicaosConnection = async () => {
     setConnectionStatus('checking');
     try {
+      console.log('Checking PicaOS connection for tier:', currentTier);
       const isConnected = await picaosService.testConnection(currentTier);
+      console.log('PicaOS connection test result:', isConnected);
       setConnectionStatus(isConnected ? 'connected' : 'disconnected');
     } catch (error) {
       console.error('PicaOS connection check failed:', error);
@@ -371,7 +373,7 @@ export const EnhancedWriteupAgent: React.FC<EnhancedWriteupAgentProps> = ({ isOp
                           onClick={checkPicaosConnection}
                           className="flex items-center space-x-2 px-3 py-1 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
                         >
-                          <RotateCcw size={14} />
+                          <RefreshCw size={14} />
                           <span>Retry Connection</span>
                         </button>
                       </div>
