@@ -206,6 +206,7 @@ function App() {
           onOpenDebateClub={handleOpenDebateClub}
           onOpenVideoCall={handleOpenVideoCall}
           onOpenWriteupAgent={handleOpenWriteupAgent}
+          onOpenAgents={handleOpenAgents}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
@@ -268,6 +269,7 @@ function App() {
         onOpenDebateClub={handleOpenDebateClub}
         onOpenVideoCall={handleOpenVideoCall}
         onOpenWriteupAgent={handleOpenWriteupAgent}
+        onOpenAgents={handleOpenAgents}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}

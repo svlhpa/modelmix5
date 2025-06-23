@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bot, Zap, CheckCircle, AlertCircle, Loader2, Brain, Settings, RefreshCw, ArrowRight, Sparkles, Crown } from 'lucide-react';
+import { X, Bot, Zap, CheckCircle, AlertCircle, Loader2, Brain, Settings, RefreshCw, ArrowRight, Sparkles, Crown, FileText } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { globalApiService } from '../services/globalApiService';
+import { EnhancedWriteupAgent } from './EnhancedWriteupAgent';
 
 interface AgentsProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface Agent {
   capabilities: string[];
   icon: React.ReactNode;
   status: 'available' | 'unavailable';
+  action?: () => void;
 }
 
 export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
@@ -26,6 +28,7 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testingAgent, setTestingAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showEnhancedWriteup, setShowEnhancedWriteup] = useState(false);
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
@@ -45,8 +48,17 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
       const apiKey = await globalApiService.getGlobalApiKey('picaos', currentTier);
       setPicaosApiKey(apiKey);
       
-      // Mock agents data - in a real implementation, you'd fetch this from PicaOS API
-      const mockAgents: Agent[] = [
+      // Define available agents with actions
+      const availableAgents: Agent[] = [
+        {
+          id: 'enhanced-writeup-agent',
+          name: 'Enhanced Write-up Agent',
+          description: 'Advanced long-form writing with PicaOS multi-agent orchestration for books, research papers, and comprehensive documents',
+          capabilities: ['Multi-agent coordination', 'Parallel section writing', 'Quality assurance', 'Real-time progress tracking'],
+          icon: <FileText size={24} className="text-indigo-500" />,
+          status: apiKey ? 'available' : 'unavailable',
+          action: () => setShowEnhancedWriteup(true)
+        },
         {
           id: 'research-agent',
           name: 'Research Agent',
@@ -73,7 +85,7 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
         }
       ];
       
-      setAgents(mockAgents);
+      setAgents(availableAgents);
     } catch (error) {
       console.error('Failed to load agents:', error);
       setError('Failed to load agents. Please try again later.');
@@ -85,6 +97,14 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
   const handleSelectAgent = (agent: Agent) => {
     setSelectedAgent(agent);
     setTestResult(null);
+  };
+
+  const handleAgentAction = (agent: Agent) => {
+    if (agent.action) {
+      agent.action();
+    } else {
+      handleTestAgent();
+    }
   };
 
   const handleTestAgent = async () => {
@@ -135,243 +155,276 @@ export const Agents: React.FC<AgentsProps> = ({ isOpen, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-xl max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
-                <Bot size={24} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold">PicaOS Agents</h2>
-                <p className="text-orange-100">Advanced AI orchestration with multi-agent workflows</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
-            >
-              <X size={24} />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
-          {loading ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <Loader2 size={48} className="text-orange-500 animate-spin mx-auto mb-4" />
-                <p className="text-gray-600">Loading PicaOS agents...</p>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="h-full flex items-center justify-center p-6">
-              <div className="text-center max-w-md">
-                <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Connection Error</h3>
-                <p className="text-gray-600 mb-4">{error}</p>
-                <button
-                  onClick={loadAgents}
-                  className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 mx-auto"
-                >
-                  <RefreshCw size={16} />
-                  <span>Retry</span>
-                </button>
-              </div>
-            </div>
-          ) : !picaosApiKey ? (
-            <div className="h-full flex items-center justify-center p-6">
-              <div className="text-center max-w-md">
-                <Settings size={48} className="text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">PicaOS API Key Required</h3>
-                <p className="text-gray-600 mb-4">
-                  To use PicaOS agents, an administrator needs to add a PicaOS API key in the Admin Dashboard.
-                </p>
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-left">
-                  <p className="text-sm text-orange-700">
-                    <strong>For Administrators:</strong> Go to Admin Dashboard → Global API Keys → Add a new key with provider "PicaOS".
-                  </p>
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="bg-white rounded-xl max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
+                  <Bot size={24} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">PicaOS Agents</h2>
+                  <p className="text-orange-100">Advanced AI orchestration with multi-agent workflows</p>
                 </div>
               </div>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
+              >
+                <X size={24} />
+              </button>
             </div>
-          ) : (
-            <div className="h-full flex flex-col md:flex-row">
-              {/* Agents List */}
-              <div className="w-full md:w-1/3 border-r border-gray-200 overflow-y-auto p-4">
-                <div className="mb-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Available Agents</h3>
-                  <p className="text-sm text-gray-500">
-                    Select an agent to view details and test its capabilities
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-hidden">
+            {loading ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <Loader2 size={48} className="text-orange-500 animate-spin mx-auto mb-4" />
+                  <p className="text-gray-600">Loading PicaOS agents...</p>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="h-full flex items-center justify-center p-6">
+                <div className="text-center max-w-md">
+                  <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Connection Error</h3>
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <button
+                    onClick={loadAgents}
+                    className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 mx-auto"
+                  >
+                    <RefreshCw size={16} />
+                    <span>Retry</span>
+                  </button>
+                </div>
+              </div>
+            ) : !picaosApiKey ? (
+              <div className="h-full flex items-center justify-center p-6">
+                <div className="text-center max-w-md">
+                  <Settings size={48} className="text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">PicaOS API Key Required</h3>
+                  <p className="text-gray-600 mb-4">
+                    To use PicaOS agents, an administrator needs to add a PicaOS API key in the Admin Dashboard.
                   </p>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-left">
+                    <p className="text-sm text-orange-700">
+                      <strong>For Administrators:</strong> Go to Admin Dashboard → Global API Keys → Add a new key with provider "PicaOS".
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col md:flex-row">
+                {/* Agents List */}
+                <div className="w-full md:w-1/3 border-r border-gray-200 overflow-y-auto p-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Available Agents</h3>
+                    <p className="text-sm text-gray-500">
+                      Select an agent to view details and launch it
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {agents.map(agent => (
+                      <div
+                        key={agent.id}
+                        className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
+                          selectedAgent?.id === agent.id
+                            ? 'border-orange-300 bg-orange-50'
+                            : 'border-gray-200 hover:border-orange-200'
+                        }`}
+                        onClick={() => handleSelectAgent(agent)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 bg-white rounded-lg shadow-sm">
+                            {agent.icon}
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-gray-900">{agent.name}</h4>
+                            <div className="flex items-center space-x-2">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                agent.status === 'available'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {agent.status === 'available' ? 'Available' : 'Unavailable'}
+                              </span>
+                              <span className="text-xs text-gray-500">Pro Only</span>
+                              {agent.id === 'enhanced-writeup-agent' && (
+                                <span className="text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">Featured</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 
-                <div className="space-y-3">
-                  {agents.map(agent => (
-                    <div
-                      key={agent.id}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                        selectedAgent?.id === agent.id
-                          ? 'border-orange-300 bg-orange-50'
-                          : 'border-gray-200 hover:border-orange-200'
-                      }`}
-                      onClick={() => handleSelectAgent(agent)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-white rounded-lg shadow-sm">
-                          {agent.icon}
+                {/* Agent Details */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  {selectedAgent ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center space-x-4">
+                        <div className="p-3 bg-orange-100 rounded-lg">
+                          {selectedAgent.icon}
                         </div>
                         <div>
-                          <h4 className="font-medium text-gray-900">{agent.name}</h4>
-                          <div className="flex items-center space-x-2">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              agent.status === 'available'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {agent.status === 'available' ? 'Available' : 'Unavailable'}
-                            </span>
-                            <span className="text-xs text-gray-500">Pro Only</span>
-                          </div>
+                          <h3 className="text-xl font-bold text-gray-900">{selectedAgent.name}</h3>
+                          <p className="text-gray-600">{selectedAgent.description}</p>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Agent Details */}
-              <div className="flex-1 overflow-y-auto p-6">
-                {selectedAgent ? (
-                  <div className="space-y-6">
-                    <div className="flex items-center space-x-4">
-                      <div className="p-3 bg-orange-100 rounded-lg">
-                        {selectedAgent.icon}
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">{selectedAgent.name}</h3>
-                        <p className="text-gray-600">{selectedAgent.description}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 mb-3">Capabilities</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {selectedAgent.capabilities.map((capability, index) => (
-                          <div key={index} className="flex items-center space-x-2">
-                            <CheckCircle size={16} className="text-green-500" />
-                            <span className="text-sm text-gray-700">{capability}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <h4 className="font-medium text-orange-800 mb-3">How It Works</h4>
-                      <p className="text-sm text-orange-700 mb-3">
-                        {selectedAgent.name} uses PicaOS orchestration to coordinate multiple specialized AI models that work together to accomplish complex tasks. Each model handles a specific part of the process, with results passed between models automatically.
-                      </p>
-                      <div className="flex items-center space-x-2 text-xs text-orange-600">
-                        <Brain size={14} />
-                        <ArrowRight size={14} />
-                        <Zap size={14} />
-                        <ArrowRight size={14} />
-                        <CheckCircle size={14} />
-                        <span className="ml-2">Multi-step processing with specialized models</span>
-                      </div>
-                    </div>
-                    
-                    {/* Test Connection */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-medium text-gray-900">Test Connection</h4>
-                        <button
-                          onClick={handleTestAgent}
-                          disabled={testingAgent || selectedAgent.status !== 'available'}
-                          className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {testingAgent ? (
-                            <>
-                              <Loader2 size={16} className="animate-spin" />
-                              <span>Testing...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Zap size={16} />
-                              <span>Test Agent</span>
-                            </>
-                          )}
-                        </button>
                       </div>
                       
-                      {testResult && (
-                        <div className={`p-4 rounded-lg ${
-                          testResult.includes('✅')
-                            ? 'bg-green-50 border border-green-200'
-                            : 'bg-red-50 border border-red-200'
-                        }`}>
-                          <p className="text-sm">{testResult}</p>
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 className="font-medium text-gray-900 mb-3">Capabilities</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {selectedAgent.capabilities.map((capability, index) => (
+                            <div key={index} className="flex items-center space-x-2">
+                              <CheckCircle size={16} className="text-green-500" />
+                              <span className="text-sm text-gray-700">{capability}</span>
+                            </div>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                    
-                    {/* Usage Examples */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 mb-3">Example Use Cases</h4>
-                      <div className="space-y-2">
-                        {selectedAgent.id === 'research-agent' && (
-                          <>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Research the latest advancements in quantum computing and provide a comprehensive report with verified sources"
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Compare and contrast three different approaches to renewable energy storage with pros and cons of each"
-                            </div>
-                          </>
-                        )}
+                      </div>
+                      
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <h4 className="font-medium text-orange-800 mb-3">How It Works</h4>
+                        <p className="text-sm text-orange-700 mb-3">
+                          {selectedAgent.name} uses PicaOS orchestration to coordinate multiple specialized AI models that work together to accomplish complex tasks. Each model handles a specific part of the process, with results passed between models automatically.
+                        </p>
+                        <div className="flex items-center space-x-2 text-xs text-orange-600">
+                          <Brain size={14} />
+                          <ArrowRight size={14} />
+                          <Zap size={14} />
+                          <ArrowRight size={14} />
+                          <CheckCircle size={14} />
+                          <span className="ml-2">Multi-step processing with specialized models</span>
+                        </div>
+                      </div>
+                      
+                      {/* Launch Agent or Test Connection */}
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-medium text-gray-900">
+                            {selectedAgent.action ? 'Launch Agent' : 'Test Connection'}
+                          </h4>
+                          <button
+                            onClick={() => handleAgentAction(selectedAgent)}
+                            disabled={testingAgent || selectedAgent.status !== 'available'}
+                            className={`flex items-center space-x-2 px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                              selectedAgent.action 
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                : 'bg-orange-600 hover:bg-orange-700 text-white'
+                            }`}
+                          >
+                            {testingAgent ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" />
+                                <span>Testing...</span>
+                              </>
+                            ) : selectedAgent.action ? (
+                              <>
+                                <selectedAgent.icon.type size={16} />
+                                <span>Launch {selectedAgent.name}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap size={16} />
+                                <span>Test Agent</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                         
-                        {selectedAgent.id === 'content-agent' && (
-                          <>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Create a detailed blog post about sustainable gardening practices with SEO optimization for beginners"
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Write a technical white paper on blockchain security measures with multiple drafts and self-critique"
-                            </div>
-                          </>
-                        )}
-                        
-                        {selectedAgent.id === 'data-agent' && (
-                          <>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Analyze this customer feedback dataset and identify key trends and actionable insights"
-                            </div>
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                              "Process this sales data to identify seasonal patterns and recommend inventory optimization strategies"
-                            </div>
-                          </>
+                        {testResult && (
+                          <div className={`p-4 rounded-lg ${
+                            testResult.includes('✅')
+                              ? 'bg-green-50 border border-green-200'
+                              : 'bg-red-50 border border-red-200'
+                          }`}>
+                            <p className="text-sm">{testResult}</p>
+                          </div>
                         )}
                       </div>
+                      
+                      {/* Usage Examples */}
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <h4 className="font-medium text-gray-900 mb-3">Example Use Cases</h4>
+                        <div className="space-y-2">
+                          {selectedAgent.id === 'enhanced-writeup-agent' && (
+                            <>
+                              <div className="p-3 bg-indigo-50 rounded-lg text-sm">
+                                "Write a comprehensive 50,000-word research paper on renewable energy technologies with multiple AI models working in parallel"
+                              </div>
+                              <div className="p-3 bg-indigo-50 rounded-lg text-sm">
+                                "Create a detailed business report with executive summary, analysis, and recommendations using coordinated AI agents"
+                              </div>
+                            </>
+                          )}
+                          
+                          {selectedAgent.id === 'research-agent' && (
+                            <>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Research the latest advancements in quantum computing and provide a comprehensive report with verified sources"
+                              </div>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Compare and contrast three different approaches to renewable energy storage with pros and cons of each"
+                              </div>
+                            </>
+                          )}
+                          
+                          {selectedAgent.id === 'content-agent' && (
+                            <>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Create a detailed blog post about sustainable gardening practices with SEO optimization for beginners"
+                              </div>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Write a technical white paper on blockchain security measures with multiple drafts and self-critique"
+                              </div>
+                            </>
+                          )}
+                          
+                          {selectedAgent.id === 'data-agent' && (
+                            <>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Analyze this customer feedback dataset and identify key trends and actionable insights"
+                              </div>
+                              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                                "Process this sales data to identify seasonal patterns and recommend inventory optimization strategies"
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center max-w-md">
-                      <Bot size={48} className="text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select an Agent</h3>
-                      <p className="text-gray-500">
-                        Choose an agent from the list to view details and test its capabilities
-                      </p>
+                  ) : (
+                    <div className="h-full flex items-center justify-center">
+                      <div className="text-center max-w-md">
+                        <Bot size={48} className="text-gray-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">Select an Agent</h3>
+                        <p className="text-gray-500">
+                          Choose an agent from the list to view details and launch it
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Enhanced Write-up Agent Modal */}
+      <EnhancedWriteupAgent
+        isOpen={showEnhancedWriteup}
+        onClose={() => setShowEnhancedWriteup(false)}
+      />
+    </>
   );
 };
