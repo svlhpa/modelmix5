@@ -39,7 +39,7 @@ export const useGetStartedVideo = () => {
       // Check if user has seen this video
       const { data: hasSeenData, error: hasSeenError } = await supabase.rpc(
         'has_seen_get_started_video',
-        { user_id: user!.id }
+        { target_user_id: user!.id }
       );
 
       if (hasSeenError) {
@@ -62,7 +62,7 @@ export const useGetStartedVideo = () => {
 
     try {
       const { error } = await supabase.rpc('mark_get_started_video_viewed', {
-        user_id: user.id
+        target_user_id: user.id
       });
 
       if (error) throw error;

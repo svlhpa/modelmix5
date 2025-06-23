@@ -32,28 +32,47 @@ export const GetStartedModal: React.FC<GetStartedModalProps> = ({
   const handleMarkAsWatched = async () => {
     if (!userId || isMarking) return;
 
+    console.log('Marking video as watched for user:', userId);
     setIsMarking(true);
+    
     try {
-      const { error } = await supabase.rpc('mark_get_started_video_viewed', {
-        user_id: userId
+      // Call the database function to mark video as watched
+      const { data, error } = await supabase.rpc('mark_get_started_video_viewed', {
+        target_user_id: userId
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
 
+      console.log('Successfully marked video as watched');
       setHasWatched(true);
       
       // Auto-close after a short delay
       setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 1500);
     } catch (error) {
       console.error('Failed to mark video as watched:', error);
+      // Still close the modal even if there's an error
+      setTimeout(() => {
+        onClose();
+      }, 1000);
     } finally {
       setIsMarking(false);
     }
   };
 
   const handleSkip = async () => {
+    console.log('User skipped video');
+    // Mark as watched even when skipped
+    await handleMarkAsWatched();
+  };
+
+  const handleClose = async () => {
+    console.log('User closed modal');
+    // Mark as watched when closed
     await handleMarkAsWatched();
   };
 
@@ -75,7 +94,7 @@ export const GetStartedModal: React.FC<GetStartedModalProps> = ({
               </div>
             </div>
             <button
-              onClick={handleSkip}
+              onClick={handleClose}
               className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
               disabled={isMarking}
             >
@@ -147,7 +166,7 @@ export const GetStartedModal: React.FC<GetStartedModalProps> = ({
           </div>
 
           {/* Info Section */}
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounde d-lg p-4">
             <h4 className="font-medium text-blue-800 mb-2">What you'll learn in this video:</h4>
             <ul className="text-sm text-blue-700 space-y-1">
               <li>• How to compare AI responses from multiple models</li>
