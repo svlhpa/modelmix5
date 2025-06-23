@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp, Settings, Cpu } from 'lucide-react';
+import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { writeupService } from '../services/writeupService';
 
@@ -23,9 +23,6 @@ interface WriteupProject {
   createdAt: Date;
   updatedAt: Date;
   settings: WriteupSettings;
-  picaosWorkflowId?: string;
-  picaosStatus?: string;
-  orchestrationMethod: 'picaos' | 'legacy';
 }
 
 interface WriteupSection {
@@ -49,7 +46,6 @@ interface WriteupSettings {
   includeReferences: boolean;
   enableReview: boolean;
   euModelsOnly: boolean;
-  usePicaOS?: boolean;
 }
 
 export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) => {
@@ -65,8 +61,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
     format: 'research-paper',
     includeReferences: true,
     enableReview: true,
-    euModelsOnly: false,
-    usePicaOS: true // Default to using PicaOS
+    euModelsOnly: false
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,11 +142,10 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
           currentSection: updatedProject.currentSection,
           totalSections: updatedProject.totalSections,
           status: updatedProject.status,
-          wordCount: updatedProject.wordCount,
-          orchestrationMethod: updatedProject.orchestrationMethod
+          wordCount: updatedProject.wordCount
         });
         
-        // Update the current project state immediately
+        // CRITICAL: Update the current project state immediately
         setCurrentProject(updatedProject);
         
         if (updatedProject.status === 'completed') {
@@ -179,14 +173,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
         setIsGenerating(false);
       } else if (currentProject.status === 'paused') {
         setIsGenerating(true);
-        await writeupService.resumeProject(currentProject.id, (updatedProject) => {
-          setCurrentProject(updatedProject);
-          
-          if (updatedProject.status === 'completed') {
-            setStep('completed');
-            setIsGenerating(false);
-          }
-        });
+        await startWritingProcess(currentProject);
       }
     } catch (error) {
       console.error('Failed to pause/resume project:', error);
@@ -249,7 +236,6 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
   };
 
   const getModelIcon = (modelProvider?: string) => {
-    if (modelProvider === 'picaos') return '🧠';
     if (modelProvider === 'openrouter') return '🔀';
     return '🤖';
   };
@@ -293,12 +279,6 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                   <span className="text-emerald-200">
                     {currentProject.wordCount.toLocaleString()} words
                   </span>
-                  {currentProject.orchestrationMethod === 'picaos' && (
-                    <span className="flex items-center space-x-1 bg-emerald-700/50 px-2 py-0.5 rounded-full text-xs">
-                      <Cpu size={12} />
-                      <span>PicaOS Orchestrated</span>
-                    </span>
-                  )}
                 </div>
               </div>
               <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
@@ -313,7 +293,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                 {isGenerating && (
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    <span>{currentProject.orchestrationMethod === 'picaos' ? 'PicaOS orchestrating...' : 'AI is writing...'}</span>
+                    <span>AI is writing...</span>
                   </div>
                 )}
               </div>
@@ -355,10 +335,10 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                       </div>
                     </div>
                     <div className="flex items-start space-x-3">
-                      <Cpu className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
+                      <DollarSign className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
                       <div>
-                        <p className="font-medium text-emerald-800">PicaOS Orchestration</p>
-                        <p className="text-emerald-700">Advanced AI orchestration for optimal model selection and workflow</p>
+                        <p className="font-medium text-emerald-800">Cost Efficient</p>
+                        <p className="text-emerald-700">Smart model selection and caching reduce token usage</p>
                       </div>
                     </div>
                   </div>
@@ -489,43 +469,6 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                           <span>Use EU-hosted models only (GDPR compliance)</span>
                         </span>
                       </label>
-
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={settings.usePicaOS}
-                          onChange={(e) => setSettings({ ...settings, usePicaOS: e.target.checked })}
-                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="text-sm text-gray-700 flex items-center space-x-1">
-                          <Cpu size={14} className="text-emerald-600" />
-                          <span>Use PicaOS orchestration (recommended)</span>
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* PicaOS Info Box */}
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-1 bg-purple-100 rounded-lg flex-shrink-0">
-                      <Cpu className="text-purple-600" size={16} />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-purple-800 mb-1">PicaOS Orchestration</h4>
-                      <p className="text-sm text-purple-700">
-                        PicaOS is an advanced AI orchestration system that intelligently coordinates multiple AI models to produce higher quality content. It handles model selection, task distribution, and quality control automatically.
-                      </p>
-                      <div className="mt-2 text-xs text-purple-600 bg-purple-100 p-2 rounded">
-                        <p className="font-medium">Benefits of PicaOS:</p>
-                        <ul className="mt-1 space-y-1">
-                          <li>• Smarter model selection for each section</li>
-                          <li>• Better content coherence across sections</li>
-                          <li>• Automatic quality control and refinement</li>
-                          <li>• More efficient token usage and cost optimization</li>
-                        </ul>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -576,17 +519,9 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold text-gray-900">{currentProject.title}</h3>
-                    <div className="flex items-center space-x-2">
-                      <p className="text-sm text-gray-600">
-                        {currentProject.wordCount.toLocaleString()} words • {Math.round(currentProject.wordCount / 250)} pages • {currentProject.status}
-                      </p>
-                      {currentProject.orchestrationMethod === 'picaos' && (
-                        <span className="flex items-center space-x-1 bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs">
-                          <Cpu size={10} />
-                          <span>PicaOS</span>
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-sm text-gray-600">
+                      {currentProject.wordCount.toLocaleString()} words • {Math.round(currentProject.wordCount / 250)} pages • {currentProject.status}
+                    </p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {currentProject.status === 'writing' && (
@@ -630,7 +565,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                           {section.modelProvider && (
                             <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600 flex items-center space-x-1">
                               <span>{getModelIcon(section.modelProvider)}</span>
-                              <span>{section.modelProvider === 'picaos' ? 'PicaOS' : section.model}</span>
+                              <span>{section.modelProvider === 'openrouter' ? 'OpenRouter' : section.model}</span>
                             </span>
                           )}
                         </div>
@@ -688,18 +623,11 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                   {isGenerating && (
                     <div className="text-center py-8">
                       <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
-                      <p className="text-gray-600">
-                        {currentProject.orchestrationMethod === 'picaos' 
-                          ? 'PicaOS is orchestrating your document...' 
-                          : 'AI is working on your document...'}
-                      </p>
+                      <p className="text-gray-600">AI is working on your document...</p>
                       {currentProject && (
                         <div className="mt-2 text-sm text-gray-500">
                           <p>Section {currentProject.currentSection + 1} of {currentProject.totalSections}</p>
                           <p>{currentProject.wordCount.toLocaleString()} words written so far</p>
-                          {currentProject.picaosStatus && (
-                            <p className="text-purple-600">PicaOS Status: {currentProject.picaosStatus}</p>
-                          )}
                         </div>
                       )}
                     </div>
@@ -721,12 +649,6 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                   <p className="text-gray-600 mb-6">
                     Your {currentProject.wordCount.toLocaleString()}-word document is ready for export.
                   </p>
-                  {currentProject.orchestrationMethod === 'picaos' && (
-                    <div className="inline-flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm mb-4">
-                      <Cpu size={16} />
-                      <span>Generated with PicaOS Orchestration</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Document Review Section */}
@@ -755,9 +677,7 @@ export const WriteupAgent: React.FC<WriteupAgentProps> = ({ isOpen, onClose }) =
                             {section.modelProvider && (
                               <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full text-gray-600 flex items-center space-x-0.5 flex-shrink-0">
                                 <span>{getModelIcon(section.modelProvider)}</span>
-                                <span className="truncate max-w-[60px]">
-                                  {section.modelProvider === 'picaos' ? 'PicaOS' : section.model.split('/').pop()}
-                                </span>
+                                <span className="truncate max-w-[60px]">{section.model.split('/').pop()}</span>
                               </span>
                             )}
                           </div>
