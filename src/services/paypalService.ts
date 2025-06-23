@@ -8,20 +8,18 @@ interface PayPalOrderResponse {
   }>;
 }
 
-interface PayPalCaptureResponse {
+interface PayPalSubscriptionResponse {
   id: string;
   status: string;
-  purchase_units: Array<{
-    payments: {
-      captures: Array<{
-        id: string;
-        status: string;
-        amount: {
-          currency_code: string;
-          value: string;
-        };
-      }>;
-    };
+  status_update_time: string;
+  plan_id: string;
+  start_time: string;
+  subscriber: any;
+  billing_info: any;
+  links: Array<{
+    href: string;
+    rel: string;
+    method: string;
   }>;
 }
 
@@ -31,6 +29,7 @@ class PayPalService {
   private environment: 'sandbox' | 'production';
   private baseUrl: string;
   private sdkLoaded: boolean = false;
+  private subscriptionPlanId: string = 'P-2A58044182497992VNBMPFYI'; // Your production plan ID
 
   constructor() {
     // Use environment variables for production
@@ -44,11 +43,12 @@ class PayPalService {
     console.log('PayPal Service initialized:', {
       environment: this.environment,
       clientId: this.clientId ? `${this.clientId.substring(0, 10)}...` : 'Not set',
-      baseUrl: this.baseUrl
+      baseUrl: this.baseUrl,
+      planId: this.subscriptionPlanId
     });
   }
 
-  // Load PayPal SDK dynamically with proper configuration
+  // Load PayPal SDK dynamically with subscription support
   async loadPayPalSDK(): Promise<void> {
     return new Promise((resolve, reject) => {
       // Check if PayPal SDK is already loaded
@@ -67,9 +67,8 @@ class PayPalService {
 
       const script = document.createElement('script');
       
-      // CRITICAL: Use a working subscription plan ID for production
-      // For now, we'll use one-time payments instead of subscriptions to avoid plan ID issues
-      script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&currency=USD&intent=capture&disable-funding=credit,card`;
+      // CRITICAL: Use subscription intent with vault=true for recurring payments
+      script.src = `https://www.paypal.com/sdk/js?client-id=${this.clientId}&vault=true&intent=subscription&disable-funding=credit,card`;
       script.async = true;
       
       script.onload = () => {
@@ -96,15 +95,15 @@ class PayPalService {
     });
   }
 
-  // Initialize PayPal buttons with simplified approach
+  // Initialize PayPal buttons with subscription support
   async initializePayPalButtons(
     containerId: string, 
     onSuccess: (details: any) => void, 
     onError: (error: any) => void,
-    isRecurring: boolean = false // Changed to false for one-time payments
+    isRecurring: boolean = true // Changed to true for subscriptions
   ): Promise<void> {
     try {
-      console.log('Initializing PayPal buttons for container:', containerId);
+      console.log('Initializing PayPal subscription buttons for container:', containerId);
       
       await this.loadPayPalSDK();
 
@@ -127,89 +126,131 @@ class PayPalService {
 
       // Clear container
       container.innerHTML = '';
-      console.log('Container cleared, creating PayPal buttons');
+      console.log('Container cleared, creating PayPal subscription buttons');
 
       const buttons = window.paypal.Buttons({
         style: {
-          layout: 'vertical',
-          color: 'gold',
           shape: 'rect',
-          label: 'paypal',
+          color: 'gold',
+          layout: 'vertical',
+          label: 'subscribe',
           height: 45,
           tagline: false
         },
         
-        createOrder: (data: any, actions: any) => {
-          console.log('Creating PayPal order...');
+        createSubscription: (data: any, actions: any) => {
+          console.log('Creating PayPal subscription with plan ID:', this.subscriptionPlanId);
           
-          // Use one-time payment for now (easier to set up than subscriptions)
-          return actions.order.create({
-            purchase_units: [{
-              amount: {
-                value: '17.99',
-                currency_code: 'USD'
-              },
-              description: 'ModelMix Pro Plan - Monthly Access'
-            }],
+          return actions.subscription.create({
+            plan_id: this.subscriptionPlanId,
             application_context: {
               brand_name: 'ModelMix',
-              landing_page: 'NO_PREFERENCE',
-              user_action: 'PAY_NOW',
-              shipping_preference: 'NO_SHIPPING'
+              locale: 'en-US',
+              shipping_preference: 'NO_SHIPPING',
+              user_action: 'SUBSCRIBE_NOW'
             }
           });
         },
         
         onApprove: async (data: any, actions: any) => {
           try {
-            console.log('PayPal payment approved, capturing order...', data);
+            console.log('PayPal subscription approved:', data);
             
-            const order = await actions.order.capture();
-            console.log('Order captured successfully:', order);
+            // Get subscription details
+            const subscription = await actions.subscription.get();
+            console.log('Subscription details:', subscription);
             
             onSuccess({
+              subscriptionID: data.subscriptionID,
+              subscription,
               orderID: data.orderID,
-              order,
-              paymentID: order.purchase_units[0]?.payments?.captures[0]?.id,
               environment: this.environment,
-              amount: order.purchase_units[0]?.payments?.captures[0]?.amount
+              planId: this.subscriptionPlanId
             });
             
           } catch (error) {
-            console.error('Error capturing payment:', error);
+            console.error('Error processing subscription:', error);
             onError(error);
           }
         },
         
         onError: (error: any) => {
-          console.error('PayPal button error:', error);
+          console.error('PayPal subscription error:', error);
           onError(error);
         },
         
         onCancel: (data: any) => {
-          console.log('PayPal payment cancelled:', data);
-          onError(new Error('Payment was cancelled by user'));
+          console.log('PayPal subscription cancelled:', data);
+          onError(new Error('Subscription was cancelled by user'));
         }
       });
 
       // Render the buttons
-      console.log('Rendering PayPal buttons...');
+      console.log('Rendering PayPal subscription buttons...');
       await buttons.render(`#${containerId}`);
-      console.log('PayPal buttons rendered successfully');
+      console.log('PayPal subscription buttons rendered successfully');
       
     } catch (error) {
-      console.error('Failed to initialize PayPal buttons:', error);
+      console.error('Failed to initialize PayPal subscription buttons:', error);
       throw error;
     }
   }
 
-  // Get subscription plan ID (not used for now, but kept for future)
-  private getSubscriptionPlanId(): string {
-    if (this.environment === 'production') {
-      // You would need to create this in your PayPal Business Dashboard
-      return 'P-YOUR_PRODUCTION_PLAN_ID';
-    } else {
-      return 'P-YOUR_SANDBOX_PLAN_ID';
+  // Get subscription plan ID
+  getSubscriptionPlanId(): string {
+    return this.subscriptionPlanId;
+  }
+
+  // Get subscription details
+  async getSubscriptionDetails(subscriptionId: string): Promise<PayPalSubscriptionResponse> {
+    try {
+      const accessToken = await this.getAccessToken();
+      
+      const response = await fetch(`${this.baseUrl}/v1/billing/subscriptions/${subscriptionId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get subscription details: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting subscription details:', error);
+      throw error;
+    }
+  }
+
+  // Cancel subscription
+  async cancelSubscription(subscriptionId: string, reason: string = 'User requested cancellation'): Promise<void> {
+    try {
+      const accessToken = await this.getAccessToken();
+      
+      const response = await fetch(`${this.baseUrl}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          reason: reason
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to cancel subscription: ${response.status} - ${errorText}`);
+      }
+
+      console.log('Subscription cancelled successfully');
+    } catch (error) {
+      console.error('Error cancelling subscription:', error);
+      throw error;
     }
   }
 
@@ -252,6 +293,7 @@ class PayPalService {
       hasClientId: !!this.clientId,
       hasClientSecret: !!this.clientSecret,
       environment: this.environment,
+      planId: this.subscriptionPlanId,
       isValid
     });
     
@@ -264,7 +306,8 @@ class PayPalService {
       environment: this.environment,
       clientId: this.clientId ? `${this.clientId.substring(0, 10)}...` : 'Not set',
       configured: this.isConfigured(),
-      baseUrl: this.baseUrl
+      baseUrl: this.baseUrl,
+      planId: this.subscriptionPlanId
     };
   }
 
@@ -277,6 +320,33 @@ class PayPalService {
       return !!token;
     } catch (error) {
       console.error('PayPal connection test failed:', error);
+      return false;
+    }
+  }
+
+  // Verify subscription plan exists
+  async verifySubscriptionPlan(): Promise<boolean> {
+    try {
+      const accessToken = await this.getAccessToken();
+      
+      const response = await fetch(`${this.baseUrl}/v1/billing/plans/${this.subscriptionPlanId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const plan = await response.json();
+        console.log('Subscription plan verified:', plan.name);
+        return true;
+      } else {
+        console.error('Subscription plan not found:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error verifying subscription plan:', error);
       return false;
     }
   }
