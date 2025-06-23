@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp, Bot, Crown, Workflow, Network } from 'lucide-react';
+import { X, FileText, Brain, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Zap, Target, Users, Shield, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp, Bot, Crown, Network } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { picaosService, PicaosProject, PicaosSection, PicaosSettings } from '../services/picaosService';
 
@@ -327,14 +327,14 @@ export const EnhancedWriteupAgent: React.FC<EnhancedWriteupAgentProps> = ({ isOp
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div className="flex items-start space-x-3">
-                      <Workflow className="text-purple-600 flex-shrink-0 mt-0.5" size={16} />
+                      <Network className="text-purple-600 flex-shrink-0 mt-0.5" size={16} />
                       <div>
                         <p className="font-medium text-purple-800">Intelligent Planning</p>
                         <p className="text-purple-700">AI orchestrator creates optimal multi-agent workflows</p>
                       </div>
                     </div>
                     <div className="flex items-start space-x-3">
-                      <Network className="text-purple-600 flex-shrink-0 mt-0.5" size={16} />
+                      <Layers className="text-purple-600 flex-shrink-0 mt-0.5" size={16} />
                       <div>
                         <p className="font-medium text-purple-800">Parallel Processing</p>
                         <p className="text-purple-700">Multiple AI models work simultaneously on different sections</p>
@@ -661,6 +661,83 @@ export const EnhancedWriteupAgent: React.FC<EnhancedWriteupAgentProps> = ({ isOp
                   <p className="text-gray-600 mb-6">
                     Your {currentProject.wordCount.toLocaleString()}-word document has been generated using PicaOS multi-agent orchestration.
                   </p>
+                </div>
+
+                {/* Document Review Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                      <Eye size={20} />
+                      <span>Document Review</span>
+                    </h4>
+                    <button
+                      onClick={() => setShowFullDocument(!showFullDocument)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      {showFullDocument ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      <span>{showFullDocument ? 'Hide' : 'Show'} Full Document</span>
+                    </button>
+                  </div>
+
+                  {/* Section Overview */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {currentProject.sections.map((section) => (
+                      <div key={section.id} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <h5 className="font-medium text-gray-900 text-sm truncate">{section.title}</h5>
+                            <span className="text-xs bg-purple-100 px-1.5 py-0.5 rounded-full text-purple-600 flex items-center space-x-0.5 flex-shrink-0">
+                              <Bot size={10} />
+                              <span className="truncate max-w-[60px]">{section.assignedModel}</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-500">{section.wordCount} words</span>
+                            <button
+                              onClick={() => toggleSectionExpansion(section.id)}
+                              className="p-1 rounded hover:bg-gray-100"
+                            >
+                              {expandedSections.has(section.id) ? 
+                                <ChevronUp size={14} /> : 
+                                <ChevronDown size={14} />
+                              }
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {expandedSections.has(section.id) && (
+                          <div className="text-xs text-gray-700 leading-relaxed max-h-40 overflow-y-auto">
+                            {section.content}
+                          </div>
+                        )}
+                        
+                        {!expandedSections.has(section.id) && (
+                          <div className="text-xs text-gray-600">
+                            {section.content.substring(0, 150)}...
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Full Document View */}
+                  {showFullDocument && (
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 max-h-96 overflow-y-auto">
+                      <div className="prose prose-sm max-w-none">
+                        <h1 className="text-2xl font-bold mb-6">{currentProject.title}</h1>
+                        {currentProject.sections.map((section) => (
+                          <div key={section.id} className="mb-8">
+                            <h2 className="text-xl font-semibold mb-4 border-b border-gray-200 pb-2">
+                              {section.title}
+                            </h2>
+                            <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                              {section.content}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Export Options */}
