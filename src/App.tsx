@@ -7,9 +7,10 @@ import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
+import { AIVideoCall } from './components/AIVideoCall';
 import { WriteupAgent } from './components/WriteupAgent';
+import { AIVoiceChat } from './components/AIVoiceChat';
 import { GetStartedModal } from './components/GetStartedModal';
-import { VoiceLabs } from './components/VoiceLabs';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { useGetStartedVideo } from './hooks/useGetStartedVideo';
@@ -41,8 +42,9 @@ function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showTierUpgrade, setShowTierUpgrade] = useState(false);
   const [showDebateClub, setShowDebateClub] = useState(false);
-  const [showVoiceLabs, setShowVoiceLabs] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
   const [showWriteupAgent, setShowWriteupAgent] = useState(false);
+  const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -153,13 +155,25 @@ function App() {
     setShowDebateClub(true);
   };
 
-  const handleOpenVoiceLabs = () => {
-    setShowVoiceLabs(true);
+  const handleOpenVideoCall = () => {
+    if (user) {
+      setShowVideoCall(true);
+    } else {
+      setShowAuth(true);
+    }
   };
 
   const handleOpenWriteupAgent = () => {
     if (user) {
       setShowWriteupAgent(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
+  const handleOpenVoiceChat = () => {
+    if (user) {
+      setShowVoiceChat(true);
     } else {
       setShowAuth(true);
     }
@@ -190,8 +204,9 @@ function App() {
           onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
           onOpenTierUpgrade={() => setShowTierUpgrade(true)}
           onOpenDebateClub={handleOpenDebateClub}
-          onOpenVoiceLabs={handleOpenVoiceLabs}
+          onOpenVideoCall={handleOpenVideoCall}
           onOpenWriteupAgent={handleOpenWriteupAgent}
+          onOpenVoiceChat={handleOpenVoiceChat}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
@@ -219,9 +234,14 @@ function App() {
           onClose={() => setShowDebateClub(false)}
         />
 
-        <VoiceLabs
-          isOpen={showVoiceLabs}
-          onClose={() => setShowVoiceLabs(false)}
+        <AIVideoCall
+          isOpen={showVideoCall}
+          onClose={() => setShowVideoCall(false)}
+        />
+
+        <AIVoiceChat
+          isOpen={showVoiceChat}
+          onClose={() => setShowVoiceChat(false)}
         />
 
         <WriteupAgent
@@ -252,8 +272,9 @@ function App() {
         onOpenAdmin={isSuperAdmin() ? handleOpenAdmin : undefined}
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         onOpenDebateClub={handleOpenDebateClub}
-        onOpenVoiceLabs={handleOpenVoiceLabs}
+        onOpenVideoCall={handleOpenVideoCall}
         onOpenWriteupAgent={handleOpenWriteupAgent}
+        onOpenVoiceChat={handleOpenVoiceChat}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -301,9 +322,14 @@ function App() {
         onClose={() => setShowDebateClub(false)}
       />
 
-      <VoiceLabs
-        isOpen={showVoiceLabs}
-        onClose={() => setShowVoiceLabs(false)}
+      <AIVideoCall
+        isOpen={showVideoCall}
+        onClose={() => setShowVideoCall(false)}
+      />
+
+      <AIVoiceChat
+        isOpen={showVoiceChat}
+        onClose={() => setShowVoiceChat(false)}
       />
 
       <WriteupAgent

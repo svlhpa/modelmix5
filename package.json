@@ -17,7 +17,9 @@
     "jspdf": "^2.5.2",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.4",
+    "recordrtc": "^5.6.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

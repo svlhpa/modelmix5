@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles, Volume2 } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -16,8 +16,9 @@ interface SidebarProps {
   onOpenAdmin?: () => void;
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
-  onOpenVoiceLabs: () => void;
+  onOpenVideoCall: () => void;
   onOpenWriteupAgent: () => void;
+  onOpenVoiceChat: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -35,8 +36,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAdmin,
   onOpenTierUpgrade,
   onOpenDebateClub,
-  onOpenVoiceLabs,
+  onOpenVideoCall,
   onOpenWriteupAgent,
+  onOpenVoiceChat,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -131,14 +133,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                         <button
                           onClick={() => {
-                            onOpenVoiceLabs();
+                            onOpenVoiceChat();
                             onToggleMobile();
                           }}
                           className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                         >
-                          <Mic size={16} />
-                          <span>Voice Labs</span>
+                          <Volume2 size={16} />
+                          <span>AI Voice Chats</span>
                         </button>
+
+                        {isProUser ? (
+                          <button
+                            onClick={() => {
+                              onOpenVideoCall();
+                              onToggleMobile();
+                            }}
+                            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                          >
+                            <Video size={16} />
+                            <span>AI Video Call</span>
+                          </button>
+                        ) : (
+                          <div className="relative">
+                            <button
+                              disabled
+                              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
+                            >
+                              <Video size={16} />
+                              <span>AI Video Call</span>
+                              <Crown size={12} className="text-yellow-400 ml-auto" />
+                            </button>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <button
+                                onClick={() => {
+                                  onOpenTierUpgrade();
+                                  onToggleMobile();
+                                }}
+                                className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                              >
+                                Pro Only
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         <button
                           onClick={() => {
@@ -468,12 +505,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
 
                   <button
-                    onClick={onOpenVoiceLabs}
+                    onClick={onOpenVoiceChat}
                     className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                   >
-                    <Mic size={16} />
-                    <span>Voice Labs</span>
+                    <Volume2 size={16} />
+                    <span>AI Voice Chats</span>
                   </button>
+
+                  {isProUser ? (
+                    <button
+                      onClick={onOpenVideoCall}
+                      className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                    >
+                      <Video size={16} />
+                      <span>AI Video Call</span>
+                    </button>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        disabled
+                        className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
+                      >
+                        <Video size={16} />
+                        <span>AI Video Call</span>
+                        <Crown size={12} className="text-yellow-400 ml-auto" />
+                      </button>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <button
+                          onClick={onOpenTierUpgrade}
+                          className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
+                        >
+                          Pro Only
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={onOpenWriteupAgent}
