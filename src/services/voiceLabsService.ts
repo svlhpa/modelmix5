@@ -7,7 +7,7 @@ class VoiceLabsService {
   // Get WebSocket URL for voice connection
   getWebSocketUrl(): string {
     // Use the Supabase Edge Function URL
-    return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-labs`;
+    return `${import.meta.env.VITE_SUPABASE_URL.replace('https://', 'wss://')}/functions/v1/voice-labs`;
   }
 
   // Get available voices from ElevenLabs

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
+import { voiceLabsService } from '../services/voiceLabsService';
 
 interface VoiceLabsProps {
   isOpen: boolean;
@@ -48,6 +48,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const audioQueueRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const pingIntervalRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 3;
 
   const currentTier = getCurrentTier();
 
@@ -64,21 +66,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
   const checkElevenLabsAvailability = async () => {
     try {
-      // Check if ElevenLabs API key is available in global_api_keys
-      const { data, error } = await supabase
-        .from('global_api_keys')
-        .select('api_key')
-        .eq('provider', 'elevenlabs')
-        .eq('is_active', true)
-        .single();
-
-      if (error) {
-        console.error('Error checking ElevenLabs availability:', error);
-        setIsElevenLabsAvailable(false);
-        return;
-      }
-
-      setIsElevenLabsAvailable(!!data?.api_key);
+      const isAvailable = await voiceLabsService.isElevenLabsAvailable(currentTier);
+      setIsElevenLabsAvailable(isAvailable);
     } catch (error) {
       console.error('Failed to check ElevenLabs availability:', error);
       setIsElevenLabsAvailable(false);
@@ -126,6 +115,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     setTranscript('');
     setAiResponse('');
     setError(null);
+    reconnectAttemptsRef.current = 0;
   };
 
   const startCall = async () => {
@@ -174,7 +164,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     return new Promise((resolve, reject) => {
       try {
         // Use direct WebSocket connection to Supabase Edge Function
-        const wsUrl = `${import.meta.env.VITE_SUPABASE_URL.replace('https://', 'wss://')}/functions/v1/voice-labs`;
+        const wsUrl = voiceLabsService.getWebSocketUrl();
         console.log('Connecting to WebSocket:', wsUrl);
         
         const ws = new WebSocket(wsUrl);
@@ -204,7 +194,28 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
         ws.onerror = (error) => {
           console.error('WebSocket error:', error);
-          reject(new Error('Failed to connect to voice service'));
+          
+          // Try HTTP fallback if WebSocket fails
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            reconnectAttemptsRef.current++;
+            console.log(`WebSocket connection failed. Attempt ${reconnectAttemptsRef.current} of ${maxReconnectAttempts}`);
+            
+            // Close the failed connection
+            try {
+              ws.close();
+            } catch (e) {
+              // Ignore errors when closing already failed connection
+            }
+            
+            // Wait before retrying
+            setTimeout(() => {
+              initializeWebSocket()
+                .then(resolve)
+                .catch(reject);
+            }, 1000 * reconnectAttemptsRef.current);
+          } else {
+            reject(new Error('Failed to connect to voice service'));
+          }
         };
 
         ws.onclose = () => {
@@ -643,8 +654,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                     <div className="flex items-start space-x-2 text-yellow-700">
                       <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-medium">Demo Mode Active</p>
-                        <p className="text-sm">ElevenLabs API key is not configured in your Supabase global_api_keys table. Voice Labs will run in demo mode with simulated responses.</p>
+                        <p className="font-medium">ElevenLabs API Key Required</p>
+                        <p className="text-sm">Please ask your administrator to configure an ElevenLabs API key in the Supabase global_api_keys table for full functionality.</p>
                       </div>
                     </div>
                   </div>
