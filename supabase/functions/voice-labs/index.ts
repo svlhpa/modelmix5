@@ -1,17 +1,7 @@
-/*
-  # Voice Labs Edge Function
-
-  This function handles real-time voice communication using WebSockets.
-  It integrates with ElevenLabs for speech-to-text and text-to-speech,
-  and uses OpenAI for AI responses.
-
-  ## Features
-  - WebSocket-based real-time communication
-  - Speech-to-text using ElevenLabs
-  - AI responses using OpenAI
-  - Text-to-speech using ElevenLabs
-  - Connection management and cleanup
-*/
+// Voice Labs Edge Function
+// This function handles real-time voice communication using WebSockets.
+// It integrates with ElevenLabs for speech-to-text and text-to-speech,
+// and uses OpenAI for AI responses.
 
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
 
