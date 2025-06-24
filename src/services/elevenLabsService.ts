@@ -43,14 +43,21 @@ class ElevenLabsService {
   // Get API key (personal or global)
   private async getApiKey(userTier: UserTier = 'tier1'): Promise<{ key: string | null; isGlobal: boolean }> {
     try {
-      // Try to get global API key first
+      // Try to get personal API key first
+      const personalKey = await globalApiService.getGlobalApiKey('elevenlabs', userTier);
+      if (personalKey && personalKey.trim() !== '') {
+        console.log('Using personal Eleven Labs API key');
+        return { key: personalKey, isGlobal: false };
+      }
+
+      // Try to get global key
       const globalKey = await globalApiService.getGlobalApiKey('elevenlabs', userTier);
       if (globalKey && globalKey.trim() !== '') {
         console.log('Using global Eleven Labs API key');
         return { key: globalKey, isGlobal: true };
       }
     } catch (error) {
-      console.error('Error accessing global Eleven Labs API key:', error);
+      console.error('Error accessing Eleven Labs API key:', error);
     }
 
     console.log('No Eleven Labs API key available');

@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { elevenLabsService, ElevenLabsVoice, TTSRequest } from '../services/elevenLabsService';
 import { whisperService } from '../services/whisperService';
 import { VoiceChatSettings } from '../types';
+import { aiService } from '../services/aiService';
 
 interface VoiceChatProps {
   isOpen: boolean;
@@ -207,8 +208,31 @@ export const VoiceChat: React.FC<VoiceChatProps> = ({ isOpen, onClose }) => {
   const generateAIResponse = async (userMessage: string) => {
     setIsProcessing(true);
     try {
-      // Simulate AI response (in a real app, you'd call your AI service)
-      const aiResponseText = await simulateAIResponse(userMessage, settings.rolePlayPrompt);
+      // Build conversation history for context
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+      
+      // Add system message with role play prompt
+      const systemMessage = {
+        role: 'system' as const,
+        content: settings.rolePlayPrompt
+      };
+      
+      // Add user message
+      const userMsg = {
+        role: 'user' as const,
+        content: userMessage
+      };
+      
+      // Call AI service to generate response
+      const aiResponseText = await aiService.callOpenAI(
+        [systemMessage, ...conversationHistory, userMsg],
+        [],
+        undefined,
+        currentTier
+      );
       
       // Generate speech for AI response
       const ttsRequest: TTSRequest = {
@@ -296,31 +320,6 @@ export const VoiceChat: React.FC<VoiceChatProps> = ({ isOpen, onClose }) => {
           elevenLabsService.revokeAudioUrl(msg.audioUrl);
         }
       });
-    }
-  };
-
-  const simulateAIResponse = async (userMessage: string, rolePlayPrompt: string): Promise<string> => {
-    // In a real implementation, you would call your AI service here
-    // For now, we'll simulate a response based on the user message and role play prompt
-    
-    // Wait a bit to simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Simple response generation based on user message
-    if (userMessage.toLowerCase().includes('hello') || userMessage.toLowerCase().includes('hi')) {
-      return "Hello there! How can I assist you today?";
-    } else if (userMessage.toLowerCase().includes('how are you')) {
-      return "I'm doing well, thank you for asking! How about you?";
-    } else if (userMessage.toLowerCase().includes('weather')) {
-      return "I don't have real-time weather data, but I'd be happy to chat about other topics!";
-    } else if (userMessage.toLowerCase().includes('name')) {
-      return `My name is ${settings.voiceName}. I'm an AI assistant powered by Eleven Labs voice technology.`;
-    } else if (userMessage.toLowerCase().includes('voice')) {
-      return `I'm currently using the ${settings.voiceName} voice from Eleven Labs. Do you like how it sounds?`;
-    } else if (userMessage.toLowerCase().includes('help')) {
-      return "I'm here to help! You can ask me questions, have a conversation, or just chat about whatever's on your mind.";
-    } else {
-      return `Thanks for your message. I'm here to assist you with any questions or topics you'd like to discuss. What would you like to talk about next?`;
     }
   };
 

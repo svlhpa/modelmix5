@@ -190,7 +190,7 @@ class AIService {
     }
   }
 
-  private async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
     const tier = userTier || 'tier2';
     let { key: apiKey, isGlobal } = await this.getApiKey('openai', tier);
