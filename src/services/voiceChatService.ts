@@ -206,7 +206,7 @@ class VoiceChatService {
             const text = await this.speechToText(audioBlob, userTier);
             
             if (onMessage) {
-              onMessage(text);
+              onMessage(`user: ${text}`);
             }
             
             // Generate AI response
