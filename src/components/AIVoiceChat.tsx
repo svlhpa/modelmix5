@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Volume2, Mic, Play, Pause, Loader2, CheckCircle, AlertCircle, User, MessageCircle, Send, Download, Headphones, Settings, Save, StopCircle, RefreshCw, AudioWaveform as Waveform, Zap } from 'lucide-react';
+import { X, Volume2, Mic, Play, Pause, Loader2, CheckCircle, AlertCircle, User, MessageCircle, Send, Download, Headphones, Settings, Save, StopCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { voiceChatService } from '../services/voiceChatService';
+import { elevenLabsService } from '../services/elevenLabsService';
 import RecordRTC from 'recordrtc';
+import { io, Socket } from 'socket.io-client';
 
 interface AIVoiceChatProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [voiceSettings, setVoiceSettings] = useState({
@@ -45,23 +47,20 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
     style: 0.5
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [currentResponseText, setCurrentResponseText] = useState('');
   
   // Refs for real-time voice chat
+  const socketRef = useRef<Socket | null>(null);
   const recorderRef = useRef<RecordRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<Uint8Array[]>([]);
-  const isPlayingAudioRef = useRef<boolean>(false);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const isInterruptingRef = useRef<boolean>(false);
-  const voiceChatRef = useRef<{
-    sendMessage: (text: string) => Promise<void>;
-    sendAudio: (audioBlob: Blob) => Promise<void>;
-    disconnect: () => void;
-  } | null>(null);
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
@@ -73,21 +72,19 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
       setMessages([]);
       setUserInput('');
       setError(null);
-      setIsConnected(false);
-      setIsConnecting(false);
     }
     
     return () => {
       // Clean up when modal closes
-      disconnectVoiceChat();
+      disconnectSocket();
       stopRecording();
-      stopAllAudio();
+      stopAudio();
     };
   }, [isOpen]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, currentResponseText]);
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,7 +92,42 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
 
   const loadAgents = async () => {
     try {
-      const availableAgents = voiceChatService.getAvailableAgents();
+      // In a real implementation, these would come from an API
+      const availableAgents: VoiceAgent[] = [
+        {
+          id: 'support-agent',
+          name: 'Alexis',
+          description: 'A dedicated support agent who is always ready to resolve any issues.',
+          voiceId: 'pNInz6obpgDQGcFmaJgB',
+          avatar: 'https://images.pexels.com/photos/5876695/pexels-photo-5876695.jpeg?auto=compress&cs=tinysrgb&w=150',
+          personality: 'Helpful, patient, and knowledgeable'
+        },
+        {
+          id: 'mindfulness-coach',
+          name: 'Joe',
+          description: 'A mindfulness coach who helps you find calm and clarity.',
+          voiceId: 'ErXwobaYiN019PkySvjV',
+          avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
+          personality: 'Calm, insightful, and encouraging'
+        },
+        {
+          id: 'sales-agent',
+          name: 'Harper',
+          description: 'A sales agent who showcases how ElevenLabs can transform your business.',
+          voiceId: 'jBpfuIE2acCO8z3wKNLl',
+          avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150',
+          personality: 'Enthusiastic, knowledgeable, and persuasive'
+        },
+        {
+          id: 'wizard',
+          name: 'Calum',
+          description: 'A mysterious wizard who offers ancient wisdom to aid you on your journey.',
+          voiceId: 'XrExE9yKIg1WjnnlVkGX',
+          avatar: 'https://images.pexels.com/photos/2379005/pexels-photo-2379005.jpeg?auto=compress&cs=tinysrgb&w=150',
+          personality: 'Wise, mysterious, and philosophical'
+        }
+      ];
+      
       setAgents(availableAgents);
       
       // Set default agent
@@ -108,52 +140,19 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
     }
   };
 
-  const connectVoiceChat = async () => {
+  const connectSocket = async () => {
     if (!activeAgent) return;
     
     try {
       setIsConnecting(true);
-      setError(null);
       
-      // Set up audio context
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      audioContextRef.current = new AudioContext();
+      // In a real implementation, this would connect to a WebSocket server
+      // For demo purposes, we'll simulate a connection
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Set up real-time voice chat
-      voiceChatRef.current = await voiceChatService.setupRealTimeVoiceChat(
-        activeAgent.id,
-        activeAgent.voiceId,
-        currentTier,
-        voiceSettings,
-        (message) => {
-          // Handle incoming text message
-          if (message.startsWith('user:')) {
-            // This is a transcription of user speech
-            const userMessage: ChatMessage = {
-              id: `user-${Date.now()}`,
-              content: message.substring(5).trim(),
-              sender: 'user',
-              timestamp: new Date()
-            };
-            setMessages(prev => [...prev, userMessage]);
-          } else {
-            // This is an AI response
-            setCurrentResponseText(message);
-          }
-        },
-        (audioChunk) => {
-          // Handle incoming audio chunk
-          audioQueueRef.current.push(audioChunk);
-          playNextAudioChunk();
-        },
-        (error) => {
-          // Handle error
-          console.error('Voice chat error:', error);
-          setError(error.message);
-        }
-      );
-      
+      // Simulate successful connection
       setIsConnected(true);
+      setIsConnecting(false);
       
       // Add welcome message from the agent
       const welcomeMessages: Record<string, string> = {
@@ -169,100 +168,35 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
       handleAgentResponse(welcomeMessage);
       
     } catch (error) {
-      console.error('Failed to connect to voice chat:', error);
-      setError('Failed to connect to voice chat. Please try again later.');
-      setIsConnecting(false);
-      setIsConnected(false);
-    } finally {
+      console.error('Failed to connect to voice chat server:', error);
+      setError('Failed to connect to voice chat server. Please try again later.');
       setIsConnecting(false);
     }
   };
 
-  const disconnectVoiceChat = () => {
-    if (voiceChatRef.current) {
-      voiceChatRef.current.disconnect();
-      voiceChatRef.current = null;
+  const disconnectSocket = () => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
-    
-    // Clean up audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(console.error);
-      audioContextRef.current = null;
-    }
-    
-    // Clear audio queue
-    audioQueueRef.current = [];
-    isPlayingAudioRef.current = false;
-    
     setIsConnected(false);
-  };
-
-  const playNextAudioChunk = async () => {
-    if (isPlayingAudioRef.current || audioQueueRef.current.length === 0 || !audioContextRef.current) {
-      return;
-    }
-    
-    try {
-      isPlayingAudioRef.current = true;
-      
-      // Get next chunk
-      const chunk = audioQueueRef.current.shift();
-      if (!chunk) {
-        isPlayingAudioRef.current = false;
-        return;
-      }
-      
-      // Decode audio data
-      const audioBuffer = await audioContextRef.current.decodeAudioData(chunk.buffer);
-      
-      // Create source
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      
-      // Play audio
-      source.start(0);
-      
-      // When finished, play next chunk
-      source.onended = () => {
-        isPlayingAudioRef.current = false;
-        playNextAudioChunk();
-      };
-    } catch (error) {
-      console.error('Error playing audio chunk:', error);
-      isPlayingAudioRef.current = false;
-      playNextAudioChunk(); // Try next chunk
-    }
-  };
-
-  const stopAllAudio = () => {
-    // Clear audio queue
-    audioQueueRef.current = [];
-    isPlayingAudioRef.current = false;
-    
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(console.error);
-      audioContextRef.current = null;
-    }
-    
-    // Reset playing state
-    setIsPlaying({});
   };
 
   const handleSelectAgent = (agent: VoiceAgent) => {
     // Disconnect from current agent if connected
     if (isConnected) {
-      disconnectVoiceChat();
+      disconnectSocket();
     }
     
     setActiveAgent(agent);
     setMessages([]);
-    setError(null);
+    
+    // Connect to the new agent
+    connectSocket();
   };
 
   const handleSendMessage = async () => {
-    if (!userInput.trim() || !activeAgent || isProcessing || !isConnected || !voiceChatRef.current) return;
+    if (!userInput.trim() || !activeAgent || isProcessing) return;
     
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -274,39 +208,115 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
     setMessages(prev => [...prev, userMessage]);
     setUserInput('');
     
+    // Add loading message from agent
+    const loadingMessage: ChatMessage = {
+      id: `agent-${Date.now()}`,
+      content: '',
+      sender: 'agent',
+      timestamp: new Date(),
+      isLoading: true
+    };
+    
+    setMessages(prev => [...prev, loadingMessage]);
+    
     try {
-      setIsProcessing(true);
+      // In a real implementation, this would call the Eleven Labs API
+      await generateAgentResponse(userInput);
+    } catch (error) {
+      console.error('Error generating response:', error);
       
-      // Send message to voice chat service
-      await voiceChatRef.current.sendMessage(userInput);
+      // Update the loading message with error
+      setMessages(prev => prev.map(msg => 
+        msg.isLoading ? {
+          ...msg,
+          isLoading: false,
+          error: 'Failed to generate response. Please try again.'
+        } : msg
+      ));
+    }
+  };
+
+  const generateAgentResponse = async (userMessage: string) => {
+    if (!activeAgent) return;
+    
+    setIsProcessing(true);
+    setIsStreamingResponse(true);
+    setCurrentResponseText('');
+    
+    try {
+      // Simulate streaming response
+      const responses = {
+        'support-agent': [
+          "I understand your concern. Let me help you resolve this issue.",
+          "That's a great question. Here's what you need to know...",
+          "I'm here to help you with that. Let's work through this together."
+        ],
+        'mindfulness-coach': [
+          "Take a deep breath. Let's approach this mindfully.",
+          "I hear what you're saying. Let's explore how to bring more clarity to this situation.",
+          "That's a common challenge. Here's a mindfulness technique that might help..."
+        ],
+        'sales-agent': [
+          "That's a great point! Our voice technology can definitely help with that.",
+          "Many of our customers have had similar questions. Here's how our solution addresses that need...",
+          "I'd be happy to explain how our platform can transform that experience for you."
+        ],
+        'wizard': [
+          "Ah, an interesting quest indeed. The ancient scrolls speak of such matters...",
+          "The path you seek requires wisdom. Let me share what the stars have revealed...",
+          "Many have walked this road before you. Here's what the mystical realms suggest..."
+        ]
+      };
+      
+      const agentResponses = responses[activeAgent.id as keyof typeof responses] || responses['support-agent'];
+      const fullResponse = agentResponses[Math.floor(Math.random() * agentResponses.length)];
+      
+      // Simulate streaming text response
+      for (let i = 0; i < fullResponse.length; i++) {
+        if (isInterruptingRef.current) {
+          console.log('Response interrupted by user');
+          isInterruptingRef.current = false;
+          break;
+        }
+        
+        setCurrentResponseText(fullResponse.substring(0, i + 1));
+        await new Promise(resolve => setTimeout(resolve, 30)); // Adjust speed as needed
+      }
+      
+      // Simulate generating audio
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // In a real implementation, we would call the Eleven Labs API to generate audio
+      // For now, we'll simulate having an audio URL
+      const simulatedAudioUrl = 'https://example.com/audio.mp3';
+      
+      // Update the loading message with the response
+      handleAgentResponse(currentResponseText || fullResponse, simulatedAudioUrl);
       
     } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Failed to send message. Please try again.');
+      console.error('Error in agent response:', error);
+      setError('Failed to generate response. Please try again.');
+      
+      // Update the loading message with error
+      setMessages(prev => prev.map(msg => 
+        msg.isLoading ? {
+          ...msg,
+          isLoading: false,
+          error: 'Failed to generate response. Please try again.'
+        } : msg
+      ));
     } finally {
       setIsProcessing(false);
+      setIsStreamingResponse(false);
+      setCurrentResponseText('');
     }
   };
 
   const handleAgentResponse = (content: string, audioUrl?: string) => {
-    // If we're currently streaming a response, finalize it
-    if (isStreamingResponse && currentResponseText) {
-      setIsStreamingResponse(false);
-      
-      const agentMessage: ChatMessage = {
-        id: `agent-${Date.now()}`,
-        content: currentResponseText,
-        sender: 'agent',
-        timestamp: new Date(),
-        audioUrl
-      };
-      
-      setMessages(prev => [...prev, agentMessage]);
-      setCurrentResponseText('');
-      return;
-    }
+    // Remove any loading message
+    setMessages(prev => prev.filter(msg => !msg.isLoading));
     
-    // Add the new response
+    // Add the actual response
     const agentMessage: ChatMessage = {
       id: `agent-${Date.now()}`,
       content,
@@ -316,14 +326,76 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
     };
     
     setMessages(prev => [...prev, agentMessage]);
+    
+    // Auto-play the audio
+    if (audioUrl) {
+      handlePlayAudio(agentMessage.id, audioUrl);
+    }
+  };
+
+  const handlePlayAudio = (messageId: string, audioUrl?: string) => {
+    // Stop any currently playing audio
+    stopAudio();
+    
+    // In a real implementation, this would play the actual audio from Eleven Labs
+    // For demo purposes, we'll create a simple oscillator sound
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContext();
+      
+      // Create an oscillator
+      const oscillator = audioContextRef.current.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(440, audioContextRef.current.currentTime); // A4 note
+      
+      // Create a gain node for volume control
+      const gainNode = audioContextRef.current.createGain();
+      gainNode.gain.setValueAtTime(0.1, audioContextRef.current.currentTime); // Lower volume
+      
+      // Connect nodes
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContextRef.current.destination);
+      
+      // Start and stop the oscillator after a short time
+      oscillator.start();
+      
+      // Update playing state
+      setIsPlaying(prev => ({
+        ...prev,
+        [messageId]: true
+      }));
+      
+      // Stop after 2 seconds
+      setTimeout(() => {
+        oscillator.stop();
+        setIsPlaying(prev => ({
+          ...prev,
+          [messageId]: false
+        }));
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error playing audio:', error);
+    }
+  };
+
+  const stopAudio = () => {
+    // Stop any currently playing audio
+    if (audioContextRef.current && audioSourceRef.current) {
+      audioSourceRef.current.stop();
+      audioSourceRef.current = null;
+    }
+    
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setCurrentAudio(null);
+    }
+    
+    setIsPlaying({});
   };
 
   const startRecording = async () => {
-    if (!isConnected || !voiceChatRef.current) {
-      setError('Please connect to a voice agent first.');
-      return;
-    }
-    
     try {
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -353,7 +425,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
   };
 
   const stopRecording = async () => {
-    if (!recorderRef.current || !isRecording || !voiceChatRef.current) return;
+    if (!recorderRef.current || !isRecording) return;
     
     try {
       setIsRecording(false);
@@ -363,36 +435,9 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
         const blob = recorderRef.current?.getBlob();
         
         if (blob) {
-          // Add user message with "Processing..." text
-          const userMessage: ChatMessage = {
-            id: `user-${Date.now()}`,
-            content: "Processing your voice message...",
-            sender: 'user',
-            timestamp: new Date(),
-            isLoading: true
-          };
-          
-          setMessages(prev => [...prev, userMessage]);
-          
-          try {
-            // Send audio to voice chat service
-            await voiceChatRef.current?.sendAudio(blob);
-            
-            // Remove the loading message (it will be replaced by the actual transcription)
-            setMessages(prev => prev.filter(msg => !msg.isLoading));
-          } catch (error) {
-            console.error('Error processing audio:', error);
-            
-            // Update the loading message with error
-            setMessages(prev => prev.map(msg => 
-              msg.isLoading ? {
-                ...msg,
-                content: 'Failed to process audio. Please try again.',
-                isLoading: false,
-                error: 'Failed to process audio'
-              } : msg
-            ));
-          }
+          // In a real implementation, we would send this to the server for speech-to-text
+          // For now, we'll simulate a transcription
+          await processAudioBlob(blob);
         }
         
         // Clean up
@@ -411,84 +456,97 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
     }
   };
 
-  const handleInterruptResponse = () => {
-    // Set the interruption flag
-    isInterruptingRef.current = true;
-    
-    // Stop all audio
-    stopAllAudio();
-    
-    // Clear streaming response
-    setIsStreamingResponse(false);
-    
-    if (currentResponseText) {
-      // Add the partial response as a message
-      handleAgentResponse(currentResponseText);
-      setCurrentResponseText('');
+  const processAudioBlob = async (blob: Blob) => {
+    try {
+      setIsProcessing(true);
+      
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Simulate transcription
+      const transcription = "This is a simulated voice message that was transcribed.";
+      
+      // Add user message with transcription
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        content: transcription,
+        sender: 'user',
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, userMessage]);
+      
+      // Generate agent response
+      await generateAgentResponse(transcription);
+      
+    } catch (error) {
+      console.error('Error processing audio:', error);
+      setError('Failed to process audio. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
-    
-    // Add user interruption message
-    const interruptMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      content: "[You interrupted the agent]",
-      sender: 'user',
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, interruptMessage]);
   };
 
-  const handlePlayAudio = (messageId: string) => {
-    // In a real implementation, this would play the actual audio from the message
-    // For demo purposes, we'll create a simple oscillator sound
+  const handleStartRecording = () => {
+    if (isRecording || isProcessing) return;
+    startRecording();
+  };
+
+  const handleStopRecording = () => {
+    if (!isRecording) return;
+    stopRecording();
+  };
+
+  const handleDownloadAudio = (messageId: string) => {
+    // In a real implementation, this would download the audio file
+    console.log('Downloading audio for message:', messageId);
+    
+    // Create a simple beep sound for demo purposes
     try {
-      // Stop any currently playing audio
-      stopAllAudio();
-      
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      audioContextRef.current = new AudioContext();
+      const audioContext = new AudioContext();
       
       // Create an oscillator
-      const oscillator = audioContextRef.current.createOscillator();
+      const oscillator = audioContext.createOscillator();
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(440, audioContextRef.current.currentTime); // A4 note
+      oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 note
       
       // Create a gain node for volume control
-      const gainNode = audioContextRef.current.createGain();
-      gainNode.gain.setValueAtTime(0.1, audioContextRef.current.currentTime); // Lower volume
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Lower volume
       
       // Connect nodes
       oscillator.connect(gainNode);
-      gainNode.connect(audioContextRef.current.destination);
+      gainNode.connect(audioContext.destination);
       
       // Start and stop the oscillator after a short time
       oscillator.start();
-      
-      // Update playing state
-      setIsPlaying(prev => ({
-        ...prev,
-        [messageId]: true
-      }));
-      
-      // Stop after 2 seconds
-      setTimeout(() => {
-        if (audioContextRef.current) {
-          oscillator.stop();
-        }
-        setIsPlaying(prev => ({
-          ...prev,
-          [messageId]: false
-        }));
-      }, 2000);
+      setTimeout(() => oscillator.stop(), 500);
       
     } catch (error) {
-      console.error('Error playing audio:', error);
+      console.error('Error creating audio:', error);
     }
   };
 
   const handleSaveSettings = () => {
     // In a real implementation, this would save the voice settings
     setShowSettings(false);
+  };
+
+  const handleInterruptResponse = () => {
+    // Set the interruption flag
+    isInterruptingRef.current = true;
+    
+    // Stop any audio playback
+    stopAudio();
+    
+    // Remove loading message if present
+    setMessages(prev => prev.filter(msg => !msg.isLoading));
+    
+    // Stop streaming response
+    setIsStreamingResponse(false);
+    setCurrentResponseText('');
+    setIsProcessing(false);
   };
 
   if (!isOpen) return null;
@@ -671,7 +729,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                       </div>
                     ) : (
                       <button
-                        onClick={connectVoiceChat}
+                        onClick={connectSocket}
                         className="flex items-center space-x-2 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
                       >
                         <RefreshCw size={14} />
@@ -683,7 +741,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.length === 0 && !isStreamingResponse ? (
+                  {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
                       <Volume2 size={48} className="mb-4 text-purple-300" />
                       <h3 className="text-lg font-medium text-gray-700 mb-2">Start a Voice Conversation</h3>
@@ -724,7 +782,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                               {message.isLoading ? (
                                 <div className="flex items-center space-x-2">
                                   <Loader2 size={16} className="animate-spin" />
-                                  <span>Processing...</span>
+                                  <span>Generating response...</span>
                                 </div>
                               ) : message.error ? (
                                 <div className="flex items-center space-x-2 text-red-600">
@@ -736,10 +794,10 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                               )}
                             </div>
                             
-                            {message.sender === 'agent' && !message.isLoading && !message.error && (
+                            {message.sender === 'agent' && message.audioUrl && !message.isLoading && !message.error && (
                               <div className="flex items-center space-x-2 mt-1">
                                 <button
-                                  onClick={() => handlePlayAudio(message.id)}
+                                  onClick={() => handlePlayAudio(message.id, message.audioUrl)}
                                   className={`p-1 rounded-full ${
                                     isPlaying[message.id]
                                       ? 'bg-red-600 text-white'
@@ -760,6 +818,12 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                                     style={{ width: isPlaying[message.id] ? '60%' : '0%' }}
                                   />
                                 </div>
+                                <button
+                                  onClick={() => handleDownloadAudio(message.id)}
+                                  className="p-1 text-gray-500 hover:text-gray-700"
+                                >
+                                  <Download size={14} />
+                                </button>
                               </div>
                             )}
                             
@@ -821,7 +885,7 @@ export const AIVoiceChat: React.FC<AIVoiceChatProps> = ({ isOpen, onClose }) => 
                 <div className="p-4 border-t border-gray-200">
                   <div className="flex items-center space-x-2">
                     <button
-                      onClick={isRecording ? stopRecording : startRecording}
+                      onClick={isRecording ? handleStopRecording : handleStartRecording}
                       className={`p-3 rounded-full ${
                         isRecording
                           ? 'bg-red-600 text-white animate-pulse'
