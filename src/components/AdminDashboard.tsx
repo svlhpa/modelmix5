@@ -1,25 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Users, BarChart3, Settings, Key, Eye, EyeOff, Save, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw, Crown, Activity, TrendingUp, Globe, Image, Video, Youtube, ExternalLink, CheckCircle, Bot } from 'lucide-react';
+import { X, Users, Key, BarChart3, Settings, Shield, Plus, Edit, Trash2, Save, AlertCircle, CheckCircle, Crown, TrendingUp, Activity, Clock, RefreshCw, Eye, EyeOff, Globe, Zap, Palette, Mic, Video, FileText, Volume2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import { adminService } from '../services/adminService';
 import { globalApiService } from '../services/globalApiService';
 import { adminSettingsService } from '../services/adminSettingsService';
-import { UserTier } from '../types';
 
 interface AdminDashboardProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface UserProfile {
+interface UserWithSubscription {
   id: string;
   email: string;
   full_name: string | null;
   role: 'user' | 'superadmin';
-  current_tier: UserTier;
+  current_tier: 'tier1' | 'tier2';
   monthly_conversations: number;
   last_reset_date: string;
   created_at: string;
   updated_at: string;
+  subscription?: {
+    id: string;
+    tier: 'tier1' | 'tier2';
+    status: 'active' | 'cancelled' | 'expired';
+    started_at: string;
+    expires_at: string | null;
+  };
 }
 
 interface GlobalApiKey {
@@ -54,406 +61,405 @@ interface GlobalProviderStats {
   last_used: string;
 }
 
+interface AdminSetting {
+  id: string;
+  setting_key: string;
+  setting_value: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-keys' | 'analytics' | 'settings' | 'agents'>('overview');
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [globalKeys, setGlobalKeys] = useState<GlobalApiKey[]>([]);
-  const [stats, setStats] = useState<UserStats | null>(null);
+  const { user, isSuperAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'global-api-keys' | 'analytics' | 'agents' | 'settings'>('overview');
+  const [users, setUsers] = useState<UserWithSubscription[]>([]);
+  const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
+  const [stats, setStats] = useState<UserStats>({
+    totalUsers: 0,
+    totalSessions: 0,
+    totalConversations: 0,
+    activeUsersLast30Days: 0,
+    tier1Users: 0,
+    tier2Users: 0
+  });
   const [providerStats, setProviderStats] = useState<GlobalProviderStats[]>([]);
+  const [adminSettings, setAdminSettings] = useState<AdminSetting[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [newKeyForm, setNewKeyForm] = useState({
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Global API Key form state
+  const [showAddApiKey, setShowAddApiKey] = useState(false);
+  const [newApiKey, setNewApiKey] = useState({
     provider: '',
     api_key: '',
     tier_access: ['tier1', 'tier2'] as string[],
+    is_active: true,
     usage_limit: null as number | null
   });
-  const [showNewKeyForm, setShowNewKeyForm] = useState(false);
+  const [editingApiKey, setEditingApiKey] = useState<string | null>(null);
+  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
 
-  // Admin Settings State
-  const [getStartedVideoUrl, setGetStartedVideoUrl] = useState('');
-  const [videoStats, setVideoStats] = useState({
-    totalUsers: 0,
-    usersWhoWatchedCurrent: 0,
-    usersWhoHaventWatched: 0,
-    currentVideoUrl: ''
-  });
-  const [savingVideo, setSavingVideo] = useState(false);
-  const [videoSaved, setVideoSaved] = useState(false);
-
-  // Agents State
-  const [agentTestResult, setAgentTestResult] = useState<string | null>(null);
-  const [testingConnection, setTestingConnection] = useState(false);
+  // Settings form state
+  const [editingSettings, setEditingSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && user && isSuperAdmin()) {
       loadData();
     }
-  }, [isOpen, activeTab]);
+  }, [isOpen, user, activeTab]);
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      if (activeTab === 'users') {
-        const usersData = await adminService.getAllUsers();
-        setUsers(usersData);
-      } else if (activeTab === 'global-keys') {
-        const keysData = await globalApiService.getAllGlobalApiKeys();
-        setGlobalKeys(keysData);
-      } else if (activeTab === 'overview') {
-        const statsData = await adminService.getSystemStats();
-        setStats(statsData);
-      } else if (activeTab === 'analytics') {
-        const analyticsData = await adminService.getGlobalProviderStats();
-        setProviderStats(analyticsData);
-      } else if (activeTab === 'settings') {
-        await loadAdminSettings();
+      switch (activeTab) {
+        case 'overview':
+          const [statsData, providerStatsData] = await Promise.all([
+            adminService.getSystemStats(),
+            adminService.getGlobalProviderStats()
+          ]);
+          setStats(statsData);
+          setProviderStats(providerStatsData);
+          break;
+        case 'users':
+          const usersData = await adminService.getAllUsers();
+          setUsers(usersData);
+          break;
+        case 'global-api-keys':
+          const apiKeysData = await globalApiService.getAllGlobalApiKeys();
+          setGlobalApiKeys(apiKeysData);
+          break;
+        case 'analytics':
+          const analyticsData = await adminService.getGlobalProviderStats();
+          setProviderStats(analyticsData);
+          break;
+        case 'settings':
+          const settingsData = await adminSettingsService.getAllSettings();
+          setAdminSettings(settingsData);
+          break;
       }
     } catch (error) {
       console.error('Failed to load admin data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadAdminSettings = async () => {
+  const handleAddApiKey = async () => {
+    if (!newApiKey.provider || !newApiKey.api_key) {
+      setError('Provider and API key are required');
+      return;
+    }
+
     try {
-      const [videoUrl, stats] = await Promise.all([
-        adminSettingsService.getGetStartedVideoUrl(),
-        adminSettingsService.getVideoViewStats()
-      ]);
-      
-      setGetStartedVideoUrl(videoUrl);
-      setVideoStats(stats);
+      await globalApiService.createGlobalApiKey(newApiKey);
+      setSuccess('API key added successfully');
+      setShowAddApiKey(false);
+      setNewApiKey({
+        provider: '',
+        api_key: '',
+        tier_access: ['tier1', 'tier2'],
+        is_active: true,
+        usage_limit: null
+      });
+      loadData();
     } catch (error) {
-      console.error('Failed to load admin settings:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add API key');
+    }
+  };
+
+  const handleToggleApiKey = async (id: string, isActive: boolean) => {
+    try {
+      await globalApiService.toggleGlobalApiKey(id, isActive);
+      setSuccess(`API key ${isActive ? 'activated' : 'deactivated'} successfully`);
+      loadData();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to toggle API key');
+    }
+  };
+
+  const handleResetUsage = async (id: string) => {
+    try {
+      await globalApiService.resetGlobalUsage(id);
+      setSuccess('Usage reset successfully');
+      loadData();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to reset usage');
+    }
+  };
+
+  const handleDeleteApiKey = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this API key?')) return;
+
+    try {
+      await globalApiService.deleteGlobalApiKey(id);
+      setSuccess('API key deleted successfully');
+      loadData();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to delete API key');
     }
   };
 
   const handleUpdateUserRole = async (userId: string, role: 'user' | 'superadmin') => {
     try {
       await adminService.updateUserRole(userId, role);
-      await loadData();
+      setSuccess('User role updated successfully');
+      loadData();
     } catch (error) {
-      console.error('Failed to update user role:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update user role');
     }
   };
 
-  const handleUpdateUserTier = async (userId: string, tier: UserTier) => {
+  const handleUpdateUserTier = async (userId: string, tier: 'tier1' | 'tier2') => {
     try {
       await adminService.updateUserTier(userId, tier);
-      await loadData();
+      setSuccess('User tier updated successfully');
+      loadData();
     } catch (error) {
-      console.error('Failed to update user tier:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update user tier');
     }
   };
 
   const handleResetUserUsage = async (userId: string) => {
     try {
       await adminService.resetUserUsage(userId);
-      await loadData();
+      setSuccess('User usage reset successfully');
+      loadData();
     } catch (error) {
-      console.error('Failed to reset user usage:', error);
+      setError(error instanceof Error ? error.message : 'Failed to reset user usage');
     }
   };
 
-  const handleCreateGlobalKey = async () => {
-    try {
-      await globalApiService.createGlobalApiKey({
-        provider: newKeyForm.provider,
-        api_key: newKeyForm.api_key,
-        tier_access: newKeyForm.tier_access,
-        is_active: true,
-        usage_limit: newKeyForm.usage_limit
-      });
-      setNewKeyForm({
-        provider: '',
-        api_key: '',
-        tier_access: ['tier1', 'tier2'],
-        usage_limit: null
-      });
-      setShowNewKeyForm(false);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to create global API key:', error);
-    }
-  };
-
-  const handleToggleGlobalKey = async (id: string, isActive: boolean) => {
-    try {
-      await globalApiService.toggleGlobalApiKey(id, !isActive);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to toggle global API key:', error);
-    }
-  };
-
-  const handleResetGlobalUsage = async (id: string) => {
-    try {
-      await globalApiService.resetGlobalUsage(id);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to reset global usage:', error);
-    }
-  };
-
-  const handleDeleteGlobalKey = async (id: string) => {
-    if (confirm('Are you sure you want to delete this global API key?')) {
-      try {
-        await globalApiService.deleteGlobalApiKey(id);
-        await loadData();
-      } catch (error) {
-        console.error('Failed to delete global API key:', error);
-      }
-    }
-  };
-
-  const handleSaveVideoUrl = async () => {
-    if (!getStartedVideoUrl.trim()) return;
-
-    setSavingVideo(true);
-    setVideoSaved(false);
-    
-    try {
-      await adminSettingsService.updateGetStartedVideoUrl(getStartedVideoUrl.trim());
-      await loadAdminSettings(); // Reload stats
-      setVideoSaved(true);
-      
-      // Hide success message after 3 seconds
-      setTimeout(() => setVideoSaved(false), 3000);
-    } catch (error) {
-      console.error('Failed to save video URL:', error);
-    } finally {
-      setSavingVideo(false);
-    }
-  };
-
-  const handleTestPicaosConnection = async () => {
-    // Get PicaOS API key from global keys
-    const picaosKey = globalKeys.find(key => key.provider === 'picaos');
-    
-    if (!picaosKey || !picaosKey.api_key.trim()) {
-      setAgentTestResult('❌ Please add a PicaOS API key in the Global API Keys tab first');
-      return;
-    }
-
-    setTestingConnection(true);
-    setAgentTestResult(null);
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
 
     try {
-      // Mock test for now - in real implementation, you'd call PicaOS API
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
-      
-      // For demo purposes, we'll simulate a successful connection
-      if (picaosKey.api_key.includes('pk_') || picaosKey.api_key.length > 10) {
-        setAgentTestResult('✅ PicaOS connection successful! API key is valid and ready for agent orchestration.');
-      } else {
-        setAgentTestResult('❌ PicaOS connection failed. Please check your API key format.');
-      }
+      await adminService.deleteUser(userId);
+      setSuccess('User deleted successfully');
+      loadData();
     } catch (error) {
-      setAgentTestResult('❌ Connection test failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setTestingConnection(false);
+      setError(error instanceof Error ? error.message : 'Failed to delete user');
     }
   };
 
-  const toggleShowKey = (keyId: string) => {
-    setShowKeys(prev => ({ ...prev, [keyId]: !prev[keyId] }));
+  const handleUpdateSetting = async (key: string, value: string) => {
+    try {
+      await adminSettingsService.updateSetting(key, value, adminSettings.find(s => s.setting_key === key)?.description);
+      setSuccess('Setting updated successfully');
+      setEditingSettings(prev => ({ ...prev, [key]: '' }));
+      loadData();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to update setting');
+    }
   };
 
-  const getProviderIcon = (provider: string) => {
-    return globalApiService.getProviderIcon(provider);
+  const toggleShowApiKey = (id: string) => {
+    setShowApiKeys(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getProviderDisplayName = (provider: string) => {
-    const names: Record<string, string> = {
-      openai: 'OpenAI',
-      openrouter: 'OpenRouter',
-      gemini: 'Google Gemini',
-      deepseek: 'DeepSeek',
-      serper: 'Serper (Internet Search)',
-      imagerouter: 'Imagerouter (Image Generation)',
-      tavus: 'Tavus (AI Video Calls)',
-      picaos: 'PicaOS (AI Orchestration)'
-    };
-    return names[provider] || provider;
-  };
-
-  const getTierDisplayName = (tier: string) => {
-    return globalApiService.getTierDisplayName(tier);
-  };
-
-  const getUsagePercentage = (current: number, limit: number | null) => {
-    return globalApiService.getUsagePercentage(current, limit);
-  };
-
-  const getUsageColor = (percentage: number) => {
-    return globalApiService.getUsageColor(percentage);
-  };
-
-  const getUsageBarColor = (percentage: number) => {
-    return globalApiService.getUsageBarColor(percentage);
-  };
-
-  const extractYouTubeVideoId = (url: string): string | null => {
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-  };
-
-  const isValidYouTubeUrl = (url: string): boolean => {
-    return extractYouTubeVideoId(url) !== null;
-  };
-
-  if (!isOpen) return null;
+  if (!isOpen || !user || !isSuperAdmin()) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-7xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <Shield size={20} className="text-red-600" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="bg-white rounded-xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
+                <Shield size={24} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">Admin Dashboard</h2>
+                <p className="text-red-100">Manage users, global API keys, and system settings</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Admin Dashboard</h2>
-              <p className="text-sm text-gray-500">Manage users, global API keys, and system settings</p>
-            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
+            >
+              <X size={24} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <X size={20} className="text-gray-500" />
-          </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
+        <div className="flex border-b border-gray-200 bg-gray-50">
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'users', label: 'Users', icon: Users },
-            { id: 'global-keys', label: 'Global API Keys', icon: Key },
-            { id: 'analytics', label: 'Analytics', icon: Activity },
-            { id: 'agents', label: 'Agents', icon: Bot },
+            { id: 'global-api-keys', label: 'Global API Keys', icon: Key },
+            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+            { id: 'agents', label: 'Agents', icon: Shield },
             { id: 'settings', label: 'Settings', icon: Settings }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                activeTab === tab.id 
-                  ? 'bg-white text-red-600 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-900'
+              className={`flex items-center space-x-2 px-6 py-4 font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'border-b-2 border-red-500 text-red-600 bg-white'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
-              <tab.icon size={16} />
-              <span className="font-medium">{tab.label}</span>
+              <tab.icon size={18} />
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-red-200 border-t-red-600 rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-500">Loading admin data...</p>
-          </div>
-        ) : (
-          <>
-            {/* Overview Tab */}
-            {activeTab === 'overview' && stats && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                    <div className="flex items-center space-x-3">
-                      <Users className="text-blue-600" size={24} />
-                      <div>
-                        <p className="text-sm text-blue-600 font-medium">Total Users</p>
-                        <p className="text-2xl font-bold text-blue-900">{stats.totalUsers}</p>
-                      </div>
-                    </div>
-                  </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Error/Success Messages */}
+          {error && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-red-700 animate-shakeX">
+              <AlertCircle size={20} />
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="ml-auto">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
-                  <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-                    <div className="flex items-center space-x-3">
-                      <BarChart3 className="text-green-600" size={24} />
-                      <div>
-                        <p className="text-sm text-green-600 font-medium">Total Conversations</p>
-                        <p className="text-2xl font-bold text-green-900">{stats.totalConversations}</p>
-                      </div>
-                    </div>
-                  </div>
+          {success && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2 text-green-700 animate-fadeInUp">
+              <CheckCircle size={20} />
+              <span>{success}</span>
+              <button onClick={() => setSuccess(null)} className="ml-auto">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
-                  <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-                    <div className="flex items-center space-x-3">
-                      <TrendingUp className="text-purple-600" size={24} />
-                      <div>
-                        <p className="text-sm text-purple-600 font-medium">Active Users (30d)</p>
-                        <p className="text-2xl font-bold text-purple-900">{stats.activeUsersLast30Days}</p>
-                      </div>
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-4 border-red-200 border-t-red-600 rounded-full animate-spin"></div>
+            </div>
+          )}
+
+          {/* Overview Tab */}
+          {activeTab === 'overview' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
+                  <div className="flex items-center space-x-3">
+                    <Users className="text-blue-600" size={32} />
+                    <div>
+                      <p className="text-sm text-blue-600 font-medium">Total Users</p>
+                      <p className="text-3xl font-bold text-blue-900">{stats.totalUsers}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-900 mb-3">User Tier Distribution</h3>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Free Tier</span>
-                        <span className="font-medium">{stats.tier1Users}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Pro Tier</span>
-                        <span className="font-medium">{stats.tier2Users}</span>
-                      </div>
+                <div className="bg-gradient-to-r from-green-50 to-green-100 p-6 rounded-lg border border-green-200">
+                  <div className="flex items-center space-x-3">
+                    <Activity className="text-green-600" size={32} />
+                    <div>
+                      <p className="text-sm text-green-600 font-medium">Total Conversations</p>
+                      <p className="text-3xl font-bold text-green-900">{stats.totalConversations}</p>
                     </div>
                   </div>
+                </div>
 
-                  <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-900 mb-3">System Health</h3>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Total Sessions</span>
-                        <span className="font-medium">{stats.totalSessions}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Avg Conversations/User</span>
-                        <span className="font-medium">
-                          {stats.totalUsers > 0 ? (stats.totalConversations / stats.totalUsers).toFixed(1) : '0'}
-                        </span>
-                      </div>
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border border-purple-200">
+                  <div className="flex items-center space-x-3">
+                    <Clock className="text-purple-600" size={32} />
+                    <div>
+                      <p className="text-sm text-purple-600 font-medium">Active Users (30d)</p>
+                      <p className="text-3xl font-bold text-purple-900">{stats.activeUsersLast30Days}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border border-gray-200">
+                  <div className="flex items-center space-x-3">
+                    <Users className="text-gray-600" size={32} />
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">Free Users</p>
+                      <p className="text-3xl font-bold text-gray-900">{stats.tier1Users}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-6 rounded-lg border border-yellow-200">
+                  <div className="flex items-center space-x-3">
+                    <Crown className="text-yellow-600" size={32} />
+                    <div>
+                      <p className="text-sm text-yellow-600 font-medium">Pro Users</p>
+                      <p className="text-3xl font-bold text-yellow-900">{stats.tier2Users}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 p-6 rounded-lg border border-indigo-200">
+                  <div className="flex items-center space-x-3">
+                    <BarChart3 className="text-indigo-600" size={32} />
+                    <div>
+                      <p className="text-sm text-indigo-600 font-medium">Total Sessions</p>
+                      <p className="text-3xl font-bold text-indigo-900">{stats.totalSessions}</p>
                     </div>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Users Tab */}
-            {activeTab === 'users' && (
-              <div className="space-y-4">
+              {/* Top Providers */}
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Top AI Providers</h3>
+                <div className="space-y-3">
+                  {providerStats.slice(0, 5).map((provider, index) => (
+                    <div key={provider.provider} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
+                          index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-500'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <span className="font-medium">{provider.provider}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold">{provider.total_responses}</div>
+                        <div className="text-sm text-gray-500">responses</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Users Tab */}
+          {activeTab === 'users' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">User Management</h3>
+                </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full border border-gray-200 rounded-lg">
+                  <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">User</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Role</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Tier</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Usage</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Joined</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Actions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="bg-white divide-y divide-gray-200">
                       {users.map((user) => (
                         <tr key={user.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div>
-                              <div className="font-medium text-gray-900">{user.full_name || 'No name'}</div>
-                              <div className="text-sm text-gray-500">{user.email}</div>
+                              <div className="text-sm font-medium text-gray-900">{user.email}</div>
+                              <div className="text-sm text-gray-500">{user.full_name || 'No name'}</div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <select
                               value={user.role}
                               onChange={(e) => handleUpdateUserRole(user.id, e.target.value as 'user' | 'superadmin')}
@@ -463,46 +469,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                               <option value="superadmin">Superadmin</option>
                             </select>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <select
                               value={user.current_tier}
-                              onChange={(e) => handleUpdateUserTier(user.id, e.target.value as UserTier)}
+                              onChange={(e) => handleUpdateUserTier(user.id, e.target.value as 'tier1' | 'tier2')}
                               className="text-sm border border-gray-300 rounded px-2 py-1"
                             >
                               <option value="tier1">Free</option>
                               <option value="tier2">Pro</option>
                             </select>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm">{user.monthly_conversations}</span>
-                              <button
-                                onClick={() => handleResetUserUsage(user.id)}
-                                className="p-1 text-gray-400 hover:text-gray-600"
-                                title="Reset usage"
-                              >
-                                <RefreshCw size={14} />
-                              </button>
-                            </div>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{user.monthly_conversations} conversations</div>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center space-x-2">
-                              {user.role === 'superadmin' && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                  <Shield size={10} className="mr-1" />
-                                  Admin
-                                </span>
-                              )}
-                              {user.current_tier === 'tier2' && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                  <Crown size={10} className="mr-1" />
-                                  Pro
-                                </span>
-                              )}
-                            </div>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            <button
+                              onClick={() => handleResetUserUsage(user.id)}
+                              className="text-blue-600 hover:text-blue-900"
+                            >
+                              Reset Usage
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -510,584 +502,302 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                   </table>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Global API Keys Tab */}
-            {activeTab === 'global-keys' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Global API Keys</h3>
-                  <button
-                    onClick={() => setShowNewKeyForm(true)}
-                    className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    <Plus size={16} />
-                    <span>Add API Key</span>
-                  </button>
-                </div>
+          {/* Global API Keys Tab */}
+          {activeTab === 'global-api-keys' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900">Global API Keys</h3>
+                <button
+                  onClick={() => setShowAddApiKey(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <Plus size={16} />
+                  <span>Add API Key</span>
+                </button>
+              </div>
 
-                {showNewKeyForm && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-4">Add New Global API Key</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Provider</label>
-                        <select
-                          value={newKeyForm.provider}
-                          onChange={(e) => setNewKeyForm({ ...newKeyForm, provider: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        >
-                          <option value="">Select Provider</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="openrouter">OpenRouter</option>
-                          <option value="gemini">Google Gemini</option>
-                          <option value="deepseek">DeepSeek</option>
-                          <option value="serper">Serper (Internet Search)</option>
-                          <option value="imagerouter">Imagerouter (Image Generation)</option>
-                          <option value="tavus">Tavus (AI Video Calls)</option>
-                          <option value="picaos">PicaOS (AI Orchestration)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
-                        <input
-                          type="password"
-                          value={newKeyForm.api_key}
-                          onChange={(e) => setNewKeyForm({ ...newKeyForm, api_key: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                          placeholder="Enter API key"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Tier Access</label>
-                        <div className="space-y-2">
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={newKeyForm.tier_access.includes('tier1')}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setNewKeyForm({ ...newKeyForm, tier_access: [...newKeyForm.tier_access, 'tier1'] });
-                                } else {
-                                  setNewKeyForm({ ...newKeyForm, tier_access: newKeyForm.tier_access.filter(t => t !== 'tier1') });
-                                }
-                              }}
-                              className="mr-2"
-                            />
-                            <span className="text-sm">Free Tier</span>
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={newKeyForm.tier_access.includes('tier2')}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setNewKeyForm({ ...newKeyForm, tier_access: [...newKeyForm.tier_access, 'tier2'] });
-                                } else {
-                                  setNewKeyForm({ ...newKeyForm, tier_access: newKeyForm.tier_access.filter(t => t !== 'tier2') });
-                                }
-                              }}
-                              className="mr-2"
-                            />
-                            <span className="text-sm">Pro Tier</span>
-                          </label>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Usage Limit (optional)</label>
-                        <input
-                          type="number"
-                          value={newKeyForm.usage_limit || ''}
-                          onChange={(e) => setNewKeyForm({ ...newKeyForm, usage_limit: e.target.value ? parseInt(e.target.value) : null })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                          placeholder="Leave empty for unlimited"
-                        />
-                      </div>
+              {/* Add API Key Form */}
+              {showAddApiKey && (
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h4 className="text-lg font-medium text-gray-900 mb-4">Add New Global API Key</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                      <select
+                        value={newApiKey.provider}
+                        onChange={(e) => setNewApiKey({ ...newApiKey, provider: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        <option value="">Select Provider</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="serper">Serper (Internet Search)</option>
+                        <option value="imagerouter">Imagerouter (Image Generation)</option>
+                        <option value="tavus">Tavus (AI Video Calls)</option>
+                        <option value="picaos">PicaOS (AI Orchestration)</option>
+                        <option value="elevenlabs">Eleven Labs (Text-to-Speech)</option>
+                      </select>
                     </div>
-                    <div className="flex justify-end space-x-3 mt-4">
-                      <button
-                        onClick={() => setShowNewKeyForm(false)}
-                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleCreateGlobalKey}
-                        disabled={!newKeyForm.provider || !newKeyForm.api_key}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        Add Key
-                      </button>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                      <input
+                        type="password"
+                        value={newApiKey.api_key}
+                        onChange={(e) => setNewApiKey({ ...newApiKey, api_key: e.target.value })}
+                        placeholder="Enter API key"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Usage Limit (optional)</label>
+                      <input
+                        type="number"
+                        value={newApiKey.usage_limit || ''}
+                        onChange={(e) => setNewApiKey({ ...newApiKey, usage_limit: e.target.value ? parseInt(e.target.value) : null })}
+                        placeholder="Leave empty for unlimited"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Tier Access</label>
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={newApiKey.tier_access.includes('tier1')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewApiKey({ ...newApiKey, tier_access: [...newApiKey.tier_access, 'tier1'] });
+                              } else {
+                                setNewApiKey({ ...newApiKey, tier_access: newApiKey.tier_access.filter(t => t !== 'tier1') });
+                              }
+                            }}
+                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">Free Tier</span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={newApiKey.tier_access.includes('tier2')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewApiKey({ ...newApiKey, tier_access: [...newApiKey.tier_access, 'tier2'] });
+                              } else {
+                                setNewApiKey({ ...newApiKey, tier_access: newApiKey.tier_access.filter(t => t !== 'tier2') });
+                              }
+                            }}
+                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">Pro Tier</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
-                )}
+                  <div className="flex space-x-3 mt-6">
+                    <button
+                      onClick={() => setShowAddApiKey(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddApiKey}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      Add Key
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                <div className="space-y-4">
-                  {globalKeys.map((key) => {
-                    const usagePercentage = getUsagePercentage(key.current_usage, key.usage_limit);
-                    return (
-                      <div key={key.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-2xl">{getProviderIcon(key.provider)}</span>
-                            <div>
-                              <h4 className="font-medium text-gray-900">{getProviderDisplayName(key.provider)}</h4>
-                              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                                <span>Access: {key.tier_access.map(getTierDisplayName).join(', ')}</span>
-                                {key.provider === 'serper' && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    <Globe size={10} className="mr-1" />
-                                    Internet Search
-                                  </span>
-                                )}
-                                {key.provider === 'imagerouter' && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                    <Image size={10} className="mr-1" />
-                                    Image Generation
-                                  </span>
-                                )}
-                                {key.provider === 'tavus' && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    <Video size={10} className="mr-1" />
-                                    AI Video Calls
-                                  </span>
-                                )}
-                                {key.provider === 'picaos' && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                                    <Bot size={10} className="mr-1" />
-                                    AI Orchestration
-                                  </span>
+              {/* API Keys List */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">API Key</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {globalApiKeys.map((apiKey) => (
+                        <tr key={apiKey.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-lg">{globalApiService.getProviderIcon(apiKey.provider)}</span>
+                              <span className="font-medium">{globalApiService.getProviderDisplayName(apiKey.provider)}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono text-sm">
+                                {showApiKeys[apiKey.id] ? apiKey.api_key : '••••••••••••••••'}
+                              </span>
+                              <button
+                                onClick={() => toggleShowApiKey(apiKey.id)}
+                                className="text-gray-400 hover:text-gray-600"
+                              >
+                                {showApiKeys[apiKey.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm">
+                              <div>{apiKey.current_usage} / {apiKey.usage_limit || '∞'}</div>
+                              <div className="text-gray-500">
+                                {apiKey.usage_limit && (
+                                  <div className="w-20 bg-gray-200 rounded-full h-2 mt-1">
+                                    <div
+                                      className={`h-2 rounded-full ${globalApiService.getUsageBarColor(globalApiService.getUsagePercentage(apiKey.current_usage, apiKey.usage_limit))}`}
+                                      style={{ width: `${Math.min(globalApiService.getUsagePercentage(apiKey.current_usage, apiKey.usage_limit), 100)}%` }}
+                                    />
+                                  </div>
                                 )}
                               </div>
                             </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                              onClick={() => handleToggleGlobalKey(key.id, key.is_active)}
-                              className={`p-2 rounded-lg transition-colors ${
-                                key.is_active 
-                                  ? 'text-green-600 hover:bg-green-50' 
-                                  : 'text-gray-400 hover:bg-gray-50'
+                              onClick={() => handleToggleApiKey(apiKey.id, !apiKey.is_active)}
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                apiKey.is_active
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
                               }`}
-                              title={key.is_active ? 'Disable key' : 'Enable key'}
                             >
-                              {key.is_active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                              {apiKey.is_active ? 'Active' : 'Inactive'}
                             </button>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                             <button
-                              onClick={() => handleResetGlobalUsage(key.id)}
-                              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                              title="Reset usage"
+                              onClick={() => handleResetUsage(apiKey.id)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Reset Usage"
                             >
                               <RefreshCw size={16} />
                             </button>
                             <button
-                              onClick={() => handleDeleteGlobalKey(key.id)}
-                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete key"
+                              onClick={() => handleDeleteApiKey(apiKey.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete"
                             >
                               <Trash2 size={16} />
                             </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
-                            <div className="relative">
-                              <input
-                                type={showKeys[key.id] ? 'text' : 'password'}
-                                value={key.api_key}
-                                readOnly
-                                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                              />
-                              <button
-                                onClick={() => toggleShowKey(key.id)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                              >
-                                {showKeys[key.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                              </button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Usage</label>
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Current</span>
-                                <span className={`font-medium ${getUsageColor(usagePercentage)}`}>
-                                  {key.current_usage} / {key.usage_limit || '∞'}
-                                </span>
-                              </div>
-                              {key.usage_limit && (
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all duration-300 ${getUsageBarColor(usagePercentage)}`}
-                                    style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                            <div className="space-y-1">
-                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                key.is_active 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {key.is_active ? 'Active' : 'Inactive'}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Last reset: {new Date(key.last_reset_date).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-
-                {globalKeys.length === 0 && (
-                  <div className="text-center py-12">
-                    <Key size={48} className="text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Global API Keys</h3>
-                    <p className="text-gray-500 mb-4">Add global API keys to enable free trial access for users</p>
-                  </div>
-                )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Analytics Tab */}
-            {activeTab === 'analytics' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-medium text-gray-900">Global Provider Analytics</h3>
-                
-                {providerStats.length > 0 ? (
-                  <div className="space-y-4">
-                    {providerStats.map((stat, index) => (
-                      <div key={stat.provider} className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-2xl">{getProviderIcon(stat.provider)}</span>
-                            <div>
-                              <h4 className="font-medium text-gray-900">{stat.provider}</h4>
-                              <p className="text-sm text-gray-500">
-                                {stat.unique_users} unique users • Last used: {new Date(stat.last_used).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-gray-900">{stat.selection_rate.toFixed(1)}%</div>
-                            <div className="text-sm text-gray-500">Selection Rate</div>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-4 grid grid-cols-3 gap-4 text-center">
-                          <div>
-                            <div className="text-lg font-semibold text-gray-900">{stat.total_responses}</div>
-                            <div className="text-xs text-gray-500">Total Responses</div>
-                          </div>
-                          <div>
-                            <div className="text-lg font-semibold text-gray-900">{stat.total_selections}</div>
-                            <div className="text-xs text-gray-500">Selections</div>
-                          </div>
-                          <div>
-                            <div className="text-lg font-semibold text-gray-900">{stat.error_rate.toFixed(1)}%</div>
-                            <div className="text-xs text-gray-500">Error Rate</div>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="h-2 bg-blue-500 rounded-full transition-all duration-500"
-                              style={{ width: `${stat.selection_rate}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <BarChart3 size={48} className="text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Analytics Data</h3>
-                    <p className="text-gray-500">Analytics will appear here once users start using the platform</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Agents Tab */}
-            {activeTab === 'agents' && (
-              <div className="space-y-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <Bot className="text-orange-600" size={24} />
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">PicaOS AI Orchestration</h3>
-                    <p className="text-sm text-gray-500">Test and manage PicaOS agent connections for Pro users</p>
-                  </div>
-                </div>
-
-                {/* PicaOS Connection Status */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h4 className="font-medium text-gray-900 mb-4 flex items-center space-x-2">
-                    <Bot size={20} className="text-orange-600" />
-                    <span>PicaOS Connection Test</span>
-                  </h4>
-
-                  <div className="space-y-4">
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-1 bg-orange-100 rounded-lg flex-shrink-0">
-                          <Bot className="text-orange-600" size={16} />
+          {/* Analytics Tab */}
+          {activeTab === 'analytics' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Global Provider Performance</h3>
+                <div className="space-y-4">
+                  {providerStats.map((provider, index) => (
+                    <div key={provider.provider} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
+                          index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-500'
+                        }`}>
+                          {index + 1}
                         </div>
                         <div>
-                          <h5 className="font-medium text-orange-800 mb-1">About PicaOS Integration</h5>
-                          <p className="text-sm text-orange-700">
-                            PicaOS provides AI orchestration capabilities for Pro users. This allows for advanced agent workflows, 
-                            multi-step reasoning, and complex task automation. Make sure to add a PicaOS API key in the Global API Keys tab first.
-                          </p>
+                          <div className="font-medium">{provider.provider}</div>
+                          <div className="text-sm text-gray-500">{provider.unique_users} unique users</div>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">
-                          Test the PicaOS connection to ensure agents can communicate properly with the orchestration platform.
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Requires a valid PicaOS API key in Global API Keys (Pro users only)
-                        </p>
+                      <div className="text-right">
+                        <div className="font-bold">{provider.total_responses} responses</div>
+                        <div className="text-sm text-gray-500">{provider.selection_rate.toFixed(1)}% selection rate</div>
                       </div>
-                      <button
-                        onClick={handleTestPicaosConnection}
-                        disabled={testingConnection}
-                        className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {testingConnection ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>Testing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Bot size={16} />
-                            <span>Test Connection</span>
-                          </>
-                        )}
-                      </button>
                     </div>
-
-                    {agentTestResult && (
-                      <div className={`p-4 rounded-lg border ${
-                        agentTestResult.includes('✅') 
-                          ? 'bg-green-50 border-green-200 text-green-700' 
-                          : 'bg-red-50 border-red-200 text-red-700'
-                      }`}>
-                        <p className="text-sm">{agentTestResult}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Agent Features Overview */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h4 className="font-medium text-gray-900 mb-4">Available Agent Features</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Bot size={16} className="text-orange-600" />
-                        <span className="font-medium text-gray-900">Multi-Agent Workflows</span>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Orchestrate multiple AI agents to work together on complex tasks with automatic handoffs and coordination.
-                      </p>
-                    </div>
-                    
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Activity size={16} className="text-orange-600" />
-                        <span className="font-medium text-gray-900">Task Automation</span>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Create automated workflows that can handle multi-step processes with decision trees and conditional logic.
-                      </p>
-                    </div>
-                    
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <TrendingUp size={16} className="text-orange-600" />
-                        <span className="font-medium text-gray-900">Advanced Reasoning</span>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Enable sophisticated reasoning chains with memory persistence and context awareness across sessions.
-                      </p>
-                    </div>
-                    
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Crown size={16} className="text-orange-600" />
-                        <span className="font-medium text-gray-900">Pro User Exclusive</span>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        PicaOS orchestration features are available exclusively to Pro tier users with unlimited usage.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Usage Statistics */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h4 className="font-medium text-gray-900 mb-4">Agent Usage Statistics</h4>
-                  <div className="text-center py-8 text-gray-500">
-                    <Bot size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>Agent usage statistics will appear here once PicaOS integration is active</p>
-                  </div>
+                  ))}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Settings Tab */}
-            {activeTab === 'settings' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-medium text-gray-900">Admin Settings</h3>
-                
-                {/* Get Started Video Settings */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <Youtube className="text-red-600" size={24} />
-                    <div>
-                      <h4 className="font-medium text-gray-900">Get Started Video</h4>
-                      <p className="text-sm text-gray-500">YouTube video shown to new users when they first sign up</p>
-                    </div>
-                  </div>
+          {/* Agents Tab */}
+          {activeTab === 'agents' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Agents</h3>
+                <p className="text-gray-600">Agent management features coming soon...</p>
+              </div>
+            </div>
+          )}
 
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">YouTube URL</label>
-                      <div className="flex space-x-3">
-                        <input
-                          type="url"
-                          value={getStartedVideoUrl}
-                          onChange={(e) => setGetStartedVideoUrl(e.target.value)}
-                          placeholder="https://youtu.be/..."
-                          className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 ${
-                            getStartedVideoUrl && !isValidYouTubeUrl(getStartedVideoUrl)
-                              ? 'border-red-300 bg-red-50'
-                              : 'border-gray-300'
-                          }`}
-                        />
-                        <button
-                          onClick={handleSaveVideoUrl}
-                          disabled={!getStartedVideoUrl.trim() || !isValidYouTubeUrl(getStartedVideoUrl) || savingVideo}
-                          className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {savingVideo ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              <span>Saving...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Save size={16} />
-                              <span>Save</span>
-                            </>
+          {/* Settings Tab */}
+          {activeTab === 'settings' && !loading && (
+            <div className="space-y-6 animate-fadeInUp">
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">System Settings</h3>
+                <div className="space-y-4">
+                  {adminSettings.map((setting) => (
+                    <div key={setting.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h4 className="font-medium text-gray-900">{setting.setting_key}</h4>
+                          {setting.description && (
+                            <p className="text-sm text-gray-500">{setting.description}</p>
                           )}
+                        </div>
+                        <button
+                          onClick={() => setEditingSettings(prev => ({ ...prev, [setting.setting_key]: setting.setting_value }))}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <Edit size={16} />
                         </button>
                       </div>
-                      
-                      {getStartedVideoUrl && !isValidYouTubeUrl(getStartedVideoUrl) && (
-                        <p className="text-sm text-red-600 mt-1">Please enter a valid YouTube URL</p>
-                      )}
-                      
-                      {videoSaved && (
-                        <div className="flex items-center space-x-2 text-green-600 mt-2 animate-fadeIn">
-                          <CheckCircle size={16} />
-                          <span className="text-sm">Video URL saved successfully!</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Video Preview */}
-                    {getStartedVideoUrl && isValidYouTubeUrl(getStartedVideoUrl) && (
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h5 className="font-medium text-gray-900">Video Preview</h5>
+                      {editingSettings[setting.setting_key] !== undefined ? (
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={editingSettings[setting.setting_key]}
+                            onChange={(e) => setEditingSettings(prev => ({ ...prev, [setting.setting_key]: e.target.value }))}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                          />
                           <button
-                            onClick={() => window.open(getStartedVideoUrl, '_blank')}
-                            className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
+                            onClick={() => handleUpdateSetting(setting.setting_key, editingSettings[setting.setting_key])}
+                            className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                           >
-                            <ExternalLink size={14} />
-                            <span>Open in YouTube</span>
+                            <Save size={16} />
+                          </button>
+                          <button
+                            onClick={() => setEditingSettings(prev => ({ ...prev, [setting.setting_key]: undefined }))}
+                            className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                          >
+                            <X size={16} />
                           </button>
                         </div>
-                        <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                          <iframe
-                            src={`https://www.youtube.com/embed/${extractYouTubeVideoId(getStartedVideoUrl)}?rel=0&modestbranding=1`}
-                            className="w-full h-full"
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            title="Get Started Video Preview"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Video Statistics */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <h5 className="font-medium text-gray-900 mb-3">Video Statistics</h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-gray-900">{videoStats.totalUsers}</div>
-                          <div className="text-sm text-gray-500">Total Users</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-green-600">{videoStats.usersWhoWatchedCurrent}</div>
-                          <div className="text-sm text-gray-500">Watched Current Video</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-orange-600">{videoStats.usersWhoHaventWatched}</div>
-                          <div className="text-sm text-gray-500">Haven't Watched</div>
-                        </div>
-                      </div>
-                      
-                      {videoStats.totalUsers > 0 && (
-                        <div className="mt-4">
-                          <div className="flex justify-between text-sm mb-1">
-                            <span>Watch Rate</span>
-                            <span>{((videoStats.usersWhoWatchedCurrent / videoStats.totalUsers) * 100).toFixed(1)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="h-2 bg-green-500 rounded-full transition-all duration-300"
-                              style={{ width: `${(videoStats.usersWhoWatchedCurrent / videoStats.totalUsers) * 100}%` }}
-                            />
-                          </div>
+                      ) : (
+                        <div className="text-sm text-gray-700 font-mono bg-gray-50 p-2 rounded">
+                          {setting.setting_value || '(empty)'}
                         </div>
                       )}
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h5 className="font-medium text-blue-800 mb-2">How it works</h5>
-                      <ul className="text-sm text-blue-700 space-y-1">
-                        <li>• When users sign up for the first time, they'll see this video in a popup</li>
-                        <li>• Once they watch it (or skip it), they won't see it again</li>
-                        <li>• If you change the video URL, all users will see the new video once</li>
-                        <li>• The system tracks which users have seen which videos</li>
-                      </ul>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
