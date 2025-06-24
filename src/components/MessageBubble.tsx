@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Copy, Check, Globe, ExternalLink, Download, Volume2, Pause } from 'lucide-react';
+import React from 'react';
+import { Copy, Check, Globe, ExternalLink, Download } from 'lucide-react';
 import { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -7,40 +7,12 @@ interface MessageBubbleProps {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
-  const [copied, setCopied] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    // Clean up audio URL when component unmounts
-    return () => {
-      if (message.audioUrl) {
-        URL.revokeObjectURL(message.audioUrl);
-      }
-    };
-  }, [message.audioUrl]);
+  const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handlePlayPause = () => {
-    if (!audioRef.current || !message.audioUrl) return;
-    
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(err => console.error('Failed to play audio:', err));
-    }
-  };
-
-  const handleAudioEnded = () => {
-    setIsPlaying(false);
   };
 
   // Simple markdown parser for basic formatting
@@ -65,7 +37,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.role === 'user';
   const hasInternetSearch = message.content.includes('=== CURRENT INTERNET SEARCH RESULTS ===');
   const isImageGeneration = message.isImageGeneration || message.generatedImages?.length > 0;
-  const hasAudio = !!message.audioUrl;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fadeInUp`}>
@@ -151,42 +122,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               <span className="text-xs text-gray-500">
                 {message.timestamp.toLocaleTimeString()}
               </span>
-              <div className="flex items-center space-x-2">
-                {hasAudio && (
-                  <button
-                    onClick={handlePlayPause}
-                    className="p-1 rounded hover:bg-gray-200 transition-all duration-200 hover:scale-110 transform"
-                    title={isPlaying ? "Pause" : "Play response"}
-                  >
-                    {isPlaying ? (
-                      <Pause size={14} className="text-purple-600" />
-                    ) : (
-                      <Volume2 size={14} className="text-gray-500" />
-                    )}
-                  </button>
+              <button
+                onClick={handleCopy}
+                className="p-1 rounded hover:bg-gray-200 transition-all duration-200 hover:scale-110 transform"
+                title="Copy message"
+              >
+                {copied ? (
+                  <Check size={14} className="text-green-600 animate-bounceIn" />
+                ) : (
+                  <Copy size={14} className="text-gray-500" />
                 )}
-                <button
-                  onClick={handleCopy}
-                  className="p-1 rounded hover:bg-gray-200 transition-all duration-200 hover:scale-110 transform"
-                  title="Copy message"
-                >
-                  {copied ? (
-                    <Check size={14} className="text-green-600 animate-bounceIn" />
-                  ) : (
-                    <Copy size={14} className="text-gray-500" />
-                  )}
-                </button>
-              </div>
-              
-              {/* Hidden audio element */}
-              {hasAudio && (
-                <audio
-                  ref={audioRef}
-                  src={message.audioUrl}
-                  onEnded={handleAudioEnded}
-                  className="hidden"
-                />
-              )}
+              </button>
             </div>
           )}
         </div>

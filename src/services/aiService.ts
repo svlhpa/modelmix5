@@ -3,7 +3,6 @@ import { databaseService } from './databaseService';
 import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
 import { imageRouterService, ImageModel } from './imageRouterService';
-import { elevenLabsService } from './elevenLabsService';
 
 class AIService {
   private settings: APISettings = {
@@ -12,9 +11,7 @@ class AIService {
     gemini: '',
     deepseek: '',
     serper: '',
-    imagerouter: '',
-    elevenlabs: '',
-    openai_whisper: ''
+    imagerouter: ''
   };
 
   private modelSettings: ModelSettings = {
@@ -190,7 +187,7 @@ class AIService {
     }
   }
 
-  async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  private async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
     const tier = userTier || 'tier2';
     let { key: apiKey, isGlobal } = await this.getApiKey('openai', tier);
@@ -383,8 +380,8 @@ class AIService {
 
   // CRITICAL: Completely rebuilt debate response generation for proper engagement
   async generateDebateResponse(
-    topic: string, 
-    position: string, 
+    topic: string,
+    position: string,
     previousMessages: any[],
     model: string,
     responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user'
@@ -879,46 +876,6 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
           content,
           loading: false
         };
-        
-        // Generate TTS for the response if it's the first one
-        if (index === 0) {
-          try {
-            // Check if Eleven Labs is available
-            const { key: elevenLabsKey } = await this.getApiKey('elevenlabs', userTier || 'tier1');
-            if (elevenLabsKey) {
-              // Generate speech for the first paragraph only (to keep it short)
-              const firstParagraph = content.split('\n\n')[0].trim();
-              const textToSpeak = firstParagraph.length > 300 
-                ? firstParagraph.substring(0, 300) + '...' 
-                : firstParagraph;
-              
-              const audioBlob = await elevenLabsService.textToSpeech(
-                {
-                  text: textToSpeak,
-                  voice_id: 'pNInz6obpgDQGcFmaJgB', // Default voice (Adam)
-                  voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.75
-                  }
-                },
-                userTier || 'tier1',
-                signal
-              );
-              
-              // Create audio URL
-              const audioUrl = URL.createObjectURL(audioBlob);
-              
-              // Add audio URL to response
-              responses[index] = {
-                ...responses[index],
-                audioUrl
-              };
-            }
-          } catch (error) {
-            console.error('Failed to generate TTS:', error);
-            // Continue without TTS
-          }
-        }
         
         // Call update callback each time a response completes
         if (onResponseUpdate && !signal?.aborted) {

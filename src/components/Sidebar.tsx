@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles, Headphones } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -18,7 +18,6 @@ interface SidebarProps {
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
   onOpenWriteupAgent: () => void;
-  onOpenVoiceChat: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -38,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDebateClub,
   onOpenVideoCall,
   onOpenWriteupAgent,
-  onOpenVoiceChat,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -175,20 +173,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         >
                           <FileText size={16} />
                           <span>Write-up Agent</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            onOpenVoiceChat();
-                            onToggleMobile();
-                          }}
-                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                        >
-                          <Headphones size={16} />
-                          <span>Voice Chat</span>
-                          {isProUser && (
-                            <span className="ml-auto text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">Pro</span>
-                          )}
                         </button>
                       </div>
                     )}
@@ -542,17 +526,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <FileText size={16} />
                     <span>Write-up Agent</span>
-                  </button>
-
-                  <button
-                    onClick={onOpenVoiceChat}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                  >
-                    <Headphones size={16} />
-                    <span>Voice Chat</span>
-                    {isProUser && (
-                      <span className="ml-auto text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">Pro</span>
-                    )}
                   </button>
                 </div>
               )}
