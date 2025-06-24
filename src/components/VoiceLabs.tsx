@@ -238,7 +238,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       };
       
       // Check for keyword matches
-      let response = 'I'm not sure how to respond to that. Could you try asking something else?';
+      let response = 'I\'m not sure how to respond to that. Could you try asking something else?';
       
       for (const [keyword, reply] of Object.entries(keywords)) {
         if (transcript.toLowerCase().includes(keyword)) {
@@ -255,7 +255,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         }
         
         if (transcript.toLowerCase().includes('thank')) {
-          response = 'You\'re welcome! Is there anything else you'd like to know?';
+          response = 'You\'re welcome! Is there anything else you\'d like to know?';
         }
       }
       
