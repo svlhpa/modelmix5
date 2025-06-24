@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw } from 'lucide-react';
+import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw, Key } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { voiceLabsService } from '../services/voiceLabsService';
 
@@ -30,6 +30,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const [latency, setLatency] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isElevenLabsAvailable, setIsElevenLabsAvailable] = useState(false);
+  const [directApiKey, setDirectApiKey] = useState('');
+  const [useDirectApiKey, setUseDirectApiKey] = useState(false);
   
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     voice: 'rachel',
@@ -119,8 +121,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   };
 
   const startCall = async () => {
-    if (!user) {
-      setError('Please sign in to use Voice Labs');
+    if (!user && !useDirectApiKey) {
+      setError('Please sign in to use Voice Labs or provide a direct API key');
       return;
     }
 
@@ -176,7 +178,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
           ws.send(JSON.stringify({
             type: 'init',
             userTier: currentTier,
-            voiceSettings: voiceSettings
+            voiceSettings: voiceSettings,
+            directApiKey: useDirectApiKey ? directApiKey : undefined
           }));
           
           wsRef.current = ws;
@@ -500,6 +503,35 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
+        {/* Direct API Key Input */}
+        <div className="bg-yellow-50 border-b border-yellow-200 p-4">
+          <div className="flex items-center space-x-2 mb-2">
+            <Key size={16} className="text-yellow-600" />
+            <h3 className="font-medium text-yellow-800">Direct ElevenLabs API Key</h3>
+          </div>
+          <div className="flex space-x-2">
+            <input
+              type="password"
+              value={directApiKey}
+              onChange={(e) => setDirectApiKey(e.target.value)}
+              placeholder="Enter your ElevenLabs API key for testing"
+              className="flex-1 px-3 py-2 border border-yellow-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+            />
+            <label className="flex items-center space-x-2 px-3 py-2 bg-white border border-yellow-300 rounded-lg">
+              <input
+                type="checkbox"
+                checked={useDirectApiKey}
+                onChange={(e) => setUseDirectApiKey(e.target.checked)}
+                className="rounded border-yellow-400 text-yellow-600 focus:ring-yellow-500"
+              />
+              <span className="text-sm text-yellow-700">Use this key</span>
+            </label>
+          </div>
+          <p className="text-xs text-yellow-600 mt-1">
+            This is for testing purposes only. In production, API keys should be securely stored in your Supabase database.
+          </p>
+        </div>
+
         {/* Voice Settings Panel */}
         {showSettings && (
           <div className="bg-gray-50 border-b border-gray-200 p-4">
@@ -649,13 +681,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   Experience real-time AI conversation with ultra-low latency. Just click start and begin speaking naturally.
                 </p>
                 
-                {!isElevenLabsAvailable && (
+                {!isElevenLabsAvailable && !useDirectApiKey && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 max-w-md mx-auto">
                     <div className="flex items-start space-x-2 text-yellow-700">
                       <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-medium">ElevenLabs API Key Required</p>
-                        <p className="text-sm">Please ask your administrator to configure an ElevenLabs API key in the Supabase global_api_keys table for full functionality.</p>
+                        <p className="text-sm">Please enter your ElevenLabs API key above and check "Use this key" for testing, or ask your administrator to configure an ElevenLabs API key in the Supabase global_api_keys table for full functionality.</p>
                       </div>
                     </div>
                   </div>

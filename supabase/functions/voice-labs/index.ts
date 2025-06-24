@@ -220,14 +220,20 @@ function handleWebSocket(req: Request): Response {
           
           console.log(`Initializing connection for tier: ${connectionState.userTier}`);
           
-          // Get API keys
-          const elevenLabsKey = await getGlobalApiKey("elevenlabs", connectionState.userTier);
-          connectionState.elevenLabsKey = elevenLabsKey;
+          // Check for direct API key first
+          if (message.directApiKey) {
+            console.log("Using direct API key");
+            connectionState.elevenLabsKey = message.directApiKey;
+          } else {
+            // Get API keys from global settings
+            const elevenLabsKey = await getGlobalApiKey("elevenlabs", connectionState.userTier);
+            connectionState.elevenLabsKey = elevenLabsKey;
+          }
           
-          console.log(`API keys available - ElevenLabs: ${!!elevenLabsKey}`);
+          console.log(`API keys available - ElevenLabs: ${!!connectionState.elevenLabsKey}`);
           
           // Send connection status
-          if (elevenLabsKey) {
+          if (connectionState.elevenLabsKey) {
             socket.send(JSON.stringify({
               type: "connection_status",
               status: "ready",
