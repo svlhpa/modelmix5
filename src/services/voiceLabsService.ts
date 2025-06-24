@@ -13,8 +13,7 @@ interface VoiceSettings {
 
 class VoiceLabsService {
   private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
-  private readonly WEBSOCKET_URL = 'wss://api.elevenlabs.io/v1/speech-to-speech/stream';
-
+  
   // Get API key (personal or global)
   async getApiKey(userTier: UserTier, personalKey?: string): Promise<string | null> {
     // First try personal key if provided

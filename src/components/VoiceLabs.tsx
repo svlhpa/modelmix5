@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Settings, Loader2, AlertCircle, CheckCircle, Waves, Activity, Clock, User, Bot } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { globalApiService } from '../services/globalApiService';
+import { voiceLabsService } from '../services/voiceLabsService';
 
 interface VoiceLabsProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const audioBufferSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const conversationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -57,6 +58,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const audioDataRef = useRef<Uint8Array | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const audioBufferRef = useRef<Float32Array[]>([]);
+  const lastVoiceActivityRef = useRef<number>(0);
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
@@ -119,9 +122,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       audioSourceRef.current = null;
     }
 
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (audioWorkletNodeRef.current) {
+      audioWorkletNodeRef.current.disconnect();
+      audioWorkletNodeRef.current = null;
     }
 
     if (audioAnalyserRef.current) {
@@ -164,6 +167,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     setLatency(0);
     setAudioLevel(0);
     setIsProcessingAudio(false);
+    
+    // Clear audio buffer
+    audioBufferRef.current = [];
   }, []);
 
   const initializeAudioContext = async () => {
@@ -217,54 +223,14 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       // Connect source to analyser
       audioSourceRef.current.connect(audioAnalyserRef.current);
       
-      // Create script processor for audio processing
-      processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-      
-      // Connect analyser to processor
-      audioAnalyserRef.current.connect(processorRef.current);
-      
-      // Connect processor to destination (required for ScriptProcessorNode to work)
-      processorRef.current.connect(audioContextRef.current.destination);
-      
-      // Process audio data
-      processorRef.current.onaudioprocess = (event) => {
-        if (isMuted || callState === 'ended' || callState === 'error') return;
-        
-        // Get audio data
-        const inputData = event.inputBuffer.getChannelData(0);
-        
-        // Calculate audio level (RMS)
-        const rms = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length);
-        const normalizedLevel = Math.min(1, rms * 5); // Amplify for better visualization
-        setAudioLevel(normalizedLevel);
-        
-        // Detect speech
-        if (normalizedLevel > 0.05 && callState === 'connected') {
-          setCallState('speaking');
-          
-          // Clear silence timeout if it exists
-          if (silenceTimeoutRef.current) {
-            clearTimeout(silenceTimeoutRef.current);
-            silenceTimeoutRef.current = null;
-          }
-          
-          // Process audio for speech recognition
-          processAudioForSpeechRecognition(inputData);
-        } else if (normalizedLevel <= 0.05 && callState === 'speaking') {
-          // Set silence timeout
-          if (!silenceTimeoutRef.current) {
-            silenceTimeoutRef.current = setTimeout(() => {
-              if (callState === 'speaking') {
-                setCallState('listening');
-                
-                // Simulate AI response after a short delay
-                simulateAiResponse();
-              }
-              silenceTimeoutRef.current = null;
-            }, 1500); // 1.5 seconds of silence to trigger listening state
-          }
-        }
-      };
+      // Use AudioWorkletNode if supported, otherwise fall back to ScriptProcessorNode
+      if (audioContextRef.current.audioWorklet) {
+        // Modern approach with AudioWorklet
+        setupAudioWorklet();
+      } else {
+        // Fallback to deprecated ScriptProcessorNode
+        setupScriptProcessor();
+      }
       
       // Start audio visualization
       visualizeAudio();
@@ -273,6 +239,181 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       console.error('Failed to start audio processing:', error);
       setError('Failed to process audio. Please try again.');
     }
+  };
+
+  const setupAudioWorklet = async () => {
+    if (!audioContextRef.current || !audioAnalyserRef.current) return;
+    
+    try {
+      // Create a simple processor worklet
+      const workletCode = `
+        class VoiceProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.lastLevel = 0;
+          }
+          
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input.length > 0) {
+              const samples = input[0];
+              
+              // Calculate RMS level
+              let sum = 0;
+              for (let i = 0; i < samples.length; i++) {
+                sum += samples[i] * samples[i];
+              }
+              const rms = Math.sqrt(sum / samples.length);
+              
+              // Send level to main thread
+              if (Math.abs(rms - this.lastLevel) > 0.01) {
+                this.port.postMessage({ level: rms });
+                this.lastLevel = rms;
+              }
+              
+              // Send audio data for processing
+              this.port.postMessage({ audioData: samples });
+            }
+            return true;
+          }
+        }
+        
+        registerProcessor('voice-processor', VoiceProcessor);
+      `;
+      
+      // Create a blob URL for the worklet code
+      const blob = new Blob([workletCode], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
+      
+      // Load the worklet
+      await audioContextRef.current.audioWorklet.addModule(workletUrl);
+      
+      // Create the worklet node
+      audioWorkletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'voice-processor');
+      
+      // Connect the worklet
+      audioAnalyserRef.current.connect(audioWorkletNodeRef.current);
+      audioWorkletNodeRef.current.connect(audioContextRef.current.destination);
+      
+      // Handle messages from the worklet
+      audioWorkletNodeRef.current.port.onmessage = (event) => {
+        if (event.data.level !== undefined) {
+          const normalizedLevel = Math.min(1, event.data.level * 5);
+          setAudioLevel(normalizedLevel);
+          
+          // Voice activity detection
+          handleVoiceActivity(normalizedLevel);
+        }
+        
+        if (event.data.audioData) {
+          // Store audio data for processing
+          audioBufferRef.current.push(new Float32Array(event.data.audioData));
+          
+          // Limit buffer size
+          if (audioBufferRef.current.length > 50) {
+            // Process audio in batches
+            processAudioBuffer();
+          }
+        }
+      };
+      
+      // Clean up the blob URL
+      URL.revokeObjectURL(workletUrl);
+      
+    } catch (error) {
+      console.error('Failed to setup AudioWorklet:', error);
+      // Fall back to ScriptProcessorNode
+      setupScriptProcessor();
+    }
+  };
+
+  const setupScriptProcessor = () => {
+    if (!audioContextRef.current || !audioAnalyserRef.current) return;
+    
+    // Create script processor for audio processing
+    const scriptProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+    
+    // Connect analyser to processor
+    audioAnalyserRef.current.connect(scriptProcessor);
+    
+    // Connect processor to destination (required for ScriptProcessorNode to work)
+    scriptProcessor.connect(audioContextRef.current.destination);
+    
+    // Process audio data
+    scriptProcessor.onaudioprocess = (event) => {
+      if (isMuted || callState === 'ended' || callState === 'error') return;
+      
+      // Get audio data
+      const inputData = event.inputBuffer.getChannelData(0);
+      
+      // Calculate audio level (RMS)
+      const rms = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length);
+      const normalizedLevel = Math.min(1, rms * 5); // Amplify for better visualization
+      setAudioLevel(normalizedLevel);
+      
+      // Voice activity detection
+      handleVoiceActivity(normalizedLevel);
+      
+      // Store audio data for processing
+      audioBufferRef.current.push(new Float32Array(inputData));
+      
+      // Limit buffer size
+      if (audioBufferRef.current.length > 50) {
+        // Process audio in batches
+        processAudioBuffer();
+      }
+    };
+  };
+
+  const handleVoiceActivity = (level: number) => {
+    const now = Date.now();
+    const voiceThreshold = 0.05;
+    
+    // Detect speech
+    if (level > voiceThreshold && callState === 'connected') {
+      setCallState('speaking');
+      lastVoiceActivityRef.current = now;
+      
+      // Clear silence timeout if it exists
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+    } else if (level <= voiceThreshold && callState === 'speaking' && (now - lastVoiceActivityRef.current) > 300) {
+      // Set silence timeout
+      if (!silenceTimeoutRef.current) {
+        silenceTimeoutRef.current = setTimeout(() => {
+          if (callState === 'speaking') {
+            setCallState('listening');
+            
+            // Simulate AI response after a short delay
+            simulateAiResponse();
+          }
+          silenceTimeoutRef.current = null;
+        }, 1500); // 1.5 seconds of silence to trigger listening state
+      }
+    }
+  };
+
+  const processAudioBuffer = () => {
+    if (audioBufferRef.current.length === 0 || isProcessingAudio) return;
+    
+    setIsProcessingAudio(true);
+    
+    // In a real implementation, we would send this audio data to a speech recognition service
+    // For now, we'll simulate speech recognition with random transcripts
+    
+    // Simulate processing delay
+    setTimeout(() => {
+      // Generate partial transcript
+      const partialTranscript = getRandomTranscript();
+      setCurrentTranscript(partialTranscript);
+      
+      // Clear processed buffers
+      audioBufferRef.current = [];
+      
+      setIsProcessingAudio(false);
+    }, 500);
   };
 
   const visualizeAudio = () => {
@@ -299,24 +440,6 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     
     // Start animation loop
     animationFrameRef.current = requestAnimationFrame(updateVisualization);
-  };
-
-  const processAudioForSpeechRecognition = (audioData: Float32Array) => {
-    // In a real implementation, this would send audio data to a speech recognition service
-    // For now, we'll simulate speech recognition with random transcripts
-    
-    if (isProcessingAudio) return;
-    
-    setIsProcessingAudio(true);
-    
-    // Simulate processing delay
-    setTimeout(() => {
-      // Generate partial transcript
-      const partialTranscript = getRandomTranscript();
-      setCurrentTranscript(partialTranscript);
-      
-      setIsProcessingAudio(false);
-    }, 500);
   };
 
   const simulateAiResponse = () => {
