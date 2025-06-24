@@ -18,12 +18,10 @@ interface VoiceAgent {
 
 export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const { user, getCurrentTier } = useAuth();
-  const [activeAgentUrl, setActiveAgentUrl] = useState<string | null>(null);
   const [agents, setAgents] = useState<VoiceAgent[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
@@ -31,9 +29,6 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen) {
       loadAgents();
-    } else {
-      setActiveAgentUrl(null);
-      setIframeLoaded(false);
     }
   }, [isOpen]);
 
@@ -81,13 +76,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     setLoading(false);
   };
 
-  const handleSelectAgent = (agentUrl: string) => {
-    setActiveAgentUrl(agentUrl);
-    setIframeLoaded(false);
-  };
-
-  const handleIframeLoad = () => {
-    setIframeLoaded(true);
+  const handleOpenExternalAgent = (agentUrl: string) => {
+    window.open(agentUrl, '_blank', 'noopener,noreferrer');
   };
 
   const getCategories = () => {
@@ -127,143 +117,144 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar with Agents */}
-          {!activeAgentUrl && (
-            <div className="w-full p-6 overflow-y-auto">
-              <div className="max-w-4xl mx-auto">
-                {/* Category Filter */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Voice Agents</h3>
-                    <div className="flex space-x-2">
-                      {getCategories().map(category => (
-                        <button
-                          key={category}
-                          onClick={() => setSelectedCategory(category)}
-                          className={`px-3 py-1 rounded-full text-sm ${
-                            selectedCategory === category
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          } transition-colors`}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-4xl mx-auto">
+            {/* CSP Warning */}
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-amber-800 mb-1">External Voice Agents</h3>
+                  <p className="text-sm text-amber-700">
+                    Due to security restrictions, voice agents will open in a new browser tab. This provides the best experience with full access to all features.
+                  </p>
                 </div>
+              </div>
+            </div>
 
-                {/* Agents Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredAgents.map(agent => (
-                    <div
-                      key={agent.id}
-                      className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-105 transform bg-white"
+            {/* Category Filter */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Voice Agents</h3>
+                <div className="flex flex-wrap gap-2">
+                  {getCategories().map(category => (
+                    <button
+                      key={category}
+                      onClick={() => setSelectedCategory(category)}
+                      className={`px-3 py-1 rounded-full text-sm ${
+                        selectedCategory === category
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      } transition-colors`}
                     >
-                      <div className="h-40 overflow-hidden">
-                        <img
-                          src={agent.imageUrl}
-                          alt={agent.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-semibold text-gray-900">{agent.name}</h4>
-                          <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">
-                            {agent.category}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-4">{agent.description}</p>
-                        <button
-                          onClick={() => handleSelectAgent(agent.agentUrl)}
-                          className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                        >
-                          <Headphones size={16} />
-                          <span>Start Conversation</span>
-                        </button>
-                      </div>
-                    </div>
+                      {category}
+                    </button>
                   ))}
                 </div>
-
-                {/* Info Section */}
-                <div className="mt-8 bg-indigo-50 border border-indigo-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-indigo-900 mb-4 flex items-center">
-                    <Volume2 size={20} className="mr-2" />
-                    About Voice Labs
-                  </h3>
-                  <div className="text-sm text-indigo-700 space-y-2">
-                    <p>Voice Labs provides access to Eleven Labs' interactive AI voice agents. These agents offer natural, conversational experiences with realistic voices.</p>
-                    <p>You can speak to these agents using your microphone, and they'll respond with natural-sounding speech. The conversations are contextual and the agents remember what you've discussed.</p>
-                    <p>To get started, simply select an agent and click "Start Conversation". Make sure to allow microphone access when prompted.</p>
-                  </div>
-                  <div className="mt-4 text-xs text-indigo-600">
-                    Powered by Eleven Labs' state-of-the-art voice synthesis technology.
-                  </div>
-                </div>
               </div>
             </div>
-          )}
 
-          {/* Agent Conversation View */}
-          {activeAgentUrl && (
-            <div className="w-full flex flex-col">
-              {/* Agent Header */}
-              <div className="bg-gray-50 border-b border-gray-200 p-4 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={() => setActiveAgentUrl(null)}
-                    className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    <X size={20} className="text-gray-600" />
-                  </button>
-                  <h3 className="font-medium text-gray-900">
-                    {agents.find(a => a.agentUrl === activeAgentUrl)?.name || 'Voice Agent'}
-                  </h3>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <a
-                    href={activeAgentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center space-x-1 text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-200 transition-colors"
-                  >
-                    <ExternalLink size={12} />
-                    <span>Open in new tab</span>
-                  </a>
-                </div>
-              </div>
-
-              {/* Iframe Container */}
-              <div className="flex-1 relative bg-black">
-                {!iframeLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                    <div className="text-center">
-                      <Loader2 size={40} className="text-indigo-600 animate-spin mx-auto mb-4" />
-                      <p className="text-gray-700 font-medium">Loading voice agent...</p>
-                      <p className="text-gray-500 text-sm mt-2">This may take a few moments</p>
+            {/* Agents Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredAgents.map(agent => (
+                <div
+                  key={agent.id}
+                  className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-105 transform bg-white"
+                >
+                  <div className="h-40 overflow-hidden">
+                    <img
+                      src={agent.imageUrl}
+                      alt={agent.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">{agent.name}</h4>
+                      <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">
+                        {agent.category}
+                      </span>
                     </div>
+                    <p className="text-sm text-gray-600 mb-4">{agent.description}</p>
+                    <button
+                      onClick={() => handleOpenExternalAgent(agent.agentUrl)}
+                      className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      <ExternalLink size={16} />
+                      <span>Open Voice Agent</span>
+                    </button>
                   </div>
-                )}
-                <iframe
-                  src={activeAgentUrl}
-                  className="w-full h-full border-0"
-                  allow="microphone; camera; autoplay; encrypted-media"
-                  onLoad={handleIframeLoad}
-                  title="Eleven Labs Voice Agent"
-                />
-              </div>
+                </div>
+              ))}
+            </div>
 
-              {/* Footer */}
-              <div className="bg-gray-50 border-t border-gray-200 p-3 text-center">
-                <p className="text-xs text-gray-500">
-                  Voice agent powered by Eleven Labs. Allow microphone access for the best experience.
-                </p>
+            {/* Info Section */}
+            <div className="mt-8 bg-indigo-50 border border-indigo-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-indigo-900 mb-4 flex items-center">
+                <Volume2 size={20} className="mr-2" />
+                About Voice Labs
+              </h3>
+              <div className="text-sm text-indigo-700 space-y-2">
+                <p>Voice Labs provides access to Eleven Labs' interactive AI voice agents. These agents offer natural, conversational experiences with realistic voices.</p>
+                <p>You can speak to these agents using your microphone, and they'll respond with natural-sounding speech. The conversations are contextual and the agents remember what you've discussed.</p>
+                <p>To get started, simply select an agent and click "Open Voice Agent". Make sure to allow microphone access when prompted.</p>
+              </div>
+              <div className="mt-4 text-xs text-indigo-600">
+                Powered by Eleven Labs' state-of-the-art voice synthesis technology.
               </div>
             </div>
-          )}
+
+            {/* Features List */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check size={16} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-1">True Real-Time Conversation</h4>
+                    <p className="text-sm text-gray-600">Low-latency voice interactions with natural back-and-forth flow.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check size={16} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-1">Interruption Capability</h4>
+                    <p className="text-sm text-gray-600">Interrupt the AI mid-sentence, just like in human conversations.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check size={16} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-1">Specialized Agents</h4>
+                    <p className="text-sm text-gray-600">Purpose-built agents with expertise in specific domains.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check size={16} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-1">High-Quality Voices</h4>
+                    <p className="text-sm text-gray-600">Premium voice synthesis with natural intonation and emotion.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
