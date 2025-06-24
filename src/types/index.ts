@@ -7,6 +7,8 @@ export interface Message {
   images?: string[]; // Base64 encoded images
   generatedImages?: string[]; // URLs to generated images
   isImageGeneration?: boolean; // Flag to indicate this is an image generation response
+  generatedVideos?: string[]; // URLs to generated videos
+  isVideoGeneration?: boolean; // Flag to indicate this is a video generation response
 }
 
 export interface APIResponse {
@@ -17,6 +19,8 @@ export interface APIResponse {
   selected?: boolean;
   generatedImages?: string[]; // URLs to generated images
   isImageGeneration?: boolean; // Flag to indicate this is an image generation response
+  generatedVideos?: string[]; // URLs to generated videos
+  isVideoGeneration?: boolean; // Flag to indicate this is a video generation response
 }
 
 export interface APISettings {
@@ -36,12 +40,17 @@ export interface ImageModelSettings {
   [modelId: string]: boolean;
 }
 
+export interface VideoModelSettings {
+  [modelId: string]: boolean;
+}
+
 export interface ModelSettings {
   openai: boolean;
   gemini: boolean;
   deepseek: boolean;
   openrouter_models: OpenRouterModelSettings;
   image_models: ImageModelSettings;
+  video_models: VideoModelSettings;
 }
 
 export interface ChatSession {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { APIResponse } from '../types';
-import { Copy, Check, AlertCircle, Zap, Bot, Sparkles, CheckCircle, ChevronLeft, ChevronRight, Download, ExternalLink, Palette } from 'lucide-react';
+import { Copy, Check, AlertCircle, Zap, Bot, Sparkles, CheckCircle, ChevronLeft, ChevronRight, Download, ExternalLink, Palette, Video } from 'lucide-react';
 
 interface ComparisonViewProps {
   responses: APIResponse[];
@@ -123,6 +123,15 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
         return 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100';
       case 'imagen 4':
         return 'border-red-200 bg-gradient-to-br from-red-50 to-red-100';
+      case 'google veo 2':
+      case 'google veo 3':
+        return 'border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100';
+      case 'kling 1.6 standard':
+        return 'border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100';
+      case 'seedance 1 lite':
+        return 'border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100';
+      case 'test video (free)':
+        return 'border-green-200 bg-gradient-to-br from-green-50 to-green-100';
       default:
         return 'border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100';
     }
@@ -207,6 +216,36 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
     </div>
   );
 
+  const VideoGenerationLoading = ({ provider }: { provider: string }) => (
+    <div className="flex flex-col items-center justify-center py-8 px-4 animate-fadeInUp">
+      <div className="relative mb-4">
+        {/* Outer rotating ring */}
+        <div className="w-12 h-12 border-4 border-gray-200 rounded-full animate-spin border-t-blue-500"></div>
+        {/* Inner pulsing dot */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+        </div>
+      </div>
+      
+      <div className="text-center">
+        <div className="flex items-center justify-center space-x-2 mb-2">
+          <Video size={16} className="text-blue-600" />
+          <span className="font-medium text-blue-700 text-sm">Generating video...</span>
+        </div>
+        <p className="text-xs text-gray-600">
+          {provider} is creating your video
+        </p>
+        
+        {/* Animated dots */}
+        <div className="flex justify-center space-x-1 mt-2">
+          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (responses.length === 0) return null;
 
   return (
@@ -215,9 +254,11 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
         <div className="flex items-center space-x-2 min-w-0">
           <Sparkles size={16} className="text-emerald-600 flex-shrink-0 animate-pulse" />
           <h3 className="font-medium text-gray-900 text-sm md:text-base min-w-0">
-            {responses[0]?.isImageGeneration 
-              ? `AI Generated Images (${responses.length} models)`
-              : `AI Responses (${responses.length} models)`}
+            {responses[0]?.isVideoGeneration 
+              ? `AI Generated Videos (${responses.length} models)`
+              : responses[0]?.isImageGeneration 
+                ? `AI Generated Images (${responses.length} models)`
+                : `AI Responses (${responses.length} models)`}
           </h3>
           {showSelection && (
             <span className="text-xs text-gray-500 bg-emerald-50 px-2 py-1 rounded-full hidden sm:inline flex-shrink-0 animate-pulse">
@@ -282,7 +323,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                 <div className="flex items-center justify-between p-3 md:p-4 border-b border-white/50">
                   <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
                     <span className="text-lg md:text-xl flex-shrink-0 animate-bounceIn" style={{ animationDelay: `${index * 0.1 + 0.2}s` }}>
-                      {response.isImageGeneration ? '🎨' : getProviderIcon(response.provider)}
+                      {response.isVideoGeneration ? '🎬' : response.isImageGeneration ? '🎨' : getProviderIcon(response.provider)}
                     </span>
                     <div className="min-w-0">
                       <h3 className="font-semibold text-gray-900 text-xs md:text-sm truncate">{response.provider}</h3>
@@ -291,7 +332,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                           <>
                             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
                             <span className="text-xs text-emerald-600 font-medium">
-                              {response.isImageGeneration ? 'Generating' : 'Generating'}
+                              {response.isVideoGeneration ? 'Generating video' : response.isImageGeneration ? 'Generating image' : 'Generating'}
                             </span>
                           </>
                         )}
@@ -317,7 +358,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-1 flex-shrink-0">
-                    {!response.loading && !response.error && response.content && !response.isImageGeneration && (
+                    {!response.loading && !response.error && response.content && !response.isImageGeneration && !response.isVideoGeneration && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -345,12 +386,26 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                         <ExternalLink size={14} className="text-gray-500 group-hover:text-gray-700" />
                       </button>
                     )}
+                    {!response.loading && !response.error && response.generatedVideos && response.generatedVideos.length > 0 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(response.generatedVideos[0], '_blank');
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-white/50 transition-all duration-200 group hover:scale-110 transform"
+                        title="Open video in new tab"
+                      >
+                        <ExternalLink size={14} className="text-gray-500 group-hover:text-gray-700" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Content */}
                 <div className="p-3 md:p-4 min-h-[180px] md:min-h-[200px] max-h-[300px] md:max-h-[400px] overflow-y-auto">
                   {response.loading && (
+                    response.isVideoGeneration ? 
+                      <VideoGenerationLoading provider={response.provider} /> :
                     response.isImageGeneration ? 
                       <ImageGenerationLoading provider={response.provider} /> : 
                       <LoadingAnimation provider={response.provider} />
@@ -373,7 +428,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                     </div>
                   )}
 
-                  {!response.loading && !response.error && response.content && !response.isImageGeneration && (
+                  {!response.loading && !response.error && response.content && !response.isImageGeneration && !response.isVideoGeneration && (
                     <div className="prose prose-sm max-w-none animate-fadeInUp">
                       <div 
                         className="text-gray-800 text-xs md:text-sm leading-relaxed break-words"
@@ -424,7 +479,46 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                     </div>
                   )}
 
-                  {showSelection && !response.loading && !response.error && (response.content || response.generatedImages) && (
+                  {!response.loading && !response.error && response.isVideoGeneration && response.generatedVideos && response.generatedVideos.length > 0 && (
+                    <div className="flex flex-col items-center justify-center animate-fadeInUp">
+                      <video 
+                        src={response.generatedVideos[0]} 
+                        controls
+                        className="max-w-full max-h-[250px] rounded-lg shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                      />
+                      <div className="mt-2 text-xs text-gray-500 text-center">
+                        {response.content || `Generated by ${response.provider}`}
+                      </div>
+                      <div className="mt-2 flex space-x-2">
+                        <a 
+                          href={response.generatedVideos[0]}
+                          download={`generated-video-${Date.now()}.mp4`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center space-x-1 text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg transition-colors"
+                        >
+                          <Download size={12} />
+                          <span>Download</span>
+                        </a>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(response.generatedVideos[0], '_blank');
+                          }}
+                          className="flex items-center space-x-1 text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg transition-colors"
+                        >
+                          <ExternalLink size={12} />
+                          <span>Open</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {showSelection && !response.loading && !response.error && (response.content || response.generatedImages || response.generatedVideos) && (
                     <div className="mt-3 text-center animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
                       <div className="text-xs text-gray-500 bg-white/50 px-2 py-1 rounded-full inline-block hover:bg-white/70 transition-colors duration-200">
                         Tap to select this response

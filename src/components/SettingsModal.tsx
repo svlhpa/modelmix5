@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Settings, Palette, Eye, EyeOff, Save, AlertTriangle, CheckCircle, Crown, Gift, Infinity, Globe } from 'lucide-react';
+import { X, Key, Settings, Palette, Eye, EyeOff, Save, AlertTriangle, CheckCircle, Crown, Gift, Infinity, Globe, Video } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 import { imageRouterService, ImageModel } from '../services/imageRouterService';
@@ -22,12 +22,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentModelSettings
 }) => {
   const { getCurrentTier } = useAuth();
-  const [activeTab, setActiveTab] = useState<'api-keys' | 'text-models' | 'image-models'>('api-keys');
+  const [activeTab, setActiveTab] = useState<'api-keys' | 'text-models' | 'image-models' | 'video-models'>('api-keys');
   const [settings, setSettings] = useState<APISettings>(currentSettings);
   const [modelSettings, setModelSettings] = useState<ModelSettings>(currentModelSettings);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
   const [imageModels, setImageModels] = useState<ImageModel[]>([]);
+  const [videoModels, setVideoModels] = useState<ImageModel[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [loading, setLoading] = useState(false);
@@ -64,12 +65,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const loadModels = async () => {
     setLoading(true);
     try {
-      const [orModels, imgModels] = await Promise.all([
+      const [orModels, imgModels, vidModels] = await Promise.all([
         openRouterService.getAvailableModels(),
-        imageRouterService.getAvailableModels()
+        imageRouterService.getAvailableImageModels(),
+        imageRouterService.getAvailableVideoModels()
       ]);
       setOpenRouterModels(orModels);
       setImageModels(imgModels);
+      setVideoModels(vidModels);
     } catch (error) {
       console.error('Failed to load models:', error);
     } finally {
@@ -117,7 +120,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }));
   };
 
-  const enableAllFreeModels = (type: 'openrouter' | 'image') => {
+  const handleVideoModelToggle = (modelId: string) => {
+    setModelSettings(prev => ({
+      ...prev,
+      video_models: {
+        ...prev.video_models || {},
+        [modelId]: !(prev.video_models || {})[modelId]
+      }
+    }));
+  };
+
+  const enableAllFreeModels = (type: 'openrouter' | 'image' | 'video') => {
     if (type === 'openrouter') {
       const freeModels = openRouterModels.filter(model => openRouterService.isFreeModel(model));
       const updates: Record<string, boolean> = {};
@@ -156,10 +169,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         ...prev,
         image_models: { ...prev.image_models, ...updates }
       }));
+    } else if (type === 'video') {
+      // CRITICAL: For free tier users without personal API key, only enable free models
+      const hasPersonalImageKey = settings.imagerouter && settings.imagerouter.trim() !== '';
+      const hasGlobalImageKey = globalKeysAvailable.imagerouter;
+      
+      let modelsToEnable: ImageModel[] = [];
+      
+      if (hasPersonalImageKey || isProUser) {
+        // User has personal key or is Pro - can access all free models
+        modelsToEnable = videoModels.filter(model => imageRouterService.isFreeModel(model));
+      } else if (hasGlobalImageKey && !isProUser) {
+        // Free tier user with global key access - only free models
+        const freeModelIds = [
+          'ir/test-video'
+        ];
+        modelsToEnable = videoModels.filter(model => freeModelIds.includes(model.id));
+      }
+      
+      const updates: Record<string, boolean> = {};
+      modelsToEnable.forEach(model => {
+        updates[model.id] = true;
+      });
+      setModelSettings(prev => ({
+        ...prev,
+        video_models: { ...(prev.video_models || {}), ...updates }
+      }));
     }
   };
 
-  const clearAllModels = (type: 'openrouter' | 'image') => {
+  const clearAllModels = (type: 'openrouter' | 'image' | 'video') => {
     if (type === 'openrouter') {
       setModelSettings(prev => ({
         ...prev,
@@ -169,6 +208,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setModelSettings(prev => ({
         ...prev,
         image_models: {}
+      }));
+    } else if (type === 'video') {
+      setModelSettings(prev => ({
+        ...prev,
+        video_models: {}
       }));
     }
   };
@@ -189,6 +233,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         'test/test'
       ];
       return imageModels.filter(model => freeModelIds.includes(model.id));
+    } else {
+      // No access
+      return [];
+    }
+  };
+
+  // CRITICAL: Filter video models based on user tier and API key availability
+  const getAvailableVideoModels = () => {
+    const hasPersonalImageKey = settings.imagerouter && settings.imagerouter.trim() !== '';
+    const hasGlobalImageKey = globalKeysAvailable.imagerouter;
+    
+    if (hasPersonalImageKey || isProUser) {
+      // User has personal key or is Pro - can access all models
+      return videoModels;
+    } else if (hasGlobalImageKey && !isProUser) {
+      // Free tier user with global key access - only free models
+      const freeModelIds = [
+        'ir/test-video'
+      ];
+      return videoModels.filter(model => freeModelIds.includes(model.id));
     } else {
       // No access
       return [];
@@ -222,6 +286,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     return categories[selectedCategory]?.some(m => m.id === model.id) && matchesSearch;
   });
 
+  const filteredVideoModels = getAvailableVideoModels().filter(model => {
+    const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         model.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (selectedCategory === 'All') return matchesSearch;
+    
+    const categories = imageRouterService.getModelCategories(getAvailableVideoModels());
+    return categories[selectedCategory]?.some(m => m.id === model.id) && matchesSearch;
+  });
+
   const filteredOpenRouterModels = getAvailableOpenRouterModels().filter(model => {
     const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          model.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -232,13 +306,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     return categories[selectedCategory]?.some(m => m.id === model.id) && matchesSearch;
   });
 
-  const getSelectedCount = (type: 'text' | 'openrouter' | 'image') => {
+  const getSelectedCount = (type: 'text' | 'openrouter' | 'image' | 'video') => {
     if (type === 'text') {
       return [modelSettings.openai, modelSettings.gemini, modelSettings.deepseek].filter(Boolean).length;
     } else if (type === 'openrouter') {
       return Object.values(modelSettings.openrouter_models).filter(Boolean).length;
     } else if (type === 'image') {
       return Object.values(modelSettings.image_models).filter(Boolean).length;
+    } else if (type === 'video') {
+      return Object.values(modelSettings.video_models || {}).filter(Boolean).length;
     }
     return 0;
   };
@@ -284,7 +360,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {[
             { id: 'api-keys', label: 'API Keys', icon: Key },
             { id: 'text-models', label: `Text Models (${getSelectedCount('text') + getSelectedCount('openrouter')} selected)`, icon: Settings },
-            { id: 'image-models', label: `Image Models (${getSelectedCount('image')} selected)`, icon: Palette }
+            { id: 'image-models', label: `Image Models (${getSelectedCount('image')} selected)`, icon: Palette },
+            { id: 'video-models', label: `Video Models (${getSelectedCount('video')} selected)`, icon: Video }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -325,7 +402,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 { key: 'gemini' as const, name: 'Google Gemini', placeholder: 'AI...', description: 'For Gemini Pro models' },
                 { key: 'deepseek' as const, name: 'DeepSeek', placeholder: 'sk-...', description: 'For DeepSeek Chat models' },
                 { key: 'serper' as const, name: 'Serper (Internet Search)', placeholder: 'your-serper-key', description: 'For real-time web search' },
-                { key: 'imagerouter' as const, name: 'Imagerouter (Image Generation)', placeholder: 'ir-...', description: 'For AI image generation models' }
+                { key: 'imagerouter' as const, name: 'Imagerouter (Image & Video Generation)', placeholder: 'ir-...', description: 'For AI image and video generation models' }
               ].map((provider, index) => {
                 const status = getProviderStatus(provider.key);
                 return (
@@ -704,6 +781,179 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <div className="mt-3 text-xs text-purple-600">
                     💡 Try asking "Generate an image of..." or "Draw..." to create AI images
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Video Models Tab */}
+        {activeTab === 'video-models' && (
+          <div className="space-y-6 animate-fadeInUp">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Video Generation Models ({Object.values(modelSettings.video_models || {}).filter(Boolean).length} selected)
+              </h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => enableAllFreeModels('video')}
+                  className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                >
+                  <CheckCircle size={14} />
+                  <span>Enable All Free Models</span>
+                </button>
+                <button
+                  onClick={() => clearAllModels('video')}
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            {/* Access Status */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <div className="p-1 bg-amber-100 rounded-lg flex-shrink-0">
+                  <AlertTriangle className="text-amber-600" size={16} />
+                </div>
+                <div>
+                  <h4 className="font-medium text-amber-800 mb-1">Imagerouter API key required for video generation</h4>
+                  <p className="text-sm text-amber-700">
+                    {!settings.imagerouter && !globalKeysAvailable.imagerouter ? (
+                      'Add your API key in the API Keys tab to enable AI video generation. Once configured, you can ask the AI to "generate a video of..." or "create a clip of...".'
+                    ) : !settings.imagerouter && globalKeysAvailable.imagerouter && !isProUser ? (
+                      'You have access to free video models through global keys. Upgrade to Pro or add your own API key for access to all models.'
+                    ) : !settings.imagerouter && globalKeysAvailable.imagerouter && isProUser ? (
+                      'You have Pro access to all video models through global keys. Add your own API key for priority access.'
+                    ) : (
+                      'Video generation enabled! You can ask the AI to "generate a video of..." or "create a clip of..." to create AI videos.'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {getAvailableVideoModels().length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <Video size={48} className="text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Video Generation Access Required</h3>
+                <p className="text-gray-500 mb-4">
+                  {!isProUser 
+                    ? 'Add your Imagerouter API key or upgrade to Pro for global key access'
+                    : 'Add your Imagerouter API key to access all video generation models'
+                  }
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex space-x-4 mb-4">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Search video models..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="All">All</option>
+                    {Object.keys(imageRouterService.getModelCategories(getAvailableVideoModels())).map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                  {filteredVideoModels.map((model, index) => {
+                    const isSelected = (modelSettings.video_models || {})[model.id];
+                    const isFree = imageRouterService.isFreeModel(model);
+                    const modelIcon = '🎬'; // Video icon
+                    
+                    return (
+                      <div
+                        key={model.id}
+                        className={`p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md animate-fadeInUp ${
+                          isSelected
+                            ? 'border-purple-300 bg-purple-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                        onClick={() => handleVideoModelToggle(model.id)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-start space-x-2 flex-1 min-w-0">
+                            <span className="text-lg flex-shrink-0">{modelIcon}</span>
+                            <div className="min-w-0">
+                              <h4 className="font-medium text-gray-900 text-sm truncate">{model.name}</h4>
+                              <div className="flex items-center space-x-2 mt-1">
+                                {isFree && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Free
+                                  </span>
+                                )}
+                                {model.arena_score && (
+                                  <span className="text-xs text-gray-500">
+                                    Score: {model.arena_score}
+                                  </span>
+                                )}
+                                {!isFree && (
+                                  <span className="text-xs text-gray-500">
+                                    ${model.pricing.value?.toFixed(2) || 'Variable'}/video
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            isSelected ? 'border-purple-500 bg-purple-500' : 'border-gray-300'
+                          }`}>
+                            {isSelected && <CheckCircle size={12} className="text-white" />}
+                          </div>
+                        </div>
+                        {model.description && (
+                          <p className="text-xs text-gray-600 line-clamp-2">{model.description}</p>
+                        )}
+                        <div className="text-xs text-gray-500 mt-1">
+                          Released: {new Date(model.release_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* How to Use Video Generation */}
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                  <h4 className="font-medium text-indigo-800 mb-3 flex items-center space-x-2">
+                    <Video size={16} />
+                    <span>How to Use Video Generation</span>
+                  </h4>
+                  <div className="space-y-2 text-sm text-indigo-700">
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-indigo-800 flex-shrink-0">1</span>
+                      <span>Configure your Imagerouter API key in the API Keys tab to enable video generation</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-indigo-800 flex-shrink-0">2</span>
+                      <span>Select video models to use</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-indigo-800 flex-shrink-0">3</span>
+                      <span>Ask for videos in the chat</span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <span className="font-medium text-indigo-800 flex-shrink-0">4</span>
+                      <span>Compare and select your favorite</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-indigo-600">
+                    💡 Try asking "Generate a video of..." or "Create a clip of..." to create AI videos
                   </div>
                 </div>
               </>

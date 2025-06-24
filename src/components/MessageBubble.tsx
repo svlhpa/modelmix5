@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, Check, Globe, ExternalLink, Download } from 'lucide-react';
+import { Copy, Check, Globe, ExternalLink, Download, Video } from 'lucide-react';
 import { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -37,6 +37,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.role === 'user';
   const hasInternetSearch = message.content.includes('=== CURRENT INTERNET SEARCH RESULTS ===');
   const isImageGeneration = message.isImageGeneration || message.generatedImages?.length > 0;
+  const isVideoGeneration = message.isVideoGeneration || message.generatedVideos?.length > 0;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fadeInUp`}>
@@ -100,6 +101,37 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                 </a>
                 <button
                   onClick={() => window.open(message.generatedImages[0], '_blank')}
+                  className="flex items-center space-x-1 text-xs bg-white text-gray-700 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                >
+                  <ExternalLink size={12} />
+                  <span>Open</span>
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Display generated videos if present */}
+          {isVideoGeneration && message.generatedVideos && message.generatedVideos.length > 0 && (
+            <div className="mb-3 flex flex-col items-center gap-2 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
+              <video
+                src={message.generatedVideos[0]}
+                controls
+                className="max-w-full max-h-64 rounded-lg border border-gray-200 hover:scale-105 transition-transform duration-300"
+              />
+              <div className="flex space-x-2 mt-2">
+                <a 
+                  href={message.generatedVideos[0]}
+                  download={`generated-video-${Date.now()}.mp4`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 text-xs bg-white text-gray-700 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download size={12} />
+                  <span>Download</span>
+                </a>
+                <button
+                  onClick={() => window.open(message.generatedVideos[0], '_blank')}
                   className="flex items-center space-x-1 text-xs bg-white text-gray-700 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
                 >
                   <ExternalLink size={12} />

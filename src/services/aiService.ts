@@ -19,11 +19,13 @@ class AIService {
     gemini: false,
     deepseek: false,
     openrouter_models: {},
-    image_models: {}
+    image_models: {},
+    video_models: {}
   };
 
   private openRouterModels: OpenRouterModel[] = [];
   private imageModels: ImageModel[] = [];
+  private videoModels: ImageModel[] = [];
 
   async updateSettings(settings: APISettings) {
     this.settings = { ...settings };
@@ -48,6 +50,10 @@ class AIService {
   async loadModelSettings(): Promise<ModelSettings> {
     try {
       this.modelSettings = await databaseService.loadModelSettings();
+      // Ensure video_models exists
+      if (!this.modelSettings.video_models) {
+        this.modelSettings.video_models = {};
+      }
       return this.modelSettings;
     } catch (error) {
       console.error('Failed to load model settings from database:', error);
@@ -64,9 +70,16 @@ class AIService {
 
   async loadImageModels(): Promise<ImageModel[]> {
     if (this.imageModels.length === 0) {
-      this.imageModels = await imageRouterService.getAvailableModels();
+      this.imageModels = await imageRouterService.getAvailableImageModels();
     }
     return this.imageModels;
+  }
+
+  async loadVideoModels(): Promise<ImageModel[]> {
+    if (this.videoModels.length === 0) {
+      this.videoModels = await imageRouterService.getAvailableVideoModels();
+    }
+    return this.videoModels;
   }
 
   // CRITICAL: Updated API key access to prioritize Pro users for global keys
@@ -380,8 +393,8 @@ class AIService {
 
   // CRITICAL: Completely rebuilt debate response generation for proper engagement
   async generateDebateResponse(
-    topic: string,
-    position: string,
+    topic: string, 
+    position: string, 
     previousMessages: any[],
     model: string,
     responseType: 'opening' | 'rebuttal' | 'closing' | 'response_to_user'
@@ -586,12 +599,166 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
   ): Promise<APIResponse[]> {
     // CRITICAL: Detect if this is an image generation request
     const isImageRequest = imageRouterService.isImageGenerationRequest(currentMessage);
+    // CRITICAL: Detect if this is a video generation request
+    const isVideoRequest = imageRouterService.isVideoGenerationRequest(currentMessage);
     
-    if (isImageRequest) {
+    if (isVideoRequest) {
+      return this.getVideoResponses(currentMessage, onResponseUpdate, signal, userTier);
+    } else if (isImageRequest) {
       return this.getImageResponses(currentMessage, onResponseUpdate, signal, userTier);
     } else {
       return this.getTextResponses(currentMessage, conversationHistory, images, onResponseUpdate, signal, userTier, useInternetSearch);
     }
+  }
+
+  // CRITICAL: Video generation responses
+  private async getVideoResponses(
+    prompt: string,
+    onResponseUpdate?: (responses: APIResponse[]) => void,
+    signal?: AbortSignal,
+    userTier?: string
+  ): Promise<APIResponse[]> {
+    console.log('=== VIDEO GENERATION DEBUG ===');
+    console.log('Starting video generation for prompt:', prompt);
+    console.log('User tier:', userTier);
+    
+    // CRITICAL: Check for API key availability first with detailed logging
+    const { key: apiKey, isGlobal } = await this.getApiKey('imagerouter', userTier || 'tier1');
+    console.log('Imagerouter API key check:', { 
+      hasKey: !!apiKey, 
+      isGlobal, 
+      userTier,
+      keyLength: apiKey ? apiKey.length : 0,
+      keyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none'
+    });
+    
+    if (!apiKey) {
+      console.log('❌ No Imagerouter API key available');
+      return [{
+        provider: 'Video Generation',
+        content: 'Video generation requires an Imagerouter API key. Please configure it in settings or contact support for global key access.',
+        loading: false,
+        error: 'API key not configured',
+        isVideoGeneration: true
+      }];
+    }
+
+    console.log('✅ API key found, proceeding with video generation');
+
+    // CRITICAL: Filter enabled video models based on user tier and API key availability
+    const hasPersonalImageKey = this.settings.imagerouter && this.settings.imagerouter.trim() !== '';
+    const isProUser = userTier === 'tier2';
+    
+    console.log('Access check:', { hasPersonalImageKey, isProUser, isGlobal });
+    
+    let enabledVideoModels: string[] = [];
+    
+    if (hasPersonalImageKey || isProUser) {
+      // User has personal key or is Pro - can access all enabled models
+      enabledVideoModels = Object.entries(this.modelSettings.video_models)
+        .filter(([_, enabled]) => enabled)
+        .map(([modelId]) => modelId);
+      console.log('✅ Pro/Personal key access - enabled models:', enabledVideoModels);
+    } else if (isGlobal && !isProUser) {
+      // Free tier user with global key access - only the free models
+      const freeModelIds = [
+        'ir/test-video'
+      ];
+      enabledVideoModels = Object.entries(this.modelSettings.video_models)
+        .filter(([modelId, enabled]) => enabled && freeModelIds.includes(modelId))
+        .map(([modelId]) => modelId);
+      console.log('✅ Free tier global access - enabled models:', enabledVideoModels);
+      console.log('Available free models:', freeModelIds);
+      console.log('User enabled models:', Object.entries(this.modelSettings.video_models).filter(([_, enabled]) => enabled).map(([modelId]) => modelId));
+    }
+
+    if (enabledVideoModels.length === 0) {
+      console.log('❌ No enabled video models found');
+      console.log('Model settings:', this.modelSettings.video_models);
+      return [{
+        provider: 'Video Generation',
+        content: 'No video models selected. Please enable video models in settings.',
+        loading: false,
+        error: 'No models enabled',
+        isVideoGeneration: true
+      }];
+    }
+
+    // Initialize responses with loading state
+    const responses: APIResponse[] = enabledVideoModels.map(modelId => {
+      const model = this.videoModels.find(m => m.id === modelId);
+      return {
+        provider: model?.name || modelId,
+        content: '',
+        loading: true,
+        isVideoGeneration: true,
+        generatedVideos: []
+      };
+    });
+
+    console.log('Initialized responses for models:', responses.map(r => r.provider));
+
+    // Call the update callback immediately with loading states
+    if (onResponseUpdate) {
+      onResponseUpdate([...responses]);
+    }
+
+    // Generate videos concurrently
+    const promises = enabledVideoModels.map(async (modelId, index) => {
+      try {
+        console.log(`🎬 Generating video with model ${modelId}...`);
+        const videoUrls = await imageRouterService.generateVideo(prompt, modelId, apiKey, signal);
+        
+        // Check if aborted before updating
+        if (signal?.aborted) {
+          return;
+        }
+        
+        console.log(`✅ Video generated successfully for ${modelId}:`, videoUrls);
+        
+        responses[index] = {
+          ...responses[index],
+          content: `Generated video for: "${prompt}"`,
+          loading: false,
+          generatedVideos: videoUrls
+        };
+        
+        // Increment global usage if using global key
+        if (isGlobal) {
+          console.log('📊 Incrementing global usage for imagerouter');
+          await globalApiService.incrementGlobalUsage('imagerouter');
+        }
+        
+        // Call update callback each time a video completes
+        if (onResponseUpdate && !signal?.aborted) {
+          onResponseUpdate([...responses]);
+        }
+      } catch (error) {
+        // Don't update if aborted
+        if (signal?.aborted) {
+          return;
+        }
+        
+        console.error(`❌ Error generating video with ${modelId}:`, error);
+        
+        responses[index] = {
+          ...responses[index],
+          content: '',
+          loading: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+        
+        // Call update callback for errors too
+        if (onResponseUpdate && !signal?.aborted) {
+          onResponseUpdate([...responses]);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+    console.log('🏁 All video generation promises completed');
+    console.log('=== END VIDEO GENERATION DEBUG ===');
+    return responses;
   }
 
   // CRITICAL: Image generation responses with enhanced debugging
