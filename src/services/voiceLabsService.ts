@@ -93,78 +93,72 @@ class VoiceLabsService {
     }
   }
 
-  // Create WebSocket connection for real-time speech-to-speech
-  createSpeechToSpeechConnection(
-    apiKey: string, 
-    settings: VoiceSettings,
-    onTranscript: (text: string, isFinal: boolean) => void,
-    onAiResponse: (text: string) => void,
-    onAudioChunk: (audioData: ArrayBuffer) => void,
-    onError: (error: string) => void
-  ): WebSocket {
-    // In a real implementation, this would connect to your backend WebSocket server
-    // which would handle the ElevenLabs API calls
-    
-    // For now, we'll create a simulated WebSocket
-    const ws = new WebSocket('wss://echo.websocket.org/');
-    
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      
-      // Send initial configuration
-      ws.send(JSON.stringify({
-        type: 'config',
-        apiKey,
-        voiceId: settings.voiceId,
-        modelId: settings.model,
-        stability: settings.stability,
-        similarityBoost: settings.similarityBoost,
-        style: settings.style,
-        useSpeakerBoost: settings.useSpeakerBoost
-      }));
-    };
-    
-    ws.onmessage = (event) => {
-      // In a real implementation, this would handle messages from your backend
-      // For now, we'll simulate responses
-      
-      try {
-        // Echo back the message for simulation
-        const message = JSON.parse(event.data);
-        
-        if (message.type === 'audio_data') {
-          // Simulate transcript generation
-          setTimeout(() => {
-            const simulatedTranscript = "This is a simulated transcript of what you said.";
-            onTranscript(simulatedTranscript, true);
-            
-            // Simulate AI response
-            setTimeout(() => {
-              const simulatedResponse = "This is a simulated AI response to your message.";
-              onAiResponse(simulatedResponse);
-              
-              // Simulate audio chunks
-              // In a real implementation, these would be actual audio data from ElevenLabs
-              const simulatedAudioChunk = new ArrayBuffer(1024);
-              onAudioChunk(simulatedAudioChunk);
-            }, 1000);
-          }, 500);
-        }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
+  // Text-to-speech API call
+  async textToSpeech(
+    text: string,
+    apiKey: string,
+    voiceId: string,
+    model: string,
+    stability: number,
+    similarityBoost: number,
+    style: number,
+    useSpeakerBoost: boolean
+  ): Promise<ArrayBuffer | null> {
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text,
+          model_id: model,
+          voice_settings: {
+            stability,
+            similarity_boost: similarityBoost,
+            style,
+            use_speaker_boost: useSpeakerBoost
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate speech: ${response.status}`);
       }
-    };
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      onError('WebSocket connection error');
-    };
-    
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-    };
-    
-    return ws;
+
+      return await response.arrayBuffer();
+    } catch (error) {
+      console.error('Failed to generate speech:', error);
+      return null;
+    }
+  }
+
+  // Speech-to-text API call (using OpenAI Whisper via ElevenLabs)
+  async speechToText(audioBlob: Blob, apiKey: string): Promise<string | null> {
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.wav');
+      formData.append('model_id', 'whisper-1');
+
+      const response = await fetch(`${this.API_BASE_URL}/speech-to-text`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to transcribe speech: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.text || null;
+    } catch (error) {
+      console.error('Failed to transcribe speech:', error);
+      return null;
+    }
   }
 
   // Get user subscription info
@@ -205,6 +199,55 @@ class VoiceLabsService {
       await globalApiService.incrementGlobalUsage('elevenlabs');
     } catch (error) {
       console.error('Failed to increment global usage:', error);
+    }
+  }
+
+  // Convert audio buffer to WAV format
+  convertToWav(buffer: Float32Array, sampleRate: number): Blob {
+    // Function to convert audio buffer to WAV format
+    // This is a simplified implementation
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = buffer.length * bytesPerSample;
+    const bufferSize = 44 + dataSize;
+    const arrayBuffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(arrayBuffer);
+
+    // RIFF chunk descriptor
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(view, 8, 'WAVE');
+
+    // FMT sub-chunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+
+    // Data sub-chunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    // Write the PCM samples
+    const offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      const sample = Math.max(-1, Math.min(1, buffer[i]));
+      view.setInt16(offset + i * bytesPerSample, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+
+    return new Blob([view], { type: 'audio/wav' });
+
+    function writeString(view: DataView, offset: number, string: string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
     }
   }
 }
