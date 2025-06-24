@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { voiceLabsService } from '../services/voiceLabsService';
@@ -137,6 +137,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = voiceLabsService.getWebSocketUrl();
+        console.log('Connecting to WebSocket:', wsUrl);
+        
         const ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
@@ -301,7 +303,6 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
   const endCall = () => {
     cleanup();
-    onClose();
   };
 
   const toggleMute = () => {

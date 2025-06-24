@@ -3,13 +3,10 @@ import { UserTier } from '../types';
 
 class VoiceLabsService {
   private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
-  private readonly WEBSOCKET_URL = 'wss://api.elevenlabs.io/v1/speech-to-speech';
-  private readonly FALLBACK_URL = 'wss://echo.websocket.org'; // Fallback for testing
 
   // Get WebSocket URL for voice connection
   getWebSocketUrl(): string {
-    // In a production environment, this would be a real WebSocket endpoint
-    // For now, we'll use our Supabase Edge Function endpoint
+    // Use the Supabase Edge Function URL
     return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-labs`;
   }
 
@@ -85,8 +82,9 @@ class VoiceLabsService {
     // Test WebSocket connection
     let websocketOk = false;
     try {
+      const wsUrl = this.getWebSocketUrl();
       await new Promise<void>((resolve, reject) => {
-        const ws = new WebSocket(this.FALLBACK_URL);
+        const ws = new WebSocket(wsUrl);
         const timeout = setTimeout(() => {
           ws.close();
           reject(new Error('WebSocket connection timeout'));
