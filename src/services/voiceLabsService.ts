@@ -4,12 +4,6 @@ import { UserTier } from '../types';
 class VoiceLabsService {
   private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
 
-  // Get WebSocket URL for voice connection
-  getWebSocketUrl(): string {
-    // Use the Supabase Edge Function URL
-    return `${import.meta.env.VITE_SUPABASE_URL.replace('https://', 'wss://')}/functions/v1/voice-labs`;
-  }
-
   // Get available voices from ElevenLabs
   async getAvailableVoices(apiKey: string): Promise<any[]> {
     try {
@@ -48,30 +42,6 @@ class VoiceLabsService {
     }
   }
 
-  // Get OpenAI Whisper API key (from global keys)
-  async getWhisperApiKey(userTier: UserTier): Promise<string | null> {
-    try {
-      // First try dedicated whisper key
-      let apiKey = await globalApiService.getGlobalApiKey('openai_whisper', userTier);
-      
-      // If not available, fall back to regular OpenAI key
-      if (!apiKey) {
-        apiKey = await globalApiService.getGlobalApiKey('openai', userTier);
-      }
-      
-      return apiKey;
-    } catch (error) {
-      console.error('Failed to get Whisper API key:', error);
-      return null;
-    }
-  }
-
-  // Check if ElevenLabs is available
-  async isElevenLabsAvailable(userTier: UserTier = 'tier1'): Promise<boolean> {
-    const apiKey = await this.getElevenLabsApiKey(userTier);
-    return !!apiKey;
-  }
-
   // Text to speech using ElevenLabs API
   async textToSpeech(text: string, voiceId: string, apiKey: string, voiceSettings: any): Promise<ArrayBuffer> {
     try {
@@ -94,7 +64,8 @@ class VoiceLabsService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to generate speech: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to generate speech: ${response.status} - ${errorData.detail || 'Unknown error'}`);
       }
 
       return await response.arrayBuffer();
@@ -120,7 +91,8 @@ class VoiceLabsService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to transcribe speech: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to transcribe speech: ${response.status} - ${errorData.detail || 'Unknown error'}`);
       }
 
       const data = await response.json();
@@ -141,6 +113,11 @@ class VoiceLabsService {
       'domi': 'AZnzlk1XvdvUeBnXmlld',
       'dave': 'CYw3kZ02Hs0563khs1Fj'
     };
+    
+    // If the voiceName is already a voice ID, return it
+    if (voiceName.length > 10 && !voiceIds[voiceName.toLowerCase()]) {
+      return voiceName;
+    }
     
     return voiceIds[voiceName.toLowerCase()] || '21m00Tcm4TlvDq8ikWAM'; // Default to Rachel
   }

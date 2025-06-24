@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw, Key } from 'lucide-react';
+import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw, Key, Wand2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { voiceLabsService } from '../services/voiceLabsService';
 
@@ -30,8 +30,10 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const [latency, setLatency] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [directApiKey, setDirectApiKey] = useState('');
-  const [useDirectApiKey, setUseDirectApiKey] = useState(false);
+  const [useDirectApiKey, setUseDirectApiKey] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<{role: string, content: string}[]>([]);
   
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     voice: 'rachel',
@@ -48,18 +50,35 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const isRecordingRef = useRef(false);
+  const isListeningRef = useRef(false);
 
   const currentTier = getCurrentTier();
 
   useEffect(() => {
     if (isOpen) {
       initializeAudioContext();
+      
+      // Load available voices if API key is provided
+      if (directApiKey && useDirectApiKey) {
+        loadAvailableVoices();
+      }
     } else {
       cleanup();
     }
 
     return () => cleanup();
-  }, [isOpen]);
+  }, [isOpen, directApiKey, useDirectApiKey]);
+
+  const loadAvailableVoices = async () => {
+    try {
+      if (!directApiKey) return;
+      
+      const voices = await voiceLabsService.getAvailableVoices(directApiKey);
+      setAvailableVoices(voices);
+    } catch (error) {
+      console.error('Failed to load voices:', error);
+    }
+  };
 
   const initializeAudioContext = async () => {
     try {
@@ -93,11 +112,12 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     setAiResponse('');
     setError(null);
     audioChunksRef.current = [];
+    setConversationHistory([]);
   };
 
   const startCall = async () => {
-    if (!useDirectApiKey && !directApiKey) {
-      setError('Please provide an ElevenLabs API key for testing');
+    if (!useDirectApiKey || !directApiKey) {
+      setError('Please provide an ElevenLabs API key and check "Use this key"');
       return;
     }
 
@@ -147,12 +167,19 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
           audioChunksRef.current = [];
           
           // Transcribe audio using ElevenLabs
-          const transcription = await transcribeAudio(audioBlob);
+          const transcription = await voiceLabsService.speechToText(audioBlob, directApiKey);
           setTranscript(transcription);
           
+          // Add user message to conversation history
+          const updatedHistory = [...conversationHistory, { role: 'user', content: transcription }];
+          setConversationHistory(updatedHistory);
+          
           // Generate AI response
-          const response = await generateAiResponse(transcription);
+          const response = await generateAiResponse(transcription, updatedHistory);
           setAiResponse(response);
+          
+          // Add AI response to conversation history
+          setConversationHistory([...updatedHistory, { role: 'assistant', content: response }]);
           
           // Convert response to speech
           await textToSpeech(response);
@@ -187,88 +214,52 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+  const generateAiResponse = async (transcript: string, history: {role: string, content: string}[]): Promise<string> => {
     try {
-      // For demo purposes, we'll simulate transcription
-      // In a real implementation, you would call the ElevenLabs API
-      
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Generate a random transcript for demo
-      const mockTranscripts = [
-        "Hello, how can you help me today?",
-        "Tell me about voice technology.",
-        "What features does this voice lab have?",
-        "Can you explain how this works?",
-        "I'm interested in learning more about AI voice assistants.",
-        "How does ElevenLabs compare to other voice technologies?",
-        "What's the latency like for real-time voice conversations?",
-        "Can I customize the voice settings?",
-        "Tell me about the different voices available.",
-        "How secure is this voice conversation?"
-      ];
-      
-      return mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
-    } catch (error) {
-      console.error('Error transcribing audio:', error);
-      throw new Error('Failed to transcribe audio');
-    }
-  };
-
-  const generateAiResponse = async (transcript: string): Promise<string> => {
-    try {
-      // For demo purposes, we'll generate a contextual response
+      // For now, we'll use a simple approach to generate responses
       // In a real implementation, you would call an LLM API
       
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Generate a contextual response based on the transcript
-      const responses: Record<string, string[]> = {
-        "hello": [
-          "Hello there! How can I assist you today?",
-          "Hi! Welcome to Voice Labs. What would you like to talk about?",
-          "Greetings! I'm your AI voice assistant. How may I help you?"
-        ],
-        "help": [
-          "I'd be happy to help! Voice Labs allows you to have real-time conversations with AI. You can ask questions, get information, or just chat.",
-          "I can help with a variety of topics. Just speak naturally and I'll respond. You can also adjust my voice settings using the settings button.",
-          "Voice Labs is designed for natural conversations. You can speak to me about almost anything, and I'll do my best to provide helpful responses."
-        ],
-        "voice": [
-          "Voice technology has advanced significantly in recent years. ElevenLabs provides some of the most natural-sounding AI voices available today, with low latency and high quality.",
-          "Modern voice AI combines several technologies: speech recognition to understand what you're saying, natural language processing to generate responses, and text-to-speech to convert those responses into audio.",
-          "Voice interfaces are becoming increasingly important as they provide a more natural way for humans to interact with technology. They're particularly valuable for accessibility and for situations where hands-free interaction is necessary."
-        ],
-        "work": [
-          "This system works by capturing your voice through your microphone, converting it to text, generating an AI response, and then converting that response back to speech. All in near real-time!",
-          "Behind the scenes, we're using speech recognition to understand what you're saying, an AI language model to generate responses, and text-to-speech technology to speak back to you.",
-          "The process involves several steps: first, your audio is captured and sent to a speech recognition service. Then, the transcribed text is processed by an AI to generate a response. Finally, that response is converted back to speech using a text-to-speech service."
-        ],
-        "features": [
-          "Voice Labs offers several features including real-time conversation, adjustable voice settings, and high-quality voice synthesis. You can customize the voice, stability, and other parameters to get the sound you prefer.",
-          "You can adjust various voice settings like stability, similarity boost, and style to customize how I sound. There's also a speaker boost option that enhances clarity.",
-          "The main feature is real-time voice conversation with minimal latency. You can also customize my voice characteristics through the settings panel."
-        ],
-        "elevenlabs": [
-          "ElevenLabs provides state-of-the-art AI voice technology with some of the most natural-sounding voices available. Their technology allows for real-time voice synthesis with adjustable parameters for customization.",
-          "ElevenLabs offers high-quality text-to-speech with very natural-sounding voices. Their technology allows for adjustments to stability, similarity boost, and style to get the exact voice characteristics you want.",
-          "ElevenLabs is known for their realistic AI voices and low-latency speech synthesis. They offer a range of voices and customization options to suit different needs and preferences."
-        ]
+      // Simple keyword-based responses
+      const keywords = {
+        'hello': 'Hello there! How can I assist you today?',
+        'hi': 'Hi! Welcome to Voice Labs. What would you like to talk about?',
+        'help': 'I can help with a variety of topics. Just speak naturally and I'll respond.',
+        'voice': 'Voice technology has advanced significantly in recent years. ElevenLabs provides some of the most natural-sounding AI voices available today.',
+        'work': 'This system works by capturing your voice through your microphone, converting it to text, generating an AI response, and then converting that response back to speech.',
+        'features': 'Voice Labs offers real-time conversation, adjustable voice settings, and high-quality voice synthesis.',
+        'elevenlabs': 'ElevenLabs provides state-of-the-art AI voice technology with some of the most natural-sounding voices available.',
+        'voices': 'ElevenLabs offers several voices with different characteristics. You can select from options like Rachel, Drew, Clyde, Paul, Domi, and Dave, each with their own unique sound.',
+        'settings': 'You can adjust various voice settings like stability, similarity boost, and style to customize how I sound.',
+        'api': 'You need an ElevenLabs API key to use this feature. You can get one by signing up at elevenlabs.io.',
+        'how': 'Just speak naturally into your microphone, and I'll respond. You can adjust my voice settings using the settings button.',
+        'who': 'I'm an AI voice assistant powered by ElevenLabs technology. I can have natural conversations with you in real-time.',
+        'what': 'This is Voice Labs, a feature that allows you to have real-time voice conversations with AI.',
+        'why': 'Voice interfaces provide a more natural way to interact with technology, especially for complex queries or when you need hands-free operation.'
       };
       
-      // Find matching keywords in the transcript
-      let matchedResponse = "I'm not sure how to respond to that. Could you try asking something else?";
+      // Check for keyword matches
+      let response = 'I'm not sure how to respond to that. Could you try asking something else?';
       
-      for (const [keyword, responseOptions] of Object.entries(responses)) {
+      for (const [keyword, reply] of Object.entries(keywords)) {
         if (transcript.toLowerCase().includes(keyword)) {
-          matchedResponse = responseOptions[Math.floor(Math.random() * responseOptions.length)];
+          response = reply;
           break;
         }
       }
       
-      return matchedResponse;
+      // Add some context awareness based on conversation history
+      if (history.length > 2) {
+        const lastAiMessage = history.slice().reverse().find(msg => msg.role === 'assistant');
+        if (lastAiMessage && transcript.toLowerCase().includes('more')) {
+          response = 'To elaborate further on my previous point, ' + response;
+        }
+        
+        if (transcript.toLowerCase().includes('thank')) {
+          response = 'You're welcome! Is there anything else you'd like to know?';
+        }
+      }
+      
+      return response;
     } catch (error) {
       console.error('Error generating AI response:', error);
       throw new Error('Failed to generate AI response');
@@ -279,18 +270,29 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     if (isAudioMuted) return;
     
     try {
-      // For demo purposes, we'll simulate text-to-speech
-      // In a real implementation, you would call the ElevenLabs API
+      // Use ElevenLabs API for text-to-speech
+      const voiceId = voiceLabsService.getVoiceId(voiceSettings.voice);
       
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call ElevenLabs API
+      const audioData = await voiceLabsService.textToSpeech(
+        text,
+        voiceId,
+        directApiKey,
+        voiceSettings
+      );
       
-      // In a real implementation, you would:
-      // 1. Call ElevenLabs API with the text and voice settings
-      // 2. Get back audio data
-      // 3. Play the audio
+      // Create audio blob and play it
+      const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
       
-      // For demo, we'll use the browser's built-in speech synthesis
+      if (audioElementRef.current) {
+        audioElementRef.current.src = audioUrl;
+        audioElementRef.current.play();
+      }
+    } catch (error) {
+      console.error('Error converting text to speech:', error);
+      
+      // Fallback to browser's speech synthesis
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech
         window.speechSynthesis.cancel();
@@ -321,12 +323,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         
         // Speak the text
         window.speechSynthesis.speak(utterance);
-      } else {
-        console.warn('Speech synthesis not supported in this browser');
       }
-    } catch (error) {
-      console.error('Error converting text to speech:', error);
-      throw new Error('Failed to convert text to speech');
     }
   };
 
@@ -363,21 +360,29 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     }, 1000);
   };
 
-  const handleRecordSample = () => {
-    if (callState !== 'connected' || isProcessing) return;
+  const startListening = () => {
+    if (callState !== 'connected' || isProcessing || !mediaRecorderRef.current) return;
     
-    if (mediaRecorderRef.current && isRecordingRef.current) {
-      // Stop current recording to process it
+    setCallState('listening');
+    isListeningRef.current = true;
+    
+    // Start a new recording
+    if (mediaRecorderRef.current && !isRecordingRef.current) {
+      audioChunksRef.current = [];
+      mediaRecorderRef.current.start();
+      isRecordingRef.current = true;
+    }
+  };
+
+  const stopListening = () => {
+    if (!isListeningRef.current || !mediaRecorderRef.current || !isRecordingRef.current) return;
+    
+    isListeningRef.current = false;
+    
+    // Stop recording to process audio
+    if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       isRecordingRef.current = false;
-      
-      // Start a new recording after processing
-      setTimeout(() => {
-        if (mediaRecorderRef.current && callState === 'connected') {
-          mediaRecorderRef.current.start();
-          isRecordingRef.current = true;
-        }
-      }, 100);
     }
   };
 
@@ -497,12 +502,22 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => updateVoiceSettings({ voice: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="rachel">Rachel (Calm, Professional)</option>
-                  <option value="drew">Drew (Warm, Friendly)</option>
-                  <option value="clyde">Clyde (Confident, Clear)</option>
-                  <option value="paul">Paul (Deep, Authoritative)</option>
-                  <option value="domi">Domi (Energetic, Young)</option>
-                  <option value="dave">Dave (Conversational, Natural)</option>
+                  {availableVoices.length > 0 ? (
+                    availableVoices.map(voice => (
+                      <option key={voice.voice_id} value={voice.voice_id}>
+                        {voice.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="rachel">Rachel (Calm, Professional)</option>
+                      <option value="drew">Drew (Warm, Friendly)</option>
+                      <option value="clyde">Clyde (Confident, Clear)</option>
+                      <option value="paul">Paul (Deep, Authoritative)</option>
+                      <option value="domi">Domi (Energetic, Young)</option>
+                      <option value="dave">Dave (Conversational, Natural)</option>
+                    </>
+                  )}
                 </select>
               </div>
               
@@ -519,6 +534,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => updateVoiceSettings({ stability: parseFloat(e.target.value) })}
                   className="w-full"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Higher values make the voice more consistent but less expressive
+                </p>
               </div>
               
               <div>
@@ -534,6 +552,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => updateVoiceSettings({ similarityBoost: parseFloat(e.target.value) })}
                   className="w-full"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Higher values make the voice sound more like the original
+                </p>
               </div>
               
               <div>
@@ -549,6 +570,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => updateVoiceSettings({ style: parseFloat(e.target.value) })}
                   className="w-full"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Higher values add more emotion and emphasis
+                </p>
               </div>
             </div>
             
@@ -593,35 +617,46 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {/* Transcript Display */}
-            {transcript && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-fadeInUp">
+            {/* Conversation History */}
+            {conversationHistory.map((message, index) => (
+              <div 
+                key={index}
+                className={`${
+                  message.role === 'user' 
+                    ? 'bg-blue-50 border border-blue-200' 
+                    : 'bg-emerald-50 border border-emerald-200'
+                } rounded-lg p-4 animate-fadeInUp`}
+              >
                 <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Mic size={16} className="text-blue-600" />
+                  <div className={`p-2 ${
+                    message.role === 'user' 
+                      ? 'bg-blue-100 rounded-lg' 
+                      : 'bg-emerald-100 rounded-lg'
+                  }`}>
+                    {message.role === 'user' 
+                      ? <Mic size={16} className="text-blue-600" />
+                      : <Zap size={16} className="text-emerald-600" />
+                    }
                   </div>
                   <div>
-                    <h4 className="font-medium text-blue-800 mb-1">You said:</h4>
-                    <p className="text-blue-700">{transcript}</p>
+                    <h4 className={`font-medium ${
+                      message.role === 'user' 
+                        ? 'text-blue-800' 
+                        : 'text-emerald-800'
+                    } mb-1`}>
+                      {message.role === 'user' ? 'You said:' : 'AI Response:'}
+                    </h4>
+                    <p className={
+                      message.role === 'user' 
+                        ? 'text-blue-700' 
+                        : 'text-emerald-700'
+                    }>
+                      {message.content}
+                    </p>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* AI Response Display */}
-            {aiResponse && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 animate-fadeInUp">
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-emerald-100 rounded-lg">
-                    <Zap size={16} className="text-emerald-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-emerald-800 mb-1">AI Response:</h4>
-                    <p className="text-emerald-700">{aiResponse}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            ))}
 
             {/* Getting Started Instructions */}
             {callState === 'idle' && (
@@ -631,7 +666,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Start Your Voice Conversation</h3>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  Experience AI voice conversation with your browser's speech synthesis. Enter your ElevenLabs API key above for testing.
+                  Experience real-time AI voice conversation using ElevenLabs. Enter your API key above to begin.
                 </p>
                 
                 {!directApiKey && (
@@ -657,7 +692,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                     <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                       <span className="text-blue-600 font-bold">2</span>
                     </div>
-                    <span>Speak Naturally</span>
+                    <span>Hold to Speak</span>
                   </div>
                   <div className="flex flex-col items-center space-y-2">
                     <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -697,6 +732,34 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   <Phone size={20} />
                   <span>Start New Call</span>
                 </button>
+              </div>
+            )}
+            
+            {/* Listening Status */}
+            {callState === 'listening' && (
+              <div className="text-center py-12 animate-fadeInUp">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                  <Mic size={32} className="text-blue-600" />
+                  <div className="absolute inset-0 border-4 border-blue-300 rounded-full animate-ping opacity-75"></div>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Listening...</h3>
+                <p className="text-gray-600">
+                  Release to process your message
+                </p>
+              </div>
+            )}
+            
+            {/* AI Responding Status */}
+            {callState === 'ai-responding' && (
+              <div className="text-center py-12 animate-fadeInUp">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                  <Wand2 size={32} className="text-emerald-600" />
+                  <div className="absolute inset-0 border-4 border-emerald-300 rounded-full animate-pulse opacity-75"></div>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">AI is thinking...</h3>
+                <p className="text-gray-600">
+                  Processing your message and generating a response
+                </p>
               </div>
             )}
           </div>
@@ -739,10 +802,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                   
                   {callState === 'connected' && (
                     <button
-                      onClick={handleRecordSample}
+                      onMouseDown={startListening}
+                      onMouseUp={stopListening}
+                      onTouchStart={startListening}
+                      onTouchEnd={stopListening}
                       disabled={isProcessing}
                       className="p-4 rounded-full bg-blue-600 text-white hover:bg-blue-700 hover:scale-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Record Sample"
+                      title="Hold to Speak"
                     >
                       <Mic size={24} />
                     </button>
@@ -762,7 +828,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
             
             {callState === 'connected' && (
               <div className="text-center mt-4 text-sm text-gray-500">
-                <p>Click the microphone button to record a sample and get a response</p>
+                <p>Press and hold the microphone button to speak</p>
               </div>
             )}
           </div>
