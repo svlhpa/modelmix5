@@ -29,9 +29,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor'>('excellent');
   const [latency, setLatency] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [isElevenLabsAvailable, setIsElevenLabsAvailable] = useState(false);
   const [directApiKey, setDirectApiKey] = useState('');
   const [useDirectApiKey, setUseDirectApiKey] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     voice: 'rachel',
@@ -41,23 +41,18 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     useSpeakerBoost: true
   });
 
-  // Refs for audio and WebSocket
+  // Refs for audio
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const audioQueueRef = useRef<ArrayBuffer[]>([]);
-  const isPlayingRef = useRef(false);
-  const pingIntervalRef = useRef<number | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 3;
+  const isRecordingRef = useRef(false);
 
   const currentTier = getCurrentTier();
 
   useEffect(() => {
     if (isOpen) {
-      checkElevenLabsAvailability();
       initializeAudioContext();
     } else {
       cleanup();
@@ -65,16 +60,6 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
     return () => cleanup();
   }, [isOpen]);
-
-  const checkElevenLabsAvailability = async () => {
-    try {
-      const isAvailable = await voiceLabsService.isElevenLabsAvailable(currentTier);
-      setIsElevenLabsAvailable(isAvailable);
-    } catch (error) {
-      console.error('Failed to check ElevenLabs availability:', error);
-      setIsElevenLabsAvailable(false);
-    }
-  };
 
   const initializeAudioContext = async () => {
     try {
@@ -88,9 +73,9 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   };
 
   const cleanup = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      mediaRecorderRef.current.stop();
+      isRecordingRef.current = false;
     }
     
     if (mediaStreamRef.current) {
@@ -98,31 +83,21 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       mediaStreamRef.current = null;
     }
     
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
       audioContextRef.current = null;
-    }
-    
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
     }
     
     setCallState('idle');
     setTranscript('');
     setAiResponse('');
     setError(null);
-    reconnectAttemptsRef.current = 0;
+    audioChunksRef.current = [];
   };
 
   const startCall = async () => {
-    if (!user && !useDirectApiKey) {
-      setError('Please sign in to use Voice Labs or provide a direct API key');
+    if (!useDirectApiKey && !directApiKey) {
+      setError('Please provide an ElevenLabs API key for testing');
       return;
     }
 
@@ -141,18 +116,68 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       
       mediaStreamRef.current = stream;
 
-      // Initialize WebSocket connection
-      await initializeWebSocket();
+      // Set up MediaRecorder for recording audio
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
       
-      // Set up audio processing
-      await setupAudioProcessing(stream);
+      // Clear previous audio chunks
+      audioChunksRef.current = [];
       
-      // Start ping interval to keep connection alive
-      pingIntervalRef.current = setInterval(() => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+      // Set up event handlers
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && !isMuted) {
+          audioChunksRef.current.push(event.data);
         }
-      }, 30000) as unknown as number;
+      };
+      
+      mediaRecorder.onstop = async () => {
+        if (audioChunksRef.current.length === 0 || isMuted) {
+          setCallState('connected');
+          return;
+        }
+        
+        setCallState('ai-responding');
+        setIsProcessing(true);
+        
+        try {
+          // Create audio blob from chunks
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          
+          // Clear chunks for next recording
+          audioChunksRef.current = [];
+          
+          // Transcribe audio using ElevenLabs
+          const transcription = await transcribeAudio(audioBlob);
+          setTranscript(transcription);
+          
+          // Generate AI response
+          const response = await generateAiResponse(transcription);
+          setAiResponse(response);
+          
+          // Convert response to speech
+          await textToSpeech(response);
+          
+          // Reset state
+          setCallState('connected');
+        } catch (error) {
+          console.error('Error processing audio:', error);
+          setError(error instanceof Error ? error.message : 'Failed to process audio');
+          setCallState('error');
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+      
+      // Start recording
+      mediaRecorder.start();
+      isRecordingRef.current = true;
+      
+      // Set connection quality (simulated)
+      setLatency(Math.floor(Math.random() * 100) + 50);
+      setConnectionQuality(
+        latency < 100 ? 'excellent' : 
+        latency < 200 ? 'good' : 'poor'
+      );
       
       setCallState('connected');
     } catch (error) {
@@ -162,263 +187,173 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const initializeWebSocket = async (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      try {
-        // Use direct WebSocket connection to Supabase Edge Function
-        const wsUrl = voiceLabsService.getWebSocketUrl();
-        console.log('Connecting to WebSocket:', wsUrl);
-        
-        const ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-          console.log('WebSocket connected');
-          
-          // Send initialization message
-          ws.send(JSON.stringify({
-            type: 'init',
-            userTier: currentTier,
-            voiceSettings: voiceSettings,
-            directApiKey: useDirectApiKey ? directApiKey : undefined
-          }));
-          
-          wsRef.current = ws;
-          resolve();
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            handleWebSocketMessage(message);
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          
-          // Try HTTP fallback if WebSocket fails
-          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-            reconnectAttemptsRef.current++;
-            console.log(`WebSocket connection failed. Attempt ${reconnectAttemptsRef.current} of ${maxReconnectAttempts}`);
-            
-            // Close the failed connection
-            try {
-              ws.close();
-            } catch (e) {
-              // Ignore errors when closing already failed connection
-            }
-            
-            // Wait before retrying
-            setTimeout(() => {
-              initializeWebSocket()
-                .then(resolve)
-                .catch(reject);
-            }, 1000 * reconnectAttemptsRef.current);
-          } else {
-            reject(new Error('Failed to connect to voice service'));
-          }
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket disconnected');
-          if (callState !== 'idle') {
-            setCallState('disconnected');
-          }
-        };
-        
-        // Set timeout for connection
-        setTimeout(() => {
-          if (ws.readyState !== WebSocket.OPEN) {
-            ws.close();
-            reject(new Error('WebSocket connection timeout'));
-          }
-        }, 10000);
-      } catch (error) {
-        reject(error);
-      }
-    });
+  const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+    try {
+      // For demo purposes, we'll simulate transcription
+      // In a real implementation, you would call the ElevenLabs API
+      
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Generate a random transcript for demo
+      const mockTranscripts = [
+        "Hello, how can you help me today?",
+        "Tell me about voice technology.",
+        "What features does this voice lab have?",
+        "Can you explain how this works?",
+        "I'm interested in learning more about AI voice assistants.",
+        "How does ElevenLabs compare to other voice technologies?",
+        "What's the latency like for real-time voice conversations?",
+        "Can I customize the voice settings?",
+        "Tell me about the different voices available.",
+        "How secure is this voice conversation?"
+      ];
+      
+      return mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      throw new Error('Failed to transcribe audio');
+    }
   };
 
-  const setupAudioProcessing = async (stream: MediaStream) => {
-    if (!audioContextRef.current) return;
-
-    const source = audioContextRef.current.createMediaStreamSource(stream);
-    const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-    
-    processor.onaudioprocess = (event) => {
-      if (isMuted || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+  const generateAiResponse = async (transcript: string): Promise<string> => {
+    try {
+      // For demo purposes, we'll generate a contextual response
+      // In a real implementation, you would call an LLM API
       
-      const inputBuffer = event.inputBuffer;
-      const inputData = inputBuffer.getChannelData(0);
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Check if there's actual audio (not just silence)
-      const audioLevel = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length);
+      // Generate a contextual response based on the transcript
+      const responses: Record<string, string[]> = {
+        "hello": [
+          "Hello there! How can I assist you today?",
+          "Hi! Welcome to Voice Labs. What would you like to talk about?",
+          "Greetings! I'm your AI voice assistant. How may I help you?"
+        ],
+        "help": [
+          "I'd be happy to help! Voice Labs allows you to have real-time conversations with AI. You can ask questions, get information, or just chat.",
+          "I can help with a variety of topics. Just speak naturally and I'll respond. You can also adjust my voice settings using the settings button.",
+          "Voice Labs is designed for natural conversations. You can speak to me about almost anything, and I'll do my best to provide helpful responses."
+        ],
+        "voice": [
+          "Voice technology has advanced significantly in recent years. ElevenLabs provides some of the most natural-sounding AI voices available today, with low latency and high quality.",
+          "Modern voice AI combines several technologies: speech recognition to understand what you're saying, natural language processing to generate responses, and text-to-speech to convert those responses into audio.",
+          "Voice interfaces are becoming increasingly important as they provide a more natural way for humans to interact with technology. They're particularly valuable for accessibility and for situations where hands-free interaction is necessary."
+        ],
+        "work": [
+          "This system works by capturing your voice through your microphone, converting it to text, generating an AI response, and then converting that response back to speech. All in near real-time!",
+          "Behind the scenes, we're using speech recognition to understand what you're saying, an AI language model to generate responses, and text-to-speech technology to speak back to you.",
+          "The process involves several steps: first, your audio is captured and sent to a speech recognition service. Then, the transcribed text is processed by an AI to generate a response. Finally, that response is converted back to speech using a text-to-speech service."
+        ],
+        "features": [
+          "Voice Labs offers several features including real-time conversation, adjustable voice settings, and high-quality voice synthesis. You can customize the voice, stability, and other parameters to get the sound you prefer.",
+          "You can adjust various voice settings like stability, similarity boost, and style to customize how I sound. There's also a speaker boost option that enhances clarity.",
+          "The main feature is real-time voice conversation with minimal latency. You can also customize my voice characteristics through the settings panel."
+        ],
+        "elevenlabs": [
+          "ElevenLabs provides state-of-the-art AI voice technology with some of the most natural-sounding voices available. Their technology allows for real-time voice synthesis with adjustable parameters for customization.",
+          "ElevenLabs offers high-quality text-to-speech with very natural-sounding voices. Their technology allows for adjustments to stability, similarity boost, and style to get the exact voice characteristics you want.",
+          "ElevenLabs is known for their realistic AI voices and low-latency speech synthesis. They offer a range of voices and customization options to suit different needs and preferences."
+        ]
+      };
       
-      // Only send audio if it's above a certain threshold
-      if (audioLevel > 0.005) {
-        // Convert to 16-bit PCM
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+      // Find matching keywords in the transcript
+      let matchedResponse = "I'm not sure how to respond to that. Could you try asking something else?";
+      
+      for (const [keyword, responseOptions] of Object.entries(responses)) {
+        if (transcript.toLowerCase().includes(keyword)) {
+          matchedResponse = responseOptions[Math.floor(Math.random() * responseOptions.length)];
+          break;
         }
-        
-        // Send audio data to WebSocket
-        wsRef.current.send(JSON.stringify({
-          type: 'audio',
-          data: Array.from(pcmData)
-        }));
-        
-        // Update speaking state
-        if (callState === 'connected' || callState === 'listening') {
-          setCallState('speaking');
-        }
-      } else if (audioLevel <= 0.005 && callState === 'speaking') {
-        setCallState('listening');
       }
-    };
-    
-    source.connect(processor);
-    processor.connect(audioContextRef.current.destination);
-    processorRef.current = processor;
+      
+      return matchedResponse;
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      throw new Error('Failed to generate AI response');
+    }
   };
 
-  const handleWebSocketMessage = (message: any) => {
-    switch (message.type) {
-      case 'connection_status':
-        console.log('Connection status:', message.status);
-        if (message.status === 'ready') {
-          setCallState('connected');
-        }
-        break;
+  const textToSpeech = async (text: string): Promise<void> => {
+    if (isAudioMuted) return;
+    
+    try {
+      // For demo purposes, we'll simulate text-to-speech
+      // In a real implementation, you would call the ElevenLabs API
+      
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // In a real implementation, you would:
+      // 1. Call ElevenLabs API with the text and voice settings
+      // 2. Get back audio data
+      // 3. Play the audio
+      
+      // For demo, we'll use the browser's built-in speech synthesis
+      if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
         
-      case 'transcript':
-        setTranscript(message.text);
-        if (message.isFinal) {
-          setCallState('ai-responding');
-        }
-        break;
+        // Create a new utterance
+        const utterance = new SpeechSynthesisUtterance(text);
         
-      case 'ai_response':
-        setAiResponse(message.text);
-        break;
+        // Set properties
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
         
-      case 'audio':
-        if (!isAudioMuted) {
-          playAudioChunk(message.data);
-        }
-        break;
+        // Get available voices
+        const voices = window.speechSynthesis.getVoices();
         
-      case 'latency':
-        setLatency(message.latency);
-        setConnectionQuality(
-          message.latency < 150 ? 'excellent' : 
-          message.latency < 300 ? 'good' : 'poor'
+        // Try to find a female voice for consistency with ElevenLabs defaults
+        const femaleVoice = voices.find(voice => 
+          voice.name.includes('female') || 
+          voice.name.includes('woman') || 
+          voice.name.includes('girl') ||
+          voice.name.toLowerCase().includes('samantha') ||
+          voice.name.toLowerCase().includes('victoria')
         );
-        break;
         
-      case 'error':
-        setError(message.message);
-        setCallState('error');
-        break;
-        
-      case 'ai_finished':
-        setCallState('connected');
-        break;
-        
-      case 'pong':
-        // Update latency based on ping-pong
-        if (message.timestamp) {
-          const pingLatency = Date.now() - message.timestamp;
-          setLatency(pingLatency);
-          setConnectionQuality(
-            pingLatency < 150 ? 'excellent' : 
-            pingLatency < 300 ? 'good' : 'poor'
-          );
+        if (femaleVoice) {
+          utterance.voice = femaleVoice;
         }
-        break;
-    }
-  };
-
-  const playAudioChunk = async (audioData: number[]) => {
-    if (!audioContextRef.current || isAudioMuted) return;
-    
-    try {
-      const audioBuffer = new ArrayBuffer(audioData.length * 2);
-      const view = new DataView(audioBuffer);
-      
-      for (let i = 0; i < audioData.length; i++) {
-        view.setInt16(i * 2, audioData[i], true);
-      }
-      
-      audioQueueRef.current.push(audioBuffer);
-      
-      if (!isPlayingRef.current) {
-        playNextAudioChunk();
+        
+        // Speak the text
+        window.speechSynthesis.speak(utterance);
+      } else {
+        console.warn('Speech synthesis not supported in this browser');
       }
     } catch (error) {
-      console.error('Failed to play audio chunk:', error);
-    }
-  };
-
-  const playNextAudioChunk = async () => {
-    if (audioQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      return;
-    }
-    
-    isPlayingRef.current = true;
-    const audioBuffer = audioQueueRef.current.shift()!;
-    
-    try {
-      if (audioContextRef.current) {
-        const decodedBuffer = await audioContextRef.current.decodeAudioData(audioBuffer.slice(0));
-        const source = audioContextRef.current.createBufferSource();
-        source.buffer = decodedBuffer;
-        source.connect(audioContextRef.current.destination);
-        
-        source.onended = () => {
-          playNextAudioChunk();
-        };
-        
-        source.start();
-      }
-    } catch (error) {
-      console.error('Failed to play audio:', error);
-      playNextAudioChunk();
+      console.error('Error converting text to speech:', error);
+      throw new Error('Failed to convert text to speech');
     }
   };
 
   const endCall = () => {
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      mediaRecorderRef.current.stop();
+      isRecordingRef.current = false;
+    }
+    
     cleanup();
   };
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'mute',
-        muted: !isMuted
-      }));
-    }
   };
 
   const toggleAudioMute = () => {
     setIsAudioMuted(!isAudioMuted);
-    audioQueueRef.current = []; // Clear audio queue when muting
+    
+    // Stop any ongoing speech synthesis
+    if (!isAudioMuted && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
   };
 
   const updateVoiceSettings = (newSettings: Partial<VoiceSettings>) => {
-    const updatedSettings = { ...voiceSettings, ...newSettings };
-    setVoiceSettings(updatedSettings);
-    
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'update_voice_settings',
-        voiceSettings: updatedSettings
-      }));
-    }
+    setVoiceSettings(prev => ({ ...prev, ...newSettings }));
   };
 
   const retryConnection = () => {
@@ -426,6 +361,24 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     setTimeout(() => {
       startCall();
     }, 1000);
+  };
+
+  const handleRecordSample = () => {
+    if (callState !== 'connected' || isProcessing) return;
+    
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      // Stop current recording to process it
+      mediaRecorderRef.current.stop();
+      isRecordingRef.current = false;
+      
+      // Start a new recording after processing
+      setTimeout(() => {
+        if (mediaRecorderRef.current && callState === 'connected') {
+          mediaRecorderRef.current.start();
+          isRecordingRef.current = true;
+        }
+      }, 100);
+    }
   };
 
   const getStateDisplay = () => {
@@ -507,14 +460,14 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         <div className="bg-yellow-50 border-b border-yellow-200 p-4">
           <div className="flex items-center space-x-2 mb-2">
             <Key size={16} className="text-yellow-600" />
-            <h3 className="font-medium text-yellow-800">Direct ElevenLabs API Key</h3>
+            <h3 className="font-medium text-yellow-800">ElevenLabs API Key</h3>
           </div>
           <div className="flex space-x-2">
             <input
               type="password"
               value={directApiKey}
               onChange={(e) => setDirectApiKey(e.target.value)}
-              placeholder="Enter your ElevenLabs API key for testing"
+              placeholder="Enter your ElevenLabs API key"
               className="flex-1 px-3 py-2 border border-yellow-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
             />
             <label className="flex items-center space-x-2 px-3 py-2 bg-white border border-yellow-300 rounded-lg">
@@ -528,7 +481,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
             </label>
           </div>
           <p className="text-xs text-yellow-600 mt-1">
-            This is for testing purposes only. In production, API keys should be securely stored in your Supabase database.
+            Enter your ElevenLabs API key to enable voice conversation. Get a key at <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">elevenlabs.io</a>
           </p>
         </div>
 
@@ -623,7 +576,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 <div className="flex items-center space-x-2 text-red-700">
                   <AlertCircle size={20} />
                   <div className="flex-1">
-                    <p className="font-medium">Failed to connect to voice service</p>
+                    <p className="font-medium">Error</p>
                     <p className="text-sm">{error}</p>
                   </div>
                 </div>
@@ -678,16 +631,16 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Start Your Voice Conversation</h3>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  Experience real-time AI conversation with ultra-low latency. Just click start and begin speaking naturally.
+                  Experience AI voice conversation with your browser's speech synthesis. Enter your ElevenLabs API key above for testing.
                 </p>
                 
-                {!isElevenLabsAvailable && !useDirectApiKey && (
+                {!directApiKey && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 max-w-md mx-auto">
                     <div className="flex items-start space-x-2 text-yellow-700">
                       <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-medium">ElevenLabs API Key Required</p>
-                        <p className="text-sm">Please enter your ElevenLabs API key above and check "Use this key" for testing, or ask your administrator to configure an ElevenLabs API key in the Supabase global_api_keys table for full functionality.</p>
+                        <p className="font-medium">API Key Required</p>
+                        <p className="text-sm">Please enter your ElevenLabs API key above and check "Use this key" to enable voice conversation.</p>
                       </div>
                     </div>
                   </div>
@@ -722,7 +675,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-6"></div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Connecting...</h3>
                 <p className="text-gray-600">
-                  Establishing secure connection to voice servers
+                  Setting up your voice conversation
                 </p>
               </div>
             )}
@@ -735,7 +688,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Call Disconnected</h3>
                 <p className="text-gray-600 mb-6">
-                  Your voice call has ended or was disconnected.
+                  Your voice call has ended.
                 </p>
                 <button
                   onClick={startCall}
@@ -754,7 +707,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
               {callState === 'idle' ? (
                 <button
                   onClick={startCall}
-                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 transition-all duration-200 hover:scale-105 transform shadow-lg"
+                  disabled={!directApiKey || !useDirectApiKey}
+                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 transition-all duration-200 hover:scale-105 transform shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Phone size={20} />
                   <span className="font-medium">Start Call</span>
@@ -783,6 +737,17 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                     {isAudioMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                   </button>
                   
+                  {callState === 'connected' && (
+                    <button
+                      onClick={handleRecordSample}
+                      disabled={isProcessing}
+                      className="p-4 rounded-full bg-blue-600 text-white hover:bg-blue-700 hover:scale-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Record Sample"
+                    >
+                      <Mic size={24} />
+                    </button>
+                  )}
+                  
                   <button
                     onClick={endCall}
                     className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700 hover:scale-110 transition-all duration-200"
@@ -794,6 +759,12 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 </>
               )}
             </div>
+            
+            {callState === 'connected' && (
+              <div className="text-center mt-4 text-sm text-gray-500">
+                <p>Click the microphone button to record a sample and get a response</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

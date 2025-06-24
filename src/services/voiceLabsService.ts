@@ -11,10 +11,8 @@ class VoiceLabsService {
   }
 
   // Get available voices from ElevenLabs
-  async getAvailableVoices(userTier: UserTier = 'tier1'): Promise<any[]> {
+  async getAvailableVoices(apiKey: string): Promise<any[]> {
     try {
-      const apiKey = await this.getElevenLabsApiKey(userTier);
-      
       if (!apiKey) {
         throw new Error('ElevenLabs API key not available');
       }
@@ -68,85 +66,69 @@ class VoiceLabsService {
     }
   }
 
-  // Test connection to voice services
-  async testConnection(userTier: UserTier = 'tier1'): Promise<{
-    elevenlabs: boolean;
-    whisper: boolean;
-    websocket: boolean;
-  }> {
-    const [elevenLabsKey, whisperKey] = await Promise.all([
-      this.getElevenLabsApiKey(userTier),
-      this.getWhisperApiKey(userTier)
-    ]);
+  // Check if ElevenLabs is available
+  async isElevenLabsAvailable(userTier: UserTier = 'tier1'): Promise<boolean> {
+    const apiKey = await this.getElevenLabsApiKey(userTier);
+    return !!apiKey;
+  }
 
-    // Test WebSocket connection
-    let websocketOk = false;
+  // Text to speech using ElevenLabs API
+  async textToSpeech(text: string, voiceId: string, apiKey: string, voiceSettings: any): Promise<ArrayBuffer> {
     try {
-      const wsUrl = this.getWebSocketUrl();
-      await new Promise<void>((resolve, reject) => {
-        const ws = new WebSocket(wsUrl);
-        const timeout = setTimeout(() => {
-          ws.close();
-          reject(new Error('WebSocket connection timeout'));
-        }, 5000);
-
-        ws.onopen = () => {
-          clearTimeout(timeout);
-          ws.close();
-          resolve();
-        };
-
-        ws.onerror = (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        };
+      const response = await fetch(`${this.API_BASE_URL}/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': apiKey
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability: voiceSettings.stability,
+            similarity_boost: voiceSettings.similarityBoost,
+            style: voiceSettings.style,
+            use_speaker_boost: voiceSettings.useSpeakerBoost
+          }
+        })
       });
-      websocketOk = true;
-    } catch (error) {
-      console.error('WebSocket test failed:', error);
-    }
 
-    return {
-      elevenlabs: !!elevenLabsKey,
-      whisper: !!whisperKey,
-      websocket: websocketOk
-    };
-  }
-
-  // Get voice settings presets
-  getVoicePresets() {
-    return {
-      natural: {
-        stability: 0.5,
-        similarityBoost: 0.75,
-        style: 0.0,
-        useSpeakerBoost: true
-      },
-      expressive: {
-        stability: 0.3,
-        similarityBoost: 0.8,
-        style: 0.7,
-        useSpeakerBoost: true
-      },
-      consistent: {
-        stability: 0.8,
-        similarityBoost: 0.5,
-        style: 0.0,
-        useSpeakerBoost: false
+      if (!response.ok) {
+        throw new Error(`Failed to generate speech: ${response.status}`);
       }
-    };
+
+      return await response.arrayBuffer();
+    } catch (error) {
+      console.error('Failed to generate speech:', error);
+      throw error;
+    }
   }
 
-  // Get default voice for a given character
-  getDefaultVoice(character: string): string {
-    const voiceMap: Record<string, string> = {
-      'alexis': 'rachel',
-      'joe': 'dave',
-      'harper': 'domi',
-      'calum': 'clyde'
-    };
-    
-    return voiceMap[character.toLowerCase()] || 'rachel';
+  // Speech to text using ElevenLabs API
+  async speechToText(audioBlob: Blob, apiKey: string): Promise<string> {
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      formData.append('model_id', 'whisper-1');
+
+      const response = await fetch(`${this.API_BASE_URL}/speech-to-text`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to transcribe speech: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.text || '';
+    } catch (error) {
+      console.error('Failed to transcribe speech:', error);
+      throw error;
+    }
   }
 
   // Get voice ID from voice name
@@ -161,12 +143,6 @@ class VoiceLabsService {
     };
     
     return voiceIds[voiceName.toLowerCase()] || '21m00Tcm4TlvDq8ikWAM'; // Default to Rachel
-  }
-
-  // Check if ElevenLabs is available
-  async isElevenLabsAvailable(userTier: UserTier = 'tier1'): Promise<boolean> {
-    const apiKey = await this.getElevenLabsApiKey(userTier);
-    return !!apiKey;
   }
 }
 
