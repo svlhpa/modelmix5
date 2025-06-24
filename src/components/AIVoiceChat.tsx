@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Volume2, Mic, Play, Pause, Loader2, CheckCircle, AlertCircle, User, MessageCircle, Send, Download, Headphones, Settings, Save, StopCircle, RefreshCw, Waveform, Zap } from 'lucide-react';
+import { X, Volume2, Mic, Play, Pause, Loader2, CheckCircle, AlertCircle, User, MessageCircle, Send, Download, Headphones, Settings, Save, StopCircle, RefreshCw, AudioWaveform as Waveform, Zap } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { voiceChatService } from '../services/voiceChatService';
 import RecordRTC from 'recordrtc';
