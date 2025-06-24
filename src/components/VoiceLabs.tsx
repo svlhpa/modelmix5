@@ -223,7 +223,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       const keywords = {
         'hello': 'Hello there! How can I assist you today?',
         'hi': 'Hi! Welcome to Voice Labs. What would you like to talk about?',
-        'help': 'I can help with a variety of topics. Just speak naturally and I'll respond.',
+        'help': 'I can help with a variety of topics. Just speak naturally and I\'ll respond.',
         'voice': 'Voice technology has advanced significantly in recent years. ElevenLabs provides some of the most natural-sounding AI voices available today.',
         'work': 'This system works by capturing your voice through your microphone, converting it to text, generating an AI response, and then converting that response back to speech.',
         'features': 'Voice Labs offers real-time conversation, adjustable voice settings, and high-quality voice synthesis.',
@@ -231,8 +231,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         'voices': 'ElevenLabs offers several voices with different characteristics. You can select from options like Rachel, Drew, Clyde, Paul, Domi, and Dave, each with their own unique sound.',
         'settings': 'You can adjust various voice settings like stability, similarity boost, and style to customize how I sound.',
         'api': 'You need an ElevenLabs API key to use this feature. You can get one by signing up at elevenlabs.io.',
-        'how': 'Just speak naturally into your microphone, and I'll respond. You can adjust my voice settings using the settings button.',
-        'who': 'I'm an AI voice assistant powered by ElevenLabs technology. I can have natural conversations with you in real-time.',
+        'how': 'Just speak naturally into your microphone, and I\'ll respond. You can adjust my voice settings using the settings button.',
+        'who': 'I\'m an AI voice assistant powered by ElevenLabs technology. I can have natural conversations with you in real-time.',
         'what': 'This is Voice Labs, a feature that allows you to have real-time voice conversations with AI.',
         'why': 'Voice interfaces provide a more natural way to interact with technology, especially for complex queries or when you need hands-free operation.'
       };
@@ -255,7 +255,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         }
         
         if (transcript.toLowerCase().includes('thank')) {
-          response = 'You're welcome! Is there anything else you'd like to know?';
+          response = 'You\'re welcome! Is there anything else you'd like to know?';
         }
       }
       
