@@ -23,17 +23,19 @@ const corsHeaders = {
 // Function to get global API key
 async function getGlobalApiKey(provider: string, userTier: string): Promise<string | null> {
   try {
-    const { data, error } = await supabase.rpc("get_global_api_key", {
-      provider_name: provider,
-      user_tier: userTier,
-    });
+    const { data, error } = await supabase
+      .from("global_api_keys")
+      .select("api_key")
+      .eq("provider", provider)
+      .eq("is_active", true)
+      .single();
 
     if (error) {
       console.error("Error getting global API key:", error);
       return null;
     }
 
-    return data;
+    return data?.api_key || null;
   } catch (error) {
     console.error("Failed to get global API key:", error);
     return null;
@@ -43,9 +45,13 @@ async function getGlobalApiKey(provider: string, userTier: string): Promise<stri
 // Function to increment global API key usage
 async function incrementGlobalUsage(provider: string): Promise<void> {
   try {
-    const { error } = await supabase.rpc("increment_global_usage", {
-      provider_name: provider,
-    });
+    const { error } = await supabase
+      .from("global_api_keys")
+      .update({ 
+        current_usage: supabase.rpc("increment_counter", { row_id: null }),
+        updated_at: new Date().toISOString()
+      })
+      .eq("provider", provider);
 
     if (error) {
       console.error("Error incrementing global API key usage:", error);
@@ -75,6 +81,11 @@ async function streamToElevenLabsStt(
       "That's an interesting question.",
       "Let me think about that.",
       "I understand what you're saying.",
+      "Could you tell me more about that?",
+      "I'd like to know more about AI voice technology.",
+      "What's the weather like today?",
+      "Can you explain how this works?",
+      "I'm enjoying this conversation.",
     ];
     
     const randomPhrase = mockPhrases[Math.floor(Math.random() * mockPhrases.length)];
@@ -103,11 +114,11 @@ async function callLlmApi(
     
     // Generate a contextual response based on the transcript
     const responses = [
-      `That's a great point about "${transcript}". Let me elaborate on that.`,
-      `I understand you mentioned "${transcript}". Here's my perspective on that topic.`,
-      `Regarding "${transcript}", I think there are several ways to approach this.`,
-      `You raise an interesting question about "${transcript}". Let me share some insights.`,
-      `Thank you for bringing up "${transcript}". This is definitely worth discussing further.`,
+      `That's a great point about "${transcript}". Let me elaborate on that. Voice technology has advanced significantly in recent years, allowing for more natural and fluid conversations between humans and AI systems. The latency has decreased while the quality of voice synthesis has improved dramatically.`,
+      `I understand you mentioned "${transcript}". Here's my perspective on that topic. Voice interfaces are becoming increasingly important as they provide a more natural way for humans to interact with technology. They're particularly valuable for accessibility and for situations where hands-free interaction is necessary.`,
+      `Regarding "${transcript}", I think there are several ways to approach this. Voice AI systems like me use a combination of speech-to-text, natural language processing, and text-to-speech technologies to create a seamless conversational experience. Each component has its own challenges and areas for improvement.`,
+      `You raise an interesting question about "${transcript}". Let me share some insights. The quality of voice interactions depends on multiple factors including microphone quality, background noise, processing power, and the sophistication of the AI models involved. Improvements in any of these areas can enhance the overall experience.`,
+      `Thank you for bringing up "${transcript}". This is definitely worth discussing further. Voice technology is evolving rapidly, with new models and approaches being developed constantly. The goal is to make conversations like ours feel as natural and helpful as talking to another human.`,
     ];
     
     return responses[Math.floor(Math.random() * responses.length)];
@@ -210,18 +221,13 @@ function handleWebSocket(req: Request): Response {
           console.log(`Initializing connection for tier: ${connectionState.userTier}`);
           
           // Get API keys
-          const [elevenLabsKey, whisperKey] = await Promise.all([
-            getGlobalApiKey("elevenlabs", connectionState.userTier),
-            getGlobalApiKey("openai_whisper", connectionState.userTier),
-          ]);
-          
+          const elevenLabsKey = await getGlobalApiKey("elevenlabs", connectionState.userTier);
           connectionState.elevenLabsKey = elevenLabsKey;
-          connectionState.whisperKey = whisperKey;
           
-          console.log(`API keys available - ElevenLabs: ${!!elevenLabsKey}, Whisper: ${!!whisperKey}`);
+          console.log(`API keys available - ElevenLabs: ${!!elevenLabsKey}`);
           
           // Send connection status
-          if (elevenLabsKey && whisperKey) {
+          if (elevenLabsKey) {
             socket.send(JSON.stringify({
               type: "connection_status",
               status: "ready",
@@ -275,7 +281,7 @@ function handleWebSocket(req: Request): Response {
               // Get AI response
               const aiResponse = await callLlmApi(
                 text,
-                connectionState.whisperKey || "demo"
+                connectionState.elevenLabsKey || "demo"
               );
               
               console.log(`AI Response: ${aiResponse}`);
@@ -348,7 +354,7 @@ function handleWebSocket(req: Request): Response {
           // Respond to ping with pong
           socket.send(JSON.stringify({
             type: "pong",
-            timestamp: Date.now(),
+            timestamp: message.timestamp,
           }));
           break;
           
@@ -419,7 +425,7 @@ function handleHttp(req: Request): Response {
   });
 }
 
-// Main request handler using modern Deno.serve
+// Main request handler
 Deno.serve(async (req) => {
   try {
     // Handle WebSocket upgrade requests

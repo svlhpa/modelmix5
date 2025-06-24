@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap } from 'lucide-react';
+import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff, Activity, Loader2, AlertCircle, Settings, Zap, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { voiceLabsService } from '../services/voiceLabsService';
+import { supabase } from '../lib/supabase';
 
 interface VoiceLabsProps {
   isOpen: boolean;
@@ -29,6 +29,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor'>('excellent');
   const [latency, setLatency] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [isElevenLabsAvailable, setIsElevenLabsAvailable] = useState(false);
   
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     voice: 'rachel',
@@ -46,11 +47,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const audioQueueRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
+  const pingIntervalRef = useRef<number | null>(null);
 
   const currentTier = getCurrentTier();
 
   useEffect(() => {
     if (isOpen) {
+      checkElevenLabsAvailability();
       initializeAudioContext();
     } else {
       cleanup();
@@ -59,6 +62,29 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
     return () => cleanup();
   }, [isOpen]);
 
+  const checkElevenLabsAvailability = async () => {
+    try {
+      // Check if ElevenLabs API key is available in global_api_keys
+      const { data, error } = await supabase
+        .from('global_api_keys')
+        .select('api_key')
+        .eq('provider', 'elevenlabs')
+        .eq('is_active', true)
+        .single();
+
+      if (error) {
+        console.error('Error checking ElevenLabs availability:', error);
+        setIsElevenLabsAvailable(false);
+        return;
+      }
+
+      setIsElevenLabsAvailable(!!data?.api_key);
+    } catch (error) {
+      console.error('Failed to check ElevenLabs availability:', error);
+      setIsElevenLabsAvailable(false);
+    }
+  };
+
   const initializeAudioContext = async () => {
     try {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -66,7 +92,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       audioElementRef.current.autoplay = true;
     } catch (error) {
       console.error('Failed to initialize audio context:', error);
-      setError('Failed to initialize audio system');
+      setError('Failed to initialize audio system. Please ensure your browser supports the Web Audio API.');
     }
   };
 
@@ -91,6 +117,11 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       audioContextRef.current = null;
     }
     
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+    
     setCallState('idle');
     setTranscript('');
     setAiResponse('');
@@ -112,8 +143,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 16000
+          autoGainControl: true
         } 
       });
       
@@ -124,6 +154,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       
       // Set up audio processing
       await setupAudioProcessing(stream);
+      
+      // Start ping interval to keep connection alive
+      pingIntervalRef.current = setInterval(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        }
+      }, 30000) as unknown as number;
       
       setCallState('connected');
     } catch (error) {
@@ -136,7 +173,8 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
   const initializeWebSocket = async (): Promise<void> => {
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = voiceLabsService.getWebSocketUrl();
+        // Use direct WebSocket connection to Supabase Edge Function
+        const wsUrl = `${import.meta.env.VITE_SUPABASE_URL.replace('https://', 'wss://')}/functions/v1/voice-labs`;
         console.log('Connecting to WebSocket:', wsUrl);
         
         const ws = new WebSocket(wsUrl);
@@ -156,7 +194,12 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         };
 
         ws.onmessage = (event) => {
-          handleWebSocketMessage(JSON.parse(event.data));
+          try {
+            const message = JSON.parse(event.data);
+            handleWebSocketMessage(message);
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
         };
 
         ws.onerror = (error) => {
@@ -170,6 +213,14 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
             setCallState('disconnected');
           }
         };
+        
+        // Set timeout for connection
+        setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            ws.close();
+            reject(new Error('WebSocket connection timeout'));
+          }
+        }, 10000);
       } catch (error) {
         reject(error);
       }
@@ -188,23 +239,28 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
       const inputBuffer = event.inputBuffer;
       const inputData = inputBuffer.getChannelData(0);
       
-      // Convert to 16-bit PCM
-      const pcmData = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-      }
-      
-      // Send audio data to WebSocket
-      wsRef.current.send(JSON.stringify({
-        type: 'audio',
-        data: Array.from(pcmData)
-      }));
-      
-      // Update speaking state based on audio level
+      // Check if there's actual audio (not just silence)
       const audioLevel = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length);
-      if (audioLevel > 0.01 && callState === 'connected') {
-        setCallState('speaking');
-      } else if (audioLevel <= 0.01 && callState === 'speaking') {
+      
+      // Only send audio if it's above a certain threshold
+      if (audioLevel > 0.005) {
+        // Convert to 16-bit PCM
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+        }
+        
+        // Send audio data to WebSocket
+        wsRef.current.send(JSON.stringify({
+          type: 'audio',
+          data: Array.from(pcmData)
+        }));
+        
+        // Update speaking state
+        if (callState === 'connected' || callState === 'listening') {
+          setCallState('speaking');
+        }
+      } else if (audioLevel <= 0.005 && callState === 'speaking') {
         setCallState('listening');
       }
     };
@@ -216,6 +272,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
   const handleWebSocketMessage = (message: any) => {
     switch (message.type) {
+      case 'connection_status':
+        console.log('Connection status:', message.status);
+        if (message.status === 'ready') {
+          setCallState('connected');
+        }
+        break;
+        
       case 'transcript':
         setTranscript(message.text);
         if (message.isFinal) {
@@ -248,6 +311,18 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         
       case 'ai_finished':
         setCallState('connected');
+        break;
+        
+      case 'pong':
+        // Update latency based on ping-pong
+        if (message.timestamp) {
+          const pingLatency = Date.now() - message.timestamp;
+          setLatency(pingLatency);
+          setConnectionQuality(
+            pingLatency < 150 ? 'excellent' : 
+            pingLatency < 300 ? 'good' : 'poor'
+          );
+        }
         break;
     }
   };
@@ -307,7 +382,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
-    if (wsRef.current) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'mute',
         muted: !isMuted
@@ -330,6 +405,13 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         voiceSettings: updatedSettings
       }));
     }
+  };
+
+  const retryConnection = () => {
+    cleanup();
+    setTimeout(() => {
+      startCall();
+    }, 1000);
   };
 
   const getStateDisplay = () => {
@@ -359,7 +441,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
-                <Mic size={24} />
+                <Volume2 size={24} />
               </div>
               <div>
                 <h2 className="text-2xl font-bold">Voice Labs</h2>
@@ -491,14 +573,27 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           {/* Conversation Display */}
-          <div className="flex-1 p-6 space-y-6">
+          <div className="flex-1 p-6 space-y-6 overflow-y-auto">
             {/* Error Display */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-shakeX">
                 <div className="flex items-center space-x-2 text-red-700">
                   <AlertCircle size={20} />
-                  <span>{error}</span>
+                  <div className="flex-1">
+                    <p className="font-medium">Failed to connect to voice service</p>
+                    <p className="text-sm">{error}</p>
+                  </div>
                 </div>
+                
+                {callState === 'error' && (
+                  <button
+                    onClick={retryConnection}
+                    className="mt-3 flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                  >
+                    <RefreshCw size={16} />
+                    <span>Retry Connection</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -536,12 +631,25 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
             {callState === 'idle' && (
               <div className="text-center py-12 animate-fadeInUp">
                 <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Mic size={32} className="text-emerald-600" />
+                  <Volume2 size={32} className="text-emerald-600" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Start Your Voice Conversation</h3>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
                   Experience real-time AI conversation with ultra-low latency. Just click start and begin speaking naturally.
                 </p>
+                
+                {!isElevenLabsAvailable && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 max-w-md mx-auto">
+                    <div className="flex items-start space-x-2 text-yellow-700">
+                      <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Demo Mode Active</p>
+                        <p className="text-sm">ElevenLabs API key is not configured in your Supabase global_api_keys table. Voice Labs will run in demo mode with simulated responses.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto text-sm text-gray-600">
                   <div className="flex flex-col items-center space-y-2">
                     <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -575,6 +683,26 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                 </p>
               </div>
             )}
+            
+            {/* Disconnected Status */}
+            {callState === 'disconnected' && (
+              <div className="text-center py-12 animate-fadeInUp">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <PhoneOff size={32} className="text-gray-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Call Disconnected</h3>
+                <p className="text-gray-600 mb-6">
+                  Your voice call has ended or was disconnected.
+                </p>
+                <button
+                  onClick={startCall}
+                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all duration-200 mx-auto"
+                >
+                  <Phone size={20} />
+                  <span>Start New Call</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Call Controls */}
@@ -596,6 +724,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                       isMuted ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
                     } hover:scale-110 transition-all duration-200`}
                     title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+                    disabled={callState === 'connecting' || callState === 'error'}
                   >
                     {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
                   </button>
@@ -606,6 +735,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                       isAudioMuted ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
                     } hover:scale-110 transition-all duration-200`}
                     title={isAudioMuted ? 'Unmute Speaker' : 'Mute Speaker'}
+                    disabled={callState === 'connecting' || callState === 'error'}
                   >
                     {isAudioMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                   </button>
@@ -614,6 +744,7 @@ export const VoiceLabs: React.FC<VoiceLabsProps> = ({ isOpen, onClose }) => {
                     onClick={endCall}
                     className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700 hover:scale-110 transition-all duration-200"
                     title="End Call"
+                    disabled={callState === 'connecting'}
                   >
                     <PhoneOff size={24} />
                   </button>
