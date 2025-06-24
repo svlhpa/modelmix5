@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles, Volume2 } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -18,7 +18,6 @@ interface SidebarProps {
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
   onOpenWriteupAgent: () => void;
-  onOpenVoiceLabs: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onToggleMobile: () => void;
@@ -38,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDebateClub,
   onOpenVideoCall,
   onOpenWriteupAgent,
-  onOpenVoiceLabs,
   isCollapsed,
   isMobileOpen,
   onToggleMobile
@@ -175,17 +173,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         >
                           <FileText size={16} />
                           <span>Write-up Agent</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            onOpenVoiceLabs();
-                            onToggleMobile();
-                          }}
-                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                        >
-                          <Volume2 size={16} />
-                          <span>Voice Labs</span>
                         </button>
                       </div>
                     )}
@@ -539,14 +526,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <FileText size={16} />
                     <span>Write-up Agent</span>
-                  </button>
-
-                  <button
-                    onClick={onOpenVoiceLabs}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                  >
-                    <Volume2 size={16} />
-                    <span>Voice Labs</span>
                   </button>
                 </div>
               )}
