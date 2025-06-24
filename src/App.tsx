@@ -9,7 +9,7 @@ import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
 import { AIVideoCall } from './components/AIVideoCall';
 import { WriteupAgent } from './components/WriteupAgent';
-import { AIVoiceChat } from './components/AIVoiceChat';
+import { VoiceLabs } from './components/VoiceLabs';
 import { GetStartedModal } from './components/GetStartedModal';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
@@ -44,7 +44,7 @@ function App() {
   const [showDebateClub, setShowDebateClub] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showWriteupAgent, setShowWriteupAgent] = useState(false);
-  const [showVoiceChat, setShowVoiceChat] = useState(false);
+  const [showVoiceLabs, setShowVoiceLabs] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -171,9 +171,9 @@ function App() {
     }
   };
 
-  const handleOpenVoiceChat = () => {
+  const handleOpenVoiceLabs = () => {
     if (user) {
-      setShowVoiceChat(true);
+      setShowVoiceLabs(true);
     } else {
       setShowAuth(true);
     }
@@ -206,7 +206,7 @@ function App() {
           onOpenDebateClub={handleOpenDebateClub}
           onOpenVideoCall={handleOpenVideoCall}
           onOpenWriteupAgent={handleOpenWriteupAgent}
-          onOpenVoiceChat={handleOpenVoiceChat}
+          onOpenVoiceLabs={handleOpenVoiceLabs}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           onToggleMobile={toggleMobileSidebar}
@@ -239,9 +239,9 @@ function App() {
           onClose={() => setShowVideoCall(false)}
         />
 
-        <AIVoiceChat
-          isOpen={showVoiceChat}
-          onClose={() => setShowVoiceChat(false)}
+        <VoiceLabs
+          isOpen={showVoiceLabs}
+          onClose={() => setShowVoiceLabs(false)}
         />
 
         <WriteupAgent
@@ -274,7 +274,7 @@ function App() {
         onOpenDebateClub={handleOpenDebateClub}
         onOpenVideoCall={handleOpenVideoCall}
         onOpenWriteupAgent={handleOpenWriteupAgent}
-        onOpenVoiceChat={handleOpenVoiceChat}
+        onOpenVoiceLabs={handleOpenVoiceLabs}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
         onToggleMobile={toggleMobileSidebar}
@@ -327,9 +327,9 @@ function App() {
         onClose={() => setShowVideoCall(false)}
       />
 
-      <AIVoiceChat
-        isOpen={showVoiceChat}
-        onClose={() => setShowVoiceChat(false)}
+      <VoiceLabs
+        isOpen={showVoiceLabs}
+        onClose={() => setShowVoiceLabs(false)}
       />
 
       <WriteupAgent
