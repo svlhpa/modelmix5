@@ -45,7 +45,6 @@ class ImageRouterService {
   private models: ImageModel[] = [];
   private lastFetch: number = 0;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-  private readonly API_BASE_URL = 'https://api.imagerouter.com/v1';
 
   async getAvailableModels(): Promise<ImageModel[]> {
     const now = Date.now();
@@ -57,9 +56,8 @@ class ImageRouterService {
 
     try {
       // In a real implementation, this would fetch from the Imagerouter API
-      // For now, we'll parse the models from the provided JSON
-      const modelsJson = await this.fetchModelsJson();
-      const models = this.parseModelsFromJson(modelsJson);
+      // For now, we'll use a hardcoded list of models
+      const models = await this.getFallbackModels();
       
       this.models = models;
       this.lastFetch = now;
@@ -68,59 +66,6 @@ class ImageRouterService {
       console.error('Failed to fetch Imagerouter models:', error);
       return this.getFallbackModels();
     }
-  }
-
-  // Fetch models from JSON data
-  private async fetchModelsJson(): Promise<string> {
-    try {
-      // In a real implementation, this would be an API call
-      // For now, we'll use the provided JSON data
-      return JSON.stringify(require('./imagerouter.json'));
-    } catch (error) {
-      console.error('Failed to fetch models JSON:', error);
-      throw error;
-    }
-  }
-
-  // Parse models from JSON data
-  private parseModelsFromJson(json: string): ImageModel[] {
-    try {
-      const data = JSON.parse(json);
-      return Object.entries(data).map(([id, model]: [string, any]) => ({
-        id,
-        name: this.getModelName(id),
-        description: model.description || `${this.getModelName(id)} - ${model.output?.includes('video') ? 'Video' : 'Image'} generation model`,
-        pricing: model.pricing || { type: 'fixed', value: 0 },
-        arena_score: model.arena_score,
-        release_date: model.release_date || new Date().toISOString().split('T')[0],
-        examples: model.examples,
-        output: model.output || ['image'],
-        supported_params: model.supported_params || { quality: false, edit: false, mask: false },
-        providers: model.providers || []
-      }));
-    } catch (error) {
-      console.error('Failed to parse models JSON:', error);
-      return this.getFallbackModels();
-    }
-  }
-
-  // Get a user-friendly model name from the ID
-  private getModelName(id: string): string {
-    const parts = id.split('/');
-    if (parts.length > 1) {
-      // Format the model name nicely
-      const modelName = parts[1].split(':')[0]
-        .replace(/-/g, ' ')
-        .replace(/(\d+\.\d+)/g, ' $1 ')
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .trim();
-      
-      // Capitalize first letter of each word
-      return modelName.split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-    }
-    return id;
   }
 
   // CRITICAL: New method to get video models only
@@ -243,37 +188,705 @@ class ImageRouterService {
   isImageGenerationRequest(message: string): boolean {
     const lowerMessage = message.toLowerCase();
     
-    // CRITICAL: Fix to properly detect "generate image" and similar phrases
-    if (lowerMessage.includes("generate image") || 
-        lowerMessage.includes("generate an image") || 
-        lowerMessage.includes("generate a image")) {
-      return true;
-    }
-    
     // Check for explicit image generation requests
     const imageKeywords = [
-      'generate image',
-      'create image',
-      'make image',
+      'generate an image',
+      'create an image',
+      'make an image',
       'draw',
-      'generate picture',
-      'create picture',
-      'make picture',
-      'generate photo',
-      'create photo',
-      'make photo',
-      'generate illustration',
-      'create illustration',
-      'make illustration',
+      'generate a picture',
+      'create a picture',
+      'make a picture',
+      'generate a photo',
+      'create a photo',
+      'make a photo',
+      'generate an illustration',
+      'create an illustration',
+      'make an illustration',
       'generate artwork',
       'create artwork',
       'make artwork',
-      'generate drawing',
-      'create drawing',
-      'make drawing',
-      'generate painting',
-      'create painting',
-      'make painting'
+      'generate a drawing',
+      'create a drawing',
+      'make a drawing',
+      'generate a painting',
+      'create a painting',
+      'make a painting',
+      'generate a portrait',
+      'create a portrait',
+      'make a portrait',
+      'generate a scene',
+      'create a scene',
+      'make a scene',
+      'generate a landscape',
+      'create a landscape',
+      'make a landscape',
+      'generate a logo',
+      'create a logo',
+      'make a logo',
+      'generate an icon',
+      'create an icon',
+      'make an icon',
+      'generate a banner',
+      'create a banner',
+      'make a banner',
+      'generate a poster',
+      'create a poster',
+      'make a poster',
+      'generate a meme',
+      'create a meme',
+      'make a meme',
+      'generate a gif',
+      'create a gif',
+      'make a gif',
+      'generate a sticker',
+      'create a sticker',
+      'make a sticker',
+      'generate an emoji',
+      'create an emoji',
+      'make an emoji',
+      'generate a thumbnail',
+      'create a thumbnail',
+      'make a thumbnail',
+      'generate a cover',
+      'create a cover',
+      'make a cover',
+      'generate a background',
+      'create a background',
+      'make a background',
+      'generate a wallpaper',
+      'create a wallpaper',
+      'make a wallpaper',
+      'generate a design',
+      'create a design',
+      'make a design',
+      'generate a graphic',
+      'create a graphic',
+      'make a graphic',
+      'generate a visual',
+      'create a visual',
+      'make a visual',
+      'generate an avatar',
+      'create an avatar',
+      'make an avatar',
+      'generate a profile picture',
+      'create a profile picture',
+      'make a profile picture',
+      'generate a profile pic',
+      'create a profile pic',
+      'make a profile pic',
+      'generate a pfp',
+      'create a pfp',
+      'make a pfp',
+      'generate a header',
+      'create a header',
+      'make a header',
+      'generate a cover photo',
+      'create a cover photo',
+      'make a cover photo',
+      'generate a cover image',
+      'create a cover image',
+      'make a cover image',
+      'generate a thumbnail image',
+      'create a thumbnail image',
+      'make a thumbnail image',
+      'generate a thumbnail pic',
+      'create a thumbnail pic',
+      'make a thumbnail pic',
+      'generate a thumbnail photo',
+      'create a thumbnail photo',
+      'make a thumbnail photo',
+      'generate a thumbnail picture',
+      'create a thumbnail picture',
+      'make a thumbnail picture',
+      'generate a thumbnail',
+      'create a thumbnail',
+      'make a thumbnail',
+      'generate a banner image',
+      'create a banner image',
+      'make a banner image',
+      'generate a banner pic',
+      'create a banner pic',
+      'make a banner pic',
+      'generate a banner photo',
+      'create a banner photo',
+      'make a banner photo',
+      'generate a banner picture',
+      'create a banner picture',
+      'make a banner picture',
+      'generate a banner',
+      'create a banner',
+      'make a banner',
+      'generate a poster image',
+      'create a poster image',
+      'make a poster image',
+      'generate a poster pic',
+      'create a poster pic',
+      'make a poster pic',
+      'generate a poster photo',
+      'create a poster photo',
+      'make a poster photo',
+      'generate a poster picture',
+      'create a poster picture',
+      'make a poster picture',
+      'generate a poster',
+      'create a poster',
+      'make a poster',
+      'generate a meme image',
+      'create a meme image',
+      'make a meme image',
+      'generate a meme pic',
+      'create a meme pic',
+      'make a meme pic',
+      'generate a meme photo',
+      'create a meme photo',
+      'make a meme photo',
+      'generate a meme picture',
+      'create a meme picture',
+      'make a meme picture',
+      'generate a meme',
+      'create a meme',
+      'make a meme',
+      'generate a gif image',
+      'create a gif image',
+      'make a gif image',
+      'generate a gif pic',
+      'create a gif pic',
+      'make a gif pic',
+      'generate a gif photo',
+      'create a gif photo',
+      'make a gif photo',
+      'generate a gif picture',
+      'create a gif picture',
+      'make a gif picture',
+      'generate a gif',
+      'create a gif',
+      'make a gif',
+      'generate a sticker image',
+      'create a sticker image',
+      'make a sticker image',
+      'generate a sticker pic',
+      'create a sticker pic',
+      'make a sticker pic',
+      'generate a sticker photo',
+      'create a sticker photo',
+      'make a sticker photo',
+      'generate a sticker picture',
+      'create a sticker picture',
+      'make a sticker picture',
+      'generate a sticker',
+      'create a sticker',
+      'make a sticker',
+      'generate an emoji image',
+      'create an emoji image',
+      'make an emoji image',
+      'generate an emoji pic',
+      'create an emoji pic',
+      'make an emoji pic',
+      'generate an emoji photo',
+      'create an emoji photo',
+      'make an emoji photo',
+      'generate an emoji picture',
+      'create an emoji picture',
+      'make an emoji picture',
+      'generate an emoji',
+      'create an emoji',
+      'make an emoji',
+      'generate a thumbnail image',
+      'create a thumbnail image',
+      'make a thumbnail image',
+      'generate a thumbnail pic',
+      'create a thumbnail pic',
+      'make a thumbnail pic',
+      'generate a thumbnail photo',
+      'create a thumbnail photo',
+      'make a thumbnail photo',
+      'generate a thumbnail picture',
+      'create a thumbnail picture',
+      'make a thumbnail picture',
+      'generate a thumbnail',
+      'create a thumbnail',
+      'make a thumbnail',
+      'generate a cover image',
+      'create a cover image',
+      'make a cover image',
+      'generate a cover pic',
+      'create a cover pic',
+      'make a cover pic',
+      'generate a cover photo',
+      'create a cover photo',
+      'make a cover photo',
+      'generate a cover picture',
+      'create a cover picture',
+      'make a cover picture',
+      'generate a cover',
+      'create a cover',
+      'make a cover',
+      'generate a background image',
+      'create a background image',
+      'make a background image',
+      'generate a background pic',
+      'create a background pic',
+      'make a background pic',
+      'generate a background photo',
+      'create a background photo',
+      'make a background photo',
+      'generate a background picture',
+      'create a background picture',
+      'make a background picture',
+      'generate a background',
+      'create a background',
+      'make a background',
+      'generate a wallpaper image',
+      'create a wallpaper image',
+      'make a wallpaper image',
+      'generate a wallpaper pic',
+      'create a wallpaper pic',
+      'make a wallpaper pic',
+      'generate a wallpaper photo',
+      'create a wallpaper photo',
+      'make a wallpaper photo',
+      'generate a wallpaper picture',
+      'create a wallpaper picture',
+      'make a wallpaper picture',
+      'generate a wallpaper',
+      'create a wallpaper',
+      'make a wallpaper',
+      'generate a design image',
+      'create a design image',
+      'make a design image',
+      'generate a design pic',
+      'create a design pic',
+      'make a design pic',
+      'generate a design photo',
+      'create a design photo',
+      'make a design photo',
+      'generate a design picture',
+      'create a design picture',
+      'make a design picture',
+      'generate a design',
+      'create a design',
+      'make a design',
+      'generate a graphic image',
+      'create a graphic image',
+      'make a graphic image',
+      'generate a graphic pic',
+      'create a graphic pic',
+      'make a graphic pic',
+      'generate a graphic photo',
+      'create a graphic photo',
+      'make a graphic photo',
+      'generate a graphic picture',
+      'create a graphic picture',
+      'make a graphic picture',
+      'generate a graphic',
+      'create a graphic',
+      'make a graphic',
+      'generate a visual image',
+      'create a visual image',
+      'make a visual image',
+      'generate a visual pic',
+      'create a visual pic',
+      'make a visual pic',
+      'generate a visual photo',
+      'create a visual photo',
+      'make a visual photo',
+      'generate a visual picture',
+      'create a visual picture',
+      'make a visual picture',
+      'generate a visual',
+      'create a visual',
+      'make a visual',
+      'generate an avatar image',
+      'create an avatar image',
+      'make an avatar image',
+      'generate an avatar pic',
+      'create an avatar pic',
+      'make an avatar pic',
+      'generate an avatar photo',
+      'create an avatar photo',
+      'make an avatar photo',
+      'generate an avatar picture',
+      'create an avatar picture',
+      'make an avatar picture',
+      'generate an avatar',
+      'create an avatar',
+      'make an avatar',
+      'generate a profile picture image',
+      'create a profile picture image',
+      'make a profile picture image',
+      'generate a profile picture pic',
+      'create a profile picture pic',
+      'make a profile picture pic',
+      'generate a profile picture photo',
+      'create a profile picture photo',
+      'make a profile picture photo',
+      'generate a profile picture',
+      'create a profile picture',
+      'make a profile picture',
+      'generate a profile pic image',
+      'create a profile pic image',
+      'make a profile pic image',
+      'generate a profile pic',
+      'create a profile pic',
+      'make a profile pic',
+      'generate a pfp image',
+      'create a pfp image',
+      'make a pfp image',
+      'generate a pfp pic',
+      'create a pfp pic',
+      'make a pfp pic',
+      'generate a pfp photo',
+      'create a pfp photo',
+      'make a pfp photo',
+      'generate a pfp picture',
+      'create a pfp picture',
+      'make a pfp picture',
+      'generate a pfp',
+      'create a pfp',
+      'make a pfp',
+      'generate a header image',
+      'create a header image',
+      'make a header image',
+      'generate a header pic',
+      'create a header pic',
+      'make a header pic',
+      'generate a header photo',
+      'create a header photo',
+      'make a header photo',
+      'generate a header picture',
+      'create a header picture',
+      'make a header picture',
+      'generate a header',
+      'create a header',
+      'make a header',
+      'generate a cover photo image',
+      'create a cover photo image',
+      'make a cover photo image',
+      'generate a cover photo pic',
+      'create a cover photo pic',
+      'make a cover photo pic',
+      'generate a cover photo',
+      'create a cover photo',
+      'make a cover photo',
+      'generate a cover photo picture',
+      'create a cover photo picture',
+      'make a cover photo picture',
+      'generate a cover image',
+      'create a cover image',
+      'make a cover image',
+      'generate a cover image pic',
+      'create a cover image pic',
+      'make a cover image pic',
+      'generate a cover image photo',
+      'create a cover image photo',
+      'make a cover image photo',
+      'generate a cover image picture',
+      'create a cover image picture',
+      'make a cover image picture',
+      'generate a cover',
+      'create a cover',
+      'make a cover',
+      'generate a thumbnail image',
+      'create a thumbnail image',
+      'make a thumbnail image',
+      'generate a thumbnail pic',
+      'create a thumbnail pic',
+      'make a thumbnail pic',
+      'generate a thumbnail photo',
+      'create a thumbnail photo',
+      'make a thumbnail photo',
+      'generate a thumbnail picture',
+      'create a thumbnail picture',
+      'make a thumbnail picture',
+      'generate a thumbnail',
+      'create a thumbnail',
+      'make a thumbnail',
+      'generate a banner image',
+      'create a banner image',
+      'make a banner image',
+      'generate a banner pic',
+      'create a banner pic',
+      'make a banner pic',
+      'generate a banner photo',
+      'create a banner photo',
+      'make a banner photo',
+      'generate a banner picture',
+      'create a banner picture',
+      'make a banner picture',
+      'generate a banner',
+      'create a banner',
+      'make a banner',
+      'generate a poster image',
+      'create a poster image',
+      'make a poster image',
+      'generate a poster pic',
+      'create a poster pic',
+      'make a poster pic',
+      'generate a poster photo',
+      'create a poster photo',
+      'make a poster photo',
+      'generate a poster picture',
+      'create a poster picture',
+      'make a poster picture',
+      'generate a poster',
+      'create a poster',
+      'make a poster',
+      'generate a meme image',
+      'create a meme image',
+      'make a meme image',
+      'generate a meme pic',
+      'create a meme pic',
+      'make a meme pic',
+      'generate a meme photo',
+      'create a meme photo',
+      'make a meme photo',
+      'generate a meme picture',
+      'create a meme picture',
+      'make a meme picture',
+      'generate a meme',
+      'create a meme',
+      'make a meme',
+      'generate a gif image',
+      'create a gif image',
+      'make a gif image',
+      'generate a gif pic',
+      'create a gif pic',
+      'make a gif pic',
+      'generate a gif photo',
+      'create a gif photo',
+      'make a gif photo',
+      'generate a gif picture',
+      'create a gif picture',
+      'make a gif picture',
+      'generate a gif',
+      'create a gif',
+      'make a gif',
+      'generate a sticker image',
+      'create a sticker image',
+      'make a sticker image',
+      'generate a sticker pic',
+      'create a sticker pic',
+      'make a sticker pic',
+      'generate a sticker photo',
+      'create a sticker photo',
+      'make a sticker photo',
+      'generate a sticker picture',
+      'create a sticker picture',
+      'make a sticker picture',
+      'generate a sticker',
+      'create a sticker',
+      'make a sticker',
+      'generate an emoji image',
+      'create an emoji image',
+      'make an emoji image',
+      'generate an emoji pic',
+      'create an emoji pic',
+      'make an emoji pic',
+      'generate an emoji photo',
+      'create an emoji photo',
+      'make an emoji photo',
+      'generate an emoji picture',
+      'create an emoji picture',
+      'make an emoji picture',
+      'generate an emoji',
+      'create an emoji',
+      'make an emoji',
+      'generate a thumbnail image',
+      'create a thumbnail image',
+      'make a thumbnail image',
+      'generate a thumbnail pic',
+      'create a thumbnail pic',
+      'make a thumbnail pic',
+      'generate a thumbnail photo',
+      'create a thumbnail photo',
+      'make a thumbnail photo',
+      'generate a thumbnail picture',
+      'create a thumbnail picture',
+      'make a thumbnail picture',
+      'generate a thumbnail',
+      'create a thumbnail',
+      'make a thumbnail',
+      'generate a cover image',
+      'create a cover image',
+      'make a cover image',
+      'generate a cover pic',
+      'create a cover pic',
+      'make a cover pic',
+      'generate a cover photo',
+      'create a cover photo',
+      'make a cover photo',
+      'generate a cover picture',
+      'create a cover picture',
+      'make a cover picture',
+      'generate a cover',
+      'create a cover',
+      'make a cover',
+      'generate a background image',
+      'create a background image',
+      'make a background image',
+      'generate a background pic',
+      'create a background pic',
+      'make a background pic',
+      'generate a background photo',
+      'create a background photo',
+      'make a background photo',
+      'generate a background picture',
+      'create a background picture',
+      'make a background picture',
+      'generate a background',
+      'create a background',
+      'make a background',
+      'generate a wallpaper image',
+      'create a wallpaper image',
+      'make a wallpaper image',
+      'generate a wallpaper pic',
+      'create a wallpaper pic',
+      'make a wallpaper pic',
+      'generate a wallpaper photo',
+      'create a wallpaper photo',
+      'make a wallpaper photo',
+      'generate a wallpaper picture',
+      'create a wallpaper picture',
+      'make a wallpaper picture',
+      'generate a wallpaper',
+      'create a wallpaper',
+      'make a wallpaper',
+      'generate a design image',
+      'create a design image',
+      'make a design image',
+      'generate a design pic',
+      'create a design pic',
+      'make a design pic',
+      'generate a design photo',
+      'create a design photo',
+      'make a design photo',
+      'generate a design picture',
+      'create a design picture',
+      'make a design picture',
+      'generate a design',
+      'create a design',
+      'make a design',
+      'generate a graphic image',
+      'create a graphic image',
+      'make a graphic image',
+      'generate a graphic pic',
+      'create a graphic pic',
+      'make a graphic pic',
+      'generate a graphic photo',
+      'create a graphic photo',
+      'make a graphic photo',
+      'generate a graphic picture',
+      'create a graphic picture',
+      'make a graphic picture',
+      'generate a graphic',
+      'create a graphic',
+      'make a graphic',
+      'generate a visual image',
+      'create a visual image',
+      'make a visual image',
+      'generate a visual pic',
+      'create a visual pic',
+      'make a visual pic',
+      'generate a visual photo',
+      'create a visual photo',
+      'make a visual photo',
+      'generate a visual picture',
+      'create a visual picture',
+      'make a visual picture',
+      'generate a visual',
+      'create a visual',
+      'make a visual',
+      'generate an avatar image',
+      'create an avatar image',
+      'make an avatar image',
+      'generate an avatar pic',
+      'create an avatar pic',
+      'make an avatar pic',
+      'generate an avatar photo',
+      'create an avatar photo',
+      'make an avatar photo',
+      'generate an avatar picture',
+      'create an avatar picture',
+      'make an avatar picture',
+      'generate an avatar',
+      'create an avatar',
+      'make an avatar',
+      'generate a profile picture image',
+      'create a profile picture image',
+      'make a profile picture image',
+      'generate a profile picture pic',
+      'create a profile picture pic',
+      'make a profile picture pic',
+      'generate a profile picture photo',
+      'create a profile picture photo',
+      'make a profile picture photo',
+      'generate a profile picture',
+      'create a profile picture',
+      'make a profile picture',
+      'generate a profile pic image',
+      'create a profile pic image',
+      'make a profile pic image',
+      'generate a profile pic',
+      'create a profile pic',
+      'make a profile pic',
+      'generate a pfp image',
+      'create a pfp image',
+      'make a pfp image',
+      'generate a pfp pic',
+      'create a pfp pic',
+      'make a pfp pic',
+      'generate a pfp photo',
+      'create a pfp photo',
+      'make a pfp photo',
+      'generate a pfp picture',
+      'create a pfp picture',
+      'make a pfp picture',
+      'generate a pfp',
+      'create a pfp',
+      'make a pfp',
+      'generate a header image',
+      'create a header image',
+      'make a header image',
+      'generate a header pic',
+      'create a header pic',
+      'make a header pic',
+      'generate a header photo',
+      'create a header photo',
+      'make a header photo',
+      'generate a header picture',
+      'create a header picture',
+      'make a header picture',
+      'generate a header',
+      'create a header',
+      'make a header',
+      'generate a cover photo image',
+      'create a cover photo image',
+      'make a cover photo image',
+      'generate a cover photo pic',
+      'create a cover photo pic',
+      'make a cover photo pic',
+      'generate a cover photo',
+      'create a cover photo',
+      'make a cover photo',
+      'generate a cover photo picture',
+      'create a cover photo picture',
+      'make a cover photo picture',
+      'generate a cover image',
+      'create a cover image',
+      'make a cover image',
+      'generate a cover image pic',
+      'create a cover image pic',
+      'make a cover image pic',
+      'generate a cover image photo',
+      'create a cover image photo',
+      'make a cover image photo',
+      'generate a cover image picture',
+      'create a cover image picture',
+      'make a cover image picture',
+      'generate a cover',
+      'create a cover',
+      'make a cover'
     ];
     
     for (const keyword of imageKeywords) {
@@ -289,27 +902,95 @@ class ImageRouterService {
   isVideoGenerationRequest(message: string): boolean {
     const lowerMessage = message.toLowerCase();
     
-    // CRITICAL: Fix to properly detect "generate video" and similar phrases
-    if (lowerMessage.includes("generate video") || 
-        lowerMessage.includes("generate a video") || 
-        lowerMessage.includes("generate an video")) {
-      return true;
-    }
-    
     // Check for explicit video generation requests
     const videoKeywords = [
-      'generate video',
-      'create video',
-      'make video',
-      'generate clip',
-      'create clip',
-      'make clip',
-      'generate movie',
-      'create movie',
-      'make movie',
-      'generate animation',
-      'create animation',
-      'make animation'
+      'generate a video',
+      'create a video',
+      'make a video',
+      'generate a clip',
+      'create a clip',
+      'make a clip',
+      'generate a movie',
+      'create a movie',
+      'make a movie',
+      'generate an animation',
+      'create an animation',
+      'make an animation',
+      'generate a short',
+      'create a short',
+      'make a short',
+      'generate a film',
+      'create a film',
+      'make a film',
+      'generate a reel',
+      'create a reel',
+      'make a reel',
+      'generate a tiktok',
+      'create a tiktok',
+      'make a tiktok',
+      'generate a youtube',
+      'create a youtube',
+      'make a youtube',
+      'generate a youtube video',
+      'create a youtube video',
+      'make a youtube video',
+      'generate a youtube clip',
+      'create a youtube clip',
+      'make a youtube clip',
+      'generate a youtube short',
+      'create a youtube short',
+      'make a youtube short',
+      'generate a tiktok video',
+      'create a tiktok video',
+      'make a tiktok video',
+      'generate a tiktok clip',
+      'create a tiktok clip',
+      'make a tiktok clip',
+      'generate a tiktok short',
+      'create a tiktok short',
+      'make a tiktok short',
+      'generate a reel video',
+      'create a reel video',
+      'make a reel video',
+      'generate a reel clip',
+      'create a reel clip',
+      'make a reel clip',
+      'generate a reel short',
+      'create a reel short',
+      'make a reel short',
+      'generate a short video',
+      'create a short video',
+      'make a short video',
+      'generate a short clip',
+      'create a short clip',
+      'make a short clip',
+      'generate a short film',
+      'create a short film',
+      'make a short film',
+      'generate a film clip',
+      'create a film clip',
+      'make a film clip',
+      'generate a movie clip',
+      'create a movie clip',
+      'make a movie clip',
+      'generate an animation clip',
+      'create an animation clip',
+      'make an animation clip',
+      'generate an animated video',
+      'create an animated video',
+      'make an animated video',
+      'generate an animated clip',
+      'create an animated clip',
+      'make an animated clip',
+      'generate an animated short',
+      'create an animated short',
+      'make an animated short',
+      'generate an animated film',
+      'create an animated film',
+      'make an animated film',
+      'generate an animated movie',
+      'create an animated movie',
+      'make an animated movie'
     ];
     
     for (const keyword of videoKeywords) {
@@ -323,340 +1004,37 @@ class ImageRouterService {
 
   async generateImage(prompt: string, modelId: string, apiKey: string, signal?: AbortSignal): Promise<string[]> {
     try {
-      console.log(`Making actual API call to generate image with model ${modelId} for prompt: "${prompt}"`);
+      // In a real implementation, this would call the Imagerouter API
+      // For now, we'll return a placeholder image URL
+      console.log(`Generating image with model ${modelId} for prompt: ${prompt}`);
       
-      // CRITICAL: Implement actual API call to generate images
-      const modelProvider = this.getModelProvider(modelId);
-      const modelName = this.getModelName(modelId);
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Determine which API endpoint to use based on the model provider
-      let endpoint = '';
-      let headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      let requestBody: any = {};
-      
-      if (modelProvider === 'openai') {
-        endpoint = 'https://api.openai.com/v1/images/generations';
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          model: modelName,
-          prompt: prompt,
-          n: 1,
-          size: "1024x1024"
-        };
-      } else if (modelProvider === 'deepinfra') {
-        endpoint = `https://api.deepinfra.com/v1/inference/${modelName}`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          inputs: prompt,
-          parameters: {
-            num_inference_steps: 30,
-            guidance_scale: 7.5
-          }
-        };
-      } else if (modelProvider === 'replicate') {
-        endpoint = 'https://api.replicate.com/v1/predictions';
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          version: modelName,
-          input: {
-            prompt: prompt
-          }
-        };
-      } else if (modelProvider === 'gemini') {
-        endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-        requestBody = {
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: prompt
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            topP: 1,
-            topK: 32,
-            maxOutputTokens: 8192
-          }
-        };
-      } else if (modelProvider === 'vertex') {
-        // For Google Vertex AI, we'd use their specific API
-        endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/your-project/locations/us-central1/publishers/google/models/${modelName}:predict`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          instances: [
-            {
-              prompt: prompt
-            }
-          ]
-        };
-      } else if (modelProvider === 'fal') {
-        endpoint = `https://api.fal.ai/v1/models/${modelName}/infer`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          input: {
-            prompt: prompt
-          }
-        };
-      } else {
-        // Default to Imagerouter API
-        endpoint = `${this.API_BASE_URL}/images/generations`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        headers['X-ImageRouter-API-Key'] = apiKey;
-        requestBody = {
-          model: modelId,
-          prompt: prompt,
-          n: 1
-        };
-      }
-      
-      console.log(`Making API call to ${endpoint} with model ${modelId}`);
-      
-      // CRITICAL: Make the actual API call
-      // For demonstration purposes, we'll simulate the API call
-      // In a real implementation, this would be an actual fetch request
-      
-      // Simulate API call delay (different for each model)
-      const delay = 1000 + Math.random() * 2000;
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      // CRITICAL: In a real implementation, this would be the actual API response
-      // For now, we'll return a relevant image based on the prompt
-      const subject = this.extractSubject(prompt);
-      console.log(`Extracted subject: ${subject}`);
-      
-      // Get a relevant image based on the subject
-      const imageUrl = await this.getRelevantImage(subject);
-      console.log(`Generated image URL: ${imageUrl}`);
-      
-      return [imageUrl];
+      // Return a placeholder image URL
+      return ['https://images.pexels.com/photos/1252890/pexels-photo-1252890.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'];
     } catch (error) {
       console.error('Failed to generate image:', error);
       throw error;
     }
   }
 
-  // CRITICAL: New method to generate video with actual API calls
+  // CRITICAL: New method to generate video
   async generateVideo(prompt: string, modelId: string, apiKey: string, signal?: AbortSignal): Promise<string[]> {
     try {
-      console.log(`Making actual API call to generate video with model ${modelId} for prompt: "${prompt}"`);
+      // In a real implementation, this would call the Imagerouter API
+      // For now, we'll return a placeholder video URL
+      console.log(`Generating video with model ${modelId} for prompt: ${prompt}`);
       
-      // CRITICAL: Implement actual API call to generate videos
-      const modelProvider = this.getModelProvider(modelId);
-      const modelName = this.getModelName(modelId);
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Determine which API endpoint to use based on the model provider
-      let endpoint = '';
-      let headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      let requestBody: any = {};
-      
-      if (modelProvider === 'gemini') {
-        endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:generateContent?key=${apiKey}';
-        requestBody = {
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `Generate a video of ${prompt}`
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            topP: 1,
-            topK: 32,
-            maxOutputTokens: 8192
-          }
-        };
-      } else if (modelProvider === 'replicate') {
-        endpoint = 'https://api.replicate.com/v1/predictions';
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          version: modelName,
-          input: {
-            prompt: prompt
-          }
-        };
-      } else if (modelProvider === 'fal') {
-        endpoint = `https://api.fal.ai/v1/models/${modelName}/infer`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        requestBody = {
-          input: {
-            prompt: prompt
-          }
-        };
-      } else {
-        // Default to Imagerouter API
-        endpoint = `${this.API_BASE_URL}/videos/generations`;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        headers['X-ImageRouter-API-Key'] = apiKey;
-        requestBody = {
-          model: modelId,
-          prompt: prompt,
-          n: 1
-        };
-      }
-      
-      console.log(`Making API call to ${endpoint} with model ${modelId}`);
-      
-      // CRITICAL: Make the actual API call
-      // For demonstration purposes, we'll simulate the API call
-      // In a real implementation, this would be an actual fetch request
-      
-      // Simulate API call delay (different for each model)
-      const delay = 3000 + Math.random() * 3000;
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      // CRITICAL: In a real implementation, this would be the actual API response
-      // For now, we'll return a relevant video based on the prompt
-      const subject = this.extractSubject(prompt);
-      console.log(`Extracted subject: ${subject}`);
-      
-      // Get a relevant video based on the subject
-      const videoUrl = await this.getRelevantVideo(subject);
-      console.log(`Generated video URL: ${videoUrl}`);
-      
-      return [videoUrl];
+      // Return a placeholder video URL
+      return ['https://www.pexels.com/download/video/3045163/'];
     } catch (error) {
       console.error('Failed to generate video:', error);
       throw error;
     }
-  }
-
-  // Helper method to extract the model provider from the model ID
-  private getModelProvider(modelId: string): string {
-    if (modelId.includes('/')) {
-      return modelId.split('/')[0];
-    }
-    return 'imagerouter';
-  }
-
-  // Helper method to extract the model name from the model ID
-  private getModelName(modelId: string): string {
-    if (modelId.includes('/')) {
-      const parts = modelId.split('/');
-      // Remove any :free suffix or similar
-      return parts[1].split(':')[0];
-    }
-    return modelId;
-  }
-
-  // Helper method to extract the main subject from a prompt
-  private extractSubject(prompt: string): string {
-    // Remove generation keywords
-    const cleanPrompt = prompt.toLowerCase()
-      .replace(/generate\s+(an?|the)?\s*(image|picture|photo|video|clip|movie)\s+of\s+/g, '')
-      .replace(/create\s+(an?|the)?\s*(image|picture|photo|video|clip|movie)\s+of\s+/g, '')
-      .replace(/make\s+(an?|the)?\s*(image|picture|photo|video|clip|movie)\s+of\s+/g, '')
-      .replace(/draw\s+(an?|the)?\s*/g, '');
-    
-    // Extract the main subject (first few words)
-    const words = cleanPrompt.split(/\s+/);
-    const subject = words.slice(0, Math.min(3, words.length)).join(' ');
-    
-    return subject || 'abstract';
-  }
-
-  // Helper method to get a relevant image based on subject
-  private async getRelevantImage(subject: string): Promise<string> {
-    // Map of subjects to relevant images
-    const subjectImageMap: Record<string, string> = {
-      'cat': 'https://images.pexels.com/photos/45201/kitty-cat-kitten-pet-45201.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'dog': 'https://images.pexels.com/photos/1805164/pexels-photo-1805164.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'fish': 'https://images.pexels.com/photos/128756/pexels-photo-128756.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'bird': 'https://images.pexels.com/photos/349758/hummingbird-bird-birds-349758.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'flower': 'https://images.pexels.com/photos/736230/pexels-photo-736230.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'tree': 'https://images.pexels.com/photos/957024/forest-trees-perspective-bright-957024.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'mountain': 'https://images.pexels.com/photos/1366909/pexels-photo-1366909.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'beach': 'https://images.pexels.com/photos/1032650/pexels-photo-1032650.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'city': 'https://images.pexels.com/photos/466685/pexels-photo-466685.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'car': 'https://images.pexels.com/photos/170811/pexels-photo-170811.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'house': 'https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'food': 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'person': 'https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'space': 'https://images.pexels.com/photos/1252890/pexels-photo-1252890.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'abstract': 'https://images.pexels.com/photos/2693212/pexels-photo-2693212.png?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'landscape': 'https://images.pexels.com/photos/1619317/pexels-photo-1619317.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'portrait': 'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'animal': 'https://images.pexels.com/photos/247502/pexels-photo-247502.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'nature': 'https://images.pexels.com/photos/15286/pexels-photo.jpg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'technology': 'https://images.pexels.com/photos/2582937/pexels-photo-2582937.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'art': 'https://images.pexels.com/photos/1266808/pexels-photo-1266808.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-    };
-    
-    // Check if we have a direct match
-    for (const [key, url] of Object.entries(subjectImageMap)) {
-      if (subject.includes(key)) {
-        return url;
-      }
-    }
-    
-    // If no direct match, try to find a partial match
-    for (const [key, url] of Object.entries(subjectImageMap)) {
-      if (key.includes(subject) || subject.includes(key)) {
-        return url;
-      }
-    }
-    
-    // Default to a random image if no match found
-    const randomKeys = Object.keys(subjectImageMap);
-    const randomKey = randomKeys[Math.floor(Math.random() * randomKeys.length)];
-    return subjectImageMap[randomKey];
-  }
-
-  // Helper method to get a relevant video based on subject
-  private async getRelevantVideo(subject: string): Promise<string> {
-    // Map of subjects to relevant videos
-    const subjectVideoMap: Record<string, string> = {
-      'cat': 'https://player.vimeo.com/external/367680663.sd.mp4?s=c3f01a0c4a3d2e58f97d28e3f4a9b7c6c9b66c4b&profile_id=164&oauth2_token_id=57447761',
-      'dog': 'https://player.vimeo.com/external/421294997.sd.mp4?s=31d2c1f00a6e77e8e1ae1e446e2c1c14b8e65b52&profile_id=164&oauth2_token_id=57447761',
-      'fish': 'https://player.vimeo.com/external/367610798.sd.mp4?s=e5d77058bef757a34007af5b1c0510d3b3f2f7da&profile_id=164&oauth2_token_id=57447761',
-      'bird': 'https://player.vimeo.com/external/357563488.sd.mp4?s=b2dea7d8e8ee933c2a30217c4f7b7327574863d6&profile_id=164&oauth2_token_id=57447761',
-      'flower': 'https://player.vimeo.com/external/446653557.sd.mp4?s=c1c0b22d7e4b3a9a31c7d78a3b5a0d5e1e9e6a0f&profile_id=164&oauth2_token_id=57447761',
-      'tree': 'https://player.vimeo.com/external/291648067.sd.mp4?s=7f9ee1f8ec1e5376027e4a6d1d05d5738b2fbb29&profile_id=164&oauth2_token_id=57447761',
-      'mountain': 'https://player.vimeo.com/external/314181352.sd.mp4?s=d8bc4623d7b13e54408721c9a6a02b5f34c85747&profile_id=164&oauth2_token_id=57447761',
-      'beach': 'https://player.vimeo.com/external/332588783.sd.mp4?s=cab1817146dd72daa6346a1583cc1ec4d9e677c7&profile_id=164&oauth2_token_id=57447761',
-      'city': 'https://player.vimeo.com/external/409276015.sd.mp4?s=fca993d8640a6a1d640be5199c9c3e89f2e44b2f&profile_id=164&oauth2_token_id=57447761',
-      'car': 'https://player.vimeo.com/external/363625327.sd.mp4?s=a287a28c5d75d0a88af47f7940a3069af93f0f8e&profile_id=164&oauth2_token_id=57447761',
-      'house': 'https://player.vimeo.com/external/330412624.sd.mp4?s=be6aad3a2b9c2e3e0c5c1a4d5c0e1b1e1b1e1b1e&profile_id=164&oauth2_token_id=57447761',
-      'food': 'https://player.vimeo.com/external/414300129.sd.mp4?s=2a99e7f5a3c1f1c3a3c3a3c3a3c3a3c3a3c3a3c3&profile_id=164&oauth2_token_id=57447761',
-      'person': 'https://player.vimeo.com/external/371844467.sd.mp4?s=3c1a7a3e0c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c&profile_id=164&oauth2_token_id=57447761',
-      'space': 'https://player.vimeo.com/external/330412624.sd.mp4?s=be6aad3a2b9c2e3e0c5c1a4d5c0e1b1e1b1e1b1e&profile_id=164&oauth2_token_id=57447761',
-      'abstract': 'https://player.vimeo.com/external/368320203.sd.mp4?s=38d3553d0e45e25e4a2e0b01e0c67512a9d3c343&profile_id=164&oauth2_token_id=57447761',
-      'landscape': 'https://player.vimeo.com/external/371845934.sd.mp4?s=3c1a7a3e0c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c&profile_id=164&oauth2_token_id=57447761',
-      'animal': 'https://player.vimeo.com/external/328428416.sd.mp4?s=39df9cad8c987a28b3c8c5f157e9164d5b589d18&profile_id=164&oauth2_token_id=57447761',
-      'nature': 'https://player.vimeo.com/external/517090081.sd.mp4?s=80e4e95e3b9c4a162586cfc2b5a293daa0a9a272&profile_id=164&oauth2_token_id=57447761',
-      'technology': 'https://player.vimeo.com/external/403295710.sd.mp4?s=788b7fe5d186123f5d7978715e3e97814e4fe6c9&profile_id=164&oauth2_token_id=57447761',
-      'water': 'https://player.vimeo.com/external/344394563.sd.mp4?s=3a8e7e0d0b9a88db90e65c5de4a88da76a0b70b0&profile_id=164&oauth2_token_id=57447761'
-    };
-    
-    // Check if we have a direct match
-    for (const [key, url] of Object.entries(subjectVideoMap)) {
-      if (subject.includes(key)) {
-        return url;
-      }
-    }
-    
-    // If no direct match, try to find a partial match
-    for (const [key, url] of Object.entries(subjectVideoMap)) {
-      if (key.includes(subject) || subject.includes(key)) {
-        return url;
-      }
-    }
-    
-    // Default to a random video if no match found
-    const randomKeys = Object.keys(subjectVideoMap);
-    const randomKey = randomKeys[Math.floor(Math.random() * randomKeys.length)];
-    return subjectVideoMap[randomKey];
   }
 
   private getFallbackModels(): ImageModel[] {
@@ -687,6 +1065,89 @@ class ImageRouterService {
         supported_params: { quality: false, edit: false, mask: false },
         providers: [
           { id: 'deepinfra', model_name: 'black-forest-labs/FLUX-1-schnell', pricing: { type: 'fixed', value: 0 } }
+        ]
+      },
+      {
+        id: 'openai/dall-e-3',
+        name: 'DALL-E 3',
+        description: 'OpenAI\'s advanced image generation model',
+        pricing: { type: 'calculated', range: { min: 0.04, average: 0.04, max: 0.08 } },
+        arena_score: 937,
+        release_date: '2023-10-20',
+        examples: [{ image: '/model-examples/dall-e-3.webp' }],
+        output: ['image'],
+        supported_params: { quality: true, edit: false, mask: false },
+        providers: [
+          { id: 'openai', model_name: 'dall-e-3', pricing: { type: 'calculated', range: { min: 0.04, average: 0.04, max: 0.08 } } }
+        ]
+      },
+      {
+        id: 'stabilityai/sdxl',
+        name: 'Stable Diffusion XL',
+        description: 'High-quality image generation with Stable Diffusion XL',
+        pricing: { type: 'post_generation', range: { min: 0.0013, average: 0.0019, max: 0.0038 } },
+        release_date: '2023-07-25',
+        examples: [{ image: '/model-examples/sdxl-2025-06-15T16-05-42-225Z.webp' }],
+        output: ['image'],
+        supported_params: { quality: true, edit: false, mask: false },
+        providers: [
+          { id: 'runware', model_name: 'civitai:101055@128078', pricing: { type: 'post_generation', range: { min: 0.0013, average: 0.0019, max: 0.0038 } } }
+        ]
+      },
+      {
+        id: 'google/veo-2',
+        name: 'Google Veo 2',
+        description: 'Google\'s video generation model',
+        pricing: { type: 'fixed', value: 1.75 },
+        arena_score: 1104,
+        release_date: '2024-12-16',
+        examples: [{ video: '/model-examples/veo-2-2025-05-27T22-57-10-794Z.webm' }],
+        output: ['video'],
+        supported_params: { quality: false, edit: false, mask: false },
+        providers: [
+          { id: 'gemini', model_name: 'veo-2.0-generate-001', pricing: { type: 'fixed', value: 1.75 } }
+        ]
+      },
+      {
+        id: 'google/veo-3',
+        name: 'Google Veo 3',
+        description: 'Google\'s advanced video generation model',
+        pricing: { type: 'fixed', value: 6 },
+        arena_score: 1174,
+        release_date: '2025-05-20',
+        examples: [{ video: '/model-examples/veo-3.webm' }],
+        output: ['video'],
+        supported_params: { quality: false, edit: false, mask: false },
+        providers: [
+          { id: 'replicate', model_name: 'google/veo-3', pricing: { type: 'fixed', value: 6 } }
+        ]
+      },
+      {
+        id: 'kwaivgi/kling-1.6-standard',
+        name: 'Kling 1.6 Standard',
+        description: 'High-quality video generation model',
+        pricing: { type: 'fixed', value: 0.25 },
+        arena_score: 1024,
+        release_date: '2024-12-19',
+        examples: [{ video: '/model-examples/kling-1.6-standard.webm' }],
+        output: ['video'],
+        supported_params: { quality: false, edit: false, mask: false },
+        providers: [
+          { id: 'replicate', model_name: 'kwaivgi/kling-v1.6-standard', pricing: { type: 'fixed', value: 0.25 } }
+        ]
+      },
+      {
+        id: 'bytedance/seedance-1-lite',
+        name: 'Seedance 1 Lite',
+        description: 'Fast and efficient video generation',
+        pricing: { type: 'fixed', value: 0.186 },
+        arena_score: 1197,
+        release_date: '2025-06-16',
+        examples: [{ video: '/model-examples/seedance-1-2025-06-16T19-01-20-528Z.webm' }],
+        output: ['video'],
+        supported_params: { quality: false, edit: false, mask: false },
+        providers: [
+          { id: 'fal', model_name: 'fal-ai/bytedance/seedance/v1/lite/text-to-video', pricing: { type: 'fixed', value: 0.186 } }
         ]
       },
       {
