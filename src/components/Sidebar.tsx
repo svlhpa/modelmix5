@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles, Headphones } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -16,7 +16,7 @@ interface SidebarProps {
   onOpenAdmin?: () => void;
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
-  onOpenVideoCall: () => void;
+  onOpenVoiceLabs: () => void;
   onOpenWriteupAgent: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAdmin,
   onOpenTierUpgrade,
   onOpenDebateClub,
-  onOpenVideoCall,
+  onOpenVoiceLabs,
   onOpenWriteupAgent,
   isCollapsed,
   isMobileOpen,
@@ -129,16 +129,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <span>AI Debate Club</span>
                         </button>
 
+                        <button
+                          onClick={() => {
+                            onOpenVoiceLabs();
+                            onToggleMobile();
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                        >
+                          <Headphones size={16} />
+                          <span>Voice Labs</span>
+                        </button>
+
                         {isProUser ? (
                           <button
                             onClick={() => {
-                              onOpenVideoCall();
+                              onOpenWriteupAgent();
                               onToggleMobile();
                             }}
                             className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                           >
-                            <Video size={16} />
-                            <span>AI Video Call</span>
+                            <FileText size={16} />
+                            <span>Write-up Agent</span>
                           </button>
                         ) : (
                           <div className="relative">
@@ -146,8 +157,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               disabled
                               className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
                             >
-                              <Video size={16} />
-                              <span>AI Video Call</span>
+                              <FileText size={16} />
+                              <span>Write-up Agent</span>
                               <Crown size={12} className="text-yellow-400 ml-auto" />
                             </button>
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -163,17 +174,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                           </div>
                         )}
-
-                        <button
-                          onClick={() => {
-                            onOpenWriteupAgent();
-                            onToggleMobile();
-                          }}
-                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                        >
-                          <FileText size={16} />
-                          <span>Write-up Agent</span>
-                        </button>
                       </div>
                     )}
                   </div>
@@ -491,13 +491,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span>AI Debate Club</span>
                   </button>
 
+                  <button
+                    onClick={onOpenVoiceLabs}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                  >
+                    <Headphones size={16} />
+                    <span>Voice Labs</span>
+                  </button>
+
                   {isProUser ? (
                     <button
-                      onClick={onOpenVideoCall}
+                      onClick={onOpenWriteupAgent}
                       className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
                     >
-                      <Video size={16} />
-                      <span>AI Video Call</span>
+                      <FileText size={16} />
+                      <span>Write-up Agent</span>
                     </button>
                   ) : (
                     <div className="relative">
@@ -505,8 +513,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         disabled
                         className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
                       >
-                        <Video size={16} />
-                        <span>AI Video Call</span>
+                        <FileText size={16} />
+                        <span>Write-up Agent</span>
                         <Crown size={12} className="text-yellow-400 ml-auto" />
                       </button>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -519,14 +527,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     </div>
                   )}
-
-                  <button
-                    onClick={onOpenWriteupAgent}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                  >
-                    <FileText size={16} />
-                    <span>Write-up Agent</span>
-                  </button>
                 </div>
               )}
             </div>
