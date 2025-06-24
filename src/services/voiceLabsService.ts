@@ -2,14 +2,15 @@ import { globalApiService } from './globalApiService';
 import { UserTier } from '../types';
 
 class VoiceLabsService {
-  private readonly API_BASE_URL = 'wss://api.modelmix.app/voice-labs';
+  private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
+  private readonly WEBSOCKET_URL = 'wss://api.elevenlabs.io/v1/speech-to-speech';
   private readonly FALLBACK_URL = 'wss://echo.websocket.org'; // Fallback for testing
 
   // Get WebSocket URL for voice connection
   getWebSocketUrl(): string {
     // In a production environment, this would be a real WebSocket endpoint
-    // For now, we'll use a placeholder that will be replaced by the real endpoint
-    return this.API_BASE_URL;
+    // For now, we'll use our Supabase Edge Function endpoint
+    return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-labs`;
   }
 
   // Get available voices from ElevenLabs
@@ -21,7 +22,7 @@ class VoiceLabsService {
         throw new Error('ElevenLabs API key not available');
       }
 
-      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      const response = await fetch(`${this.API_BASE_URL}/voices`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -55,7 +56,14 @@ class VoiceLabsService {
   // Get OpenAI Whisper API key (from global keys)
   async getWhisperApiKey(userTier: UserTier): Promise<string | null> {
     try {
-      const apiKey = await globalApiService.getGlobalApiKey('openai_whisper', userTier);
+      // First try dedicated whisper key
+      let apiKey = await globalApiService.getGlobalApiKey('openai_whisper', userTier);
+      
+      // If not available, fall back to regular OpenAI key
+      if (!apiKey) {
+        apiKey = await globalApiService.getGlobalApiKey('openai', userTier);
+      }
+      
       return apiKey;
     } catch (error) {
       console.error('Failed to get Whisper API key:', error);
@@ -141,6 +149,26 @@ class VoiceLabsService {
     };
     
     return voiceMap[character.toLowerCase()] || 'rachel';
+  }
+
+  // Get voice ID from voice name
+  getVoiceId(voiceName: string): string {
+    const voiceIds: Record<string, string> = {
+      'rachel': '21m00Tcm4TlvDq8ikWAM',
+      'drew': 'jsCqWAovK2LkecY7zXl4',
+      'clyde': '2EiwWnXFnvU5JabPnv8n',
+      'paul': 'onwK4e9ZLuTAKqWW03F9',
+      'domi': 'AZnzlk1XvdvUeBnXmlld',
+      'dave': 'CYw3kZ02Hs0563khs1Fj'
+    };
+    
+    return voiceIds[voiceName.toLowerCase()] || '21m00Tcm4TlvDq8ikWAM'; // Default to Rachel
+  }
+
+  // Check if ElevenLabs is available
+  async isElevenLabsAvailable(userTier: UserTier = 'tier1'): Promise<boolean> {
+    const apiKey = await this.getElevenLabsApiKey(userTier);
+    return !!apiKey;
   }
 }
 
