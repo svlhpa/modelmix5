@@ -11,6 +11,7 @@ interface TextToSpeechRequest {
     style?: number;
     use_speaker_boost?: boolean;
   };
+  stream?: boolean;
 }
 
 interface SpeechToTextRequest {
@@ -20,6 +21,7 @@ interface SpeechToTextRequest {
 class ElevenLabsService {
   private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
   private readonly DEFAULT_MODEL = 'eleven_turbo_v2';
+  private readonly STREAMING_MODEL = 'eleven_monolingual_v1';
 
   async getApiKey(userTier: UserTier = 'tier1'): Promise<string | null> {
     try {
@@ -69,7 +71,7 @@ class ElevenLabsService {
       clarity: number;
       style: number;
     }
-  ): Promise<string> {
+  ): Promise<Blob> {
     const apiKey = await this.getApiKey(userTier);
     
     if (!apiKey) {
@@ -102,11 +104,97 @@ class ElevenLabsService {
         throw new Error(`Failed to convert text to speech: ${response.status}`);
       }
 
-      // In a real implementation, we would process the audio blob
-      // For now, we'll return a placeholder URL
-      return 'https://example.com/audio.mp3';
+      // Increment global usage if using global key
+      const isGlobalKey = !(await this.isUsingPersonalKey(userTier));
+      if (isGlobalKey) {
+        await globalApiService.incrementGlobalUsage('elevenlabs');
+      }
+
+      return await response.blob();
     } catch (error) {
       console.error('Failed to convert text to speech:', error);
+      throw error;
+    }
+  }
+
+  async streamTextToSpeech(
+    text: string,
+    voiceId: string,
+    userTier: UserTier = 'tier1',
+    voiceSettings?: {
+      stability: number;
+      clarity: number;
+      style: number;
+    },
+    onChunk?: (audioChunk: Uint8Array) => void,
+    onFinish?: () => void,
+    onError?: (error: Error) => void
+  ): Promise<void> {
+    const apiKey = await this.getApiKey(userTier);
+    
+    if (!apiKey) {
+      throw new Error('Eleven Labs API key not available. Please configure it in settings or contact support for global key access.');
+    }
+
+    try {
+      const request: TextToSpeechRequest = {
+        text,
+        voice_id: voiceId,
+        model_id: this.STREAMING_MODEL, // Use streaming-optimized model
+        voice_settings: {
+          stability: voiceSettings?.stability || 0.5,
+          similarity_boost: voiceSettings?.clarity || 0.75,
+          style: voiceSettings?.style || 0.5,
+          use_speaker_boost: true
+        },
+        stream: true
+      };
+
+      const response = await fetch(`${this.API_BASE_URL}/text-to-speech/${voiceId}/stream`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to stream text to speech: ${response.status}`);
+      }
+
+      // Increment global usage if using global key
+      const isGlobalKey = !(await this.isUsingPersonalKey(userTier));
+      if (isGlobalKey) {
+        await globalApiService.incrementGlobalUsage('elevenlabs');
+      }
+
+      // Process the streaming response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      // Read chunks
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // Process chunk
+        if (value && onChunk) {
+          onChunk(value);
+        }
+      }
+
+      // Finished
+      if (onFinish) {
+        onFinish();
+      }
+    } catch (error) {
+      console.error('Failed to stream text to speech:', error);
+      if (onError) {
+        onError(error instanceof Error ? error : new Error('Unknown error'));
+      }
       throw error;
     }
   }
@@ -120,9 +208,30 @@ class ElevenLabsService {
     }
 
     try {
-      // In a real implementation, we would call the OpenAI Whisper API
-      // For now, we'll return a placeholder text
-      return "This is a simulated transcription of the audio.";
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.webm');
+      formData.append('model', 'whisper-1');
+      
+      // Call OpenAI Whisper API
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to transcribe audio: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Increment global usage
+      await globalApiService.incrementGlobalUsage('openai_whisper');
+      
+      return data.text || '';
     } catch (error) {
       console.error('Failed to convert speech to text:', error);
       throw error;
@@ -173,6 +282,13 @@ class ElevenLabsService {
       console.error('Eleven Labs API key test failed:', error);
       return false;
     }
+  }
+
+  // Check if using personal key
+  private async isUsingPersonalKey(userTier: UserTier): Promise<boolean> {
+    // This would check if the user has a personal key configured
+    // For now, we'll assume all keys are global
+    return false;
   }
 }
 
