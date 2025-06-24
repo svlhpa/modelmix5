@@ -1,0 +1,249 @@
+{
+  "black-forest-labs/FLUX-1.1-pro": {
+    "providers": [
+      {
+        "id": "deepinfra",
+        "model_name": "black-forest-labs/FLUX-1.1-pro",
+        "pricing": {
+          "type": "fixed",
+          "value": 0.04
+        }
+      }
+    ],
+    "arena_score": 1085,
+    "release_date": "2024-11-02",
+    "examples": [
+      {
+        "image": "/model-examples/FLUX-1.1-pro.webp"
+      }
+    ],
+    "output": [
+      "image"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "black-forest-labs/FLUX-1-schnell:free": {
+    "providers": [
+      {
+        "id": "deepinfra",
+        "model_name": "black-forest-labs/FLUX-1-schnell",
+        "pricing": {
+          "type": "fixed",
+          "value": 0
+        }
+      }
+    ],
+    "arena_score": 1000,
+    "release_date": "2024-08-01",
+    "examples": [
+      {
+        "image": "/model-examples/FLUX-1-schnell.webp"
+      }
+    ],
+    "output": [
+      "image"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "stabilityai/sdxl-turbo:free": {
+    "providers": [
+      {
+        "id": "deepinfra",
+        "model_name": "stabilityai/sdxl-turbo",
+        "pricing": {
+          "type": "fixed",
+          "value": 0
+        }
+      }
+    ],
+    "arena_score": 1031,
+    "release_date": "2024-10-22",
+    "examples": [
+      {
+        "image": "/model-examples/sdxl-turbo.webp"
+      }
+    ],
+    "output": [
+      "image"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "openai/dall-e-3": {
+    "providers": [
+      {
+        "id": "openai",
+        "model_name": "dall-e-3",
+        "pricing": {
+          "type": "calculated",
+          "range": {
+            "min": 0.04,
+            "average": 0.04,
+            "max": 0.08
+          }
+        }
+      }
+    ],
+    "arena_score": 937,
+    "release_date": "2023-10-20",
+    "examples": [
+      {
+        "image": "/model-examples/dall-e-3.webp"
+      }
+    ],
+    "output": [
+      "image"
+    ],
+    "supported_params": {
+      "quality": true,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "google/veo-2": {
+    "providers": [
+      {
+        "id": "gemini",
+        "model_name": "veo-2.0-generate-001",
+        "pricing": {
+          "type": "fixed",
+          "value": 1.75
+        }
+      }
+    ],
+    "arena_score": 1104,
+    "release_date": "2024-12-16",
+    "examples": [
+      {
+        "video": "/model-examples/veo-2-2025-05-27T22-57-10-794Z.webm"
+      }
+    ],
+    "output": [
+      "video"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "google/veo-3": {
+    "providers": [
+      {
+        "id": "replicate",
+        "model_name": "google/veo-3",
+        "pricing": {
+          "type": "fixed",
+          "value": 6
+        }
+      }
+    ],
+    "arena_score": 1174,
+    "release_date": "2025-05-20",
+    "examples": [
+      {
+        "video": "/model-examples/veo-3.webm"
+      }
+    ],
+    "output": [
+      "video"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "kwaivgi/kling-1.6-standard": {
+    "providers": [
+      {
+        "id": "replicate",
+        "model_name": "kwaivgi/kling-v1.6-standard",
+        "pricing": {
+          "type": "fixed",
+          "value": 0.25
+        }
+      }
+    ],
+    "arena_score": 1024,
+    "release_date": "2024-12-19",
+    "examples": [
+      {
+        "video": "/model-examples/kling-1.6-standard.webm"
+      }
+    ],
+    "output": [
+      "video"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "bytedance/seedance-1-lite": {
+    "providers": [
+      {
+        "id": "fal",
+        "model_name": "fal-ai/bytedance/seedance/v1/lite/text-to-video",
+        "pricing": {
+          "type": "fixed",
+          "value": 0.186
+        }
+      }
+    ],
+    "arena_score": 1197,
+    "release_date": "2025-06-16",
+    "examples": [
+      {
+        "video": "/model-examples/seedance-1-2025-06-16T19-01-20-528Z.webm"
+      }
+    ],
+    "output": [
+      "video"
+    ],
+    "supported_params": {
+      "quality": false,
+      "edit": false,
+      "mask": false
+    }
+  },
+  "ir/test-video": {
+    "providers": [
+      {
+        "id": "test",
+        "model_name": "ir/test-video",
+        "pricing": {
+          "type": "fixed",
+          "value": 0
+        }
+      }
+    ],
+    "arena_score": 0,
+    "release_date": "2025-05-04",
+    "examples": [
+      {
+        "video": "https://raw.githubusercontent.com/DaWe35/image-router/refs/heads/main/src/shared/videoModels/test/big_buck_bunny_720p_1mb.mp4"
+      }
+    ],
+    "output": [
+      "video"
+    ],
+    "supported_params": {
+      "quality": true,
+      "edit": true,
+      "mask": true
+    }
+  }
+}
