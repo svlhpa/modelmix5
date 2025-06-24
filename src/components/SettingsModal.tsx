@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Settings, Palette, Eye, EyeOff, Save, AlertTriangle, CheckCircle, Crown, Gift, Infinity, Globe } from 'lucide-react';
+import { X, Key, Settings, Palette, Eye, EyeOff, Save, AlertTriangle, CheckCircle, Crown, Gift, Infinity, Globe, Volume2 } from 'lucide-react';
 import { APISettings, ModelSettings } from '../types';
 import { openRouterService, OpenRouterModel } from '../services/openRouterService';
 import { imageRouterService, ImageModel } from '../services/imageRouterService';
@@ -46,7 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, currentSettings, currentModelSettings]);
 
   const checkGlobalKeysAvailability = async () => {
-    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'imagerouter'];
+    const providers = ['openai', 'gemini', 'deepseek', 'openrouter', 'imagerouter', 'elevenlabs', 'openai_whisper'];
     const availability: Record<string, boolean> = {};
     
     for (const provider of providers) {
@@ -325,7 +325,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 { key: 'gemini' as const, name: 'Google Gemini', placeholder: 'AI...', description: 'For Gemini Pro models' },
                 { key: 'deepseek' as const, name: 'DeepSeek', placeholder: 'sk-...', description: 'For DeepSeek Chat models' },
                 { key: 'serper' as const, name: 'Serper (Internet Search)', placeholder: 'your-serper-key', description: 'For real-time web search' },
-                { key: 'imagerouter' as const, name: 'Imagerouter (Image Generation)', placeholder: 'ir-...', description: 'For AI image generation models' }
+                { key: 'imagerouter' as const, name: 'Imagerouter (Image Generation)', placeholder: 'ir-...', description: 'For AI image generation models' },
+                { key: 'elevenlabs' as const, name: 'Eleven Labs (Text-to-Speech)', placeholder: 'your-elevenlabs-key', description: 'For AI voice generation' },
+                { key: 'openai_whisper' as const, name: 'OpenAI Whisper (Speech-to-Text)', placeholder: 'sk-...', description: 'For voice input transcription' }
               ].map((provider, index) => {
                 const status = getProviderStatus(provider.key);
                 return (
