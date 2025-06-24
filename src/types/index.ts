@@ -7,7 +7,6 @@ export interface Message {
   images?: string[]; // Base64 encoded images
   generatedImages?: string[]; // URLs to generated images
   isImageGeneration?: boolean; // Flag to indicate this is an image generation response
-  audioUrl?: string; // URL to generated audio for TTS
 }
 
 export interface APIResponse {
@@ -18,7 +17,6 @@ export interface APIResponse {
   selected?: boolean;
   generatedImages?: string[]; // URLs to generated images
   isImageGeneration?: boolean; // Flag to indicate this is an image generation response
-  audioUrl?: string; // URL to generated audio for TTS
 }
 
 export interface APISettings {
@@ -28,8 +26,6 @@ export interface APISettings {
   deepseek: string;
   serper: string;
   imagerouter: string;
-  elevenlabs: string; // Added Eleven Labs API key
-  openai_whisper: string; // Added OpenAI Whisper API key for STT
 }
 
 export interface OpenRouterModelSettings {
@@ -46,18 +42,6 @@ export interface ModelSettings {
   deepseek: boolean;
   openrouter_models: OpenRouterModelSettings;
   image_models: ImageModelSettings;
-}
-
-export interface VoiceChatSettings {
-  voiceId: string;
-  voiceName: string;
-  rolePlayPrompt: string;
-  autoPlayTTS: boolean;
-  sttLanguage: string;
-  voiceStability: number;
-  voiceSimilarity: number;
-  voiceStyle: number;
-  useSpeakerBoost: boolean;
 }
 
 export interface ChatSession {

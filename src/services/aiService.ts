@@ -3,7 +3,6 @@ import { databaseService } from './databaseService';
 import { globalApiService } from './globalApiService';
 import { openRouterService, OpenRouterModel } from './openRouterService';
 import { imageRouterService, ImageModel } from './imageRouterService';
-import { elevenLabsService } from './elevenLabsService';
 
 class AIService {
   private settings: APISettings = {
@@ -12,9 +11,7 @@ class AIService {
     gemini: '',
     deepseek: '',
     serper: '',
-    imagerouter: '',
-    elevenlabs: '',
-    openai_whisper: ''
+    imagerouter: ''
   };
 
   private modelSettings: ModelSettings = {
@@ -190,7 +187,7 @@ class AIService {
     }
   }
 
-  async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
+  private async callOpenAI(messages: Array<{role: 'user' | 'assistant' | 'system', content: string}>, images: string[] = [], signal?: AbortSignal, userTier?: string): Promise<string> {
     // CRITICAL: Always try tier2 first for Pro users, then fallback to tier1
     const tier = userTier || 'tier2';
     let { key: apiKey, isGlobal } = await this.getApiKey('openai', tier);
@@ -906,44 +903,6 @@ Continue the debate by addressing your opponent's arguments and strengthening yo
 
     await Promise.all(promises);
     return responses;
-  }
-
-  // Generate text-to-speech audio for a message
-  async generateTextToSpeech(
-    text: string,
-    voiceId: string,
-    voiceSettings: {
-      stability: number;
-      similarity_boost: number;
-      style?: number;
-      use_speaker_boost?: boolean;
-    },
-    userTier?: string
-  ): Promise<string | null> {
-    try {
-      // Load current settings to ensure we have the latest API keys
-      await this.loadSettings();
-      
-      // Check if Eleven Labs is available
-      const { key: apiKey } = await this.getApiKey('elevenlabs', userTier || 'tier2');
-      if (!apiKey) {
-        throw new Error('Eleven Labs API key not available');
-      }
-      
-      // Generate audio using Eleven Labs
-      const audioBlob = await elevenLabsService.textToSpeech({
-        text,
-        voice_id: voiceId,
-        voice_settings: voiceSettings
-      }, userTier as any);
-      
-      // Create URL for the audio blob
-      const audioUrl = elevenLabsService.createAudioUrl(audioBlob);
-      return audioUrl;
-    } catch (error) {
-      console.error('Failed to generate text-to-speech:', error);
-      return null;
-    }
   }
 }
 

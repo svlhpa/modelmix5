@@ -140,8 +140,7 @@ class GlobalApiService {
       serper: 'Serper (Internet Search)',
       imagerouter: 'Imagerouter (Image Generation)',
       tavus: 'Tavus (AI Video Calls)',
-      picaos: 'PicaOS (AI Orchestration)',
-      elevenlabs: 'Eleven Labs (Text-to-Speech)'
+      picaos: 'PicaOS (AI Orchestration)'
     };
     return names[provider] || provider;
   }
@@ -155,8 +154,7 @@ class GlobalApiService {
       serper: '🌐',
       imagerouter: '🎨',
       tavus: '📹',
-      picaos: '🤖',
-      elevenlabs: '🔊'
+      picaos: '🤖'
     };
     return icons[provider] || '🔧';
   }
