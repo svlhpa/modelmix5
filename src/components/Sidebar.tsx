@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, ChevronDown, ChevronUp, Sparkles, Headphones } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, ChevronDown, ChevronUp, Sparkles, Headphones, Zap } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -43,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { user, userProfile, signOut, isSuperAdmin, getCurrentTier, getUsageInfo } = useAuth();
   const [featuresExpanded, setFeaturesExpanded] = useState(false);
+  const [orchestrationExpanded, setOrchestrationExpanded] = useState(false);
   const [userMenuExpanded, setUserMenuExpanded] = useState(false);
 
   const handleSignOut = async () => {
@@ -171,6 +172,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               >
                                 Pro Only
                               </button>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Orchestration Submenu - Mobile */}
+                        <button
+                          onClick={() => setOrchestrationExpanded(!orchestrationExpanded)}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <Zap size={16} />
+                            <span>Orchestration</span>
+                          </div>
+                          {orchestrationExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                        
+                        {orchestrationExpanded && (
+                          <div className="mt-1 ml-4 space-y-1 animate-slideDown">
+                            <div className="text-xs text-gray-400 px-3 py-1">
+                              Coming soon...
                             </div>
                           </div>
                         )}
@@ -527,6 +548,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     </div>
                   )}
+                  
+                  {/* Orchestration Submenu - Desktop */}
+                  <div className="w-full">
+                    <button
+                      onClick={() => setOrchestrationExpanded(!orchestrationExpanded)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Zap size={16} />
+                        <span>Orchestration</span>
+                      </div>
+                      {orchestrationExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    
+                    {orchestrationExpanded && (
+                      <div className="mt-1 ml-4 space-y-1 animate-slideDown">
+                        <div className="text-xs text-gray-400 px-3 py-1">
+                          Coming soon...
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
