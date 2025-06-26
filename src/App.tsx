@@ -9,7 +9,6 @@ import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
 import { AIVideoCall } from './components/AIVideoCall';
 import { VoiceLabs } from './components/VoiceLabs';
-import { Orchestration } from './components/Orchestration';
 import { GetStartedModal } from './components/GetStartedModal';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
@@ -44,7 +43,6 @@ function App() {
   const [showDebateClub, setShowDebateClub] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showVoiceLabs, setShowVoiceLabs] = useState(false);
-  const [showOrchestration, setShowOrchestration] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<APISettings>({
@@ -163,14 +161,6 @@ function App() {
     }
   };
 
-  const handleOpenOrchestration = () => {
-    if (user) {
-      setShowOrchestration(true);
-    } else {
-      setShowAuth(true);
-    }
-  };
-
   const handleOpenVoiceLabs = () => {
     if (user) {
       setShowVoiceLabs(true);
@@ -205,7 +195,6 @@ function App() {
           onOpenTierUpgrade={() => setShowTierUpgrade(true)}
           onOpenDebateClub={handleOpenDebateClub}
           onOpenVideoCall={handleOpenVideoCall}
-          onOpenOrchestration={handleOpenOrchestration}
           onOpenVoiceLabs={handleOpenVoiceLabs}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
@@ -244,11 +233,6 @@ function App() {
           onClose={() => setShowVoiceLabs(false)}
         />
 
-        <Orchestration
-          isOpen={showOrchestration}
-          onClose={() => setShowOrchestration(false)}
-        />
-
         <TierUpgradeModal
           isOpen={showTierUpgrade}
           onClose={handleTierUpgradeClose}
@@ -273,7 +257,6 @@ function App() {
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         onOpenDebateClub={handleOpenDebateClub}
         onOpenVideoCall={handleOpenVideoCall}
-        onOpenOrchestration={handleOpenOrchestration}
         onOpenVoiceLabs={handleOpenVoiceLabs}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
@@ -330,11 +313,6 @@ function App() {
       <VoiceLabs
         isOpen={showVoiceLabs}
         onClose={() => setShowVoiceLabs(false)}
-      />
-
-      <Orchestration
-        isOpen={showOrchestration}
-        onClose={() => setShowOrchestration(false)}
       />
 
       <TierUpgradeModal

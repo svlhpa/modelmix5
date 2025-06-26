@@ -17,7 +17,6 @@ interface SidebarProps {
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
-  onOpenOrchestration: () => void;
   onOpenVoiceLabs: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
@@ -37,7 +36,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTierUpgrade,
   onOpenDebateClub,
   onOpenVideoCall,
-  onOpenOrchestration,
   onOpenVoiceLabs,
   isCollapsed,
   isMobileOpen,
@@ -192,40 +190,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         
                         {orchestrationExpanded && (
                           <div className="mt-1 ml-4 space-y-1 animate-slideDown">
-                            {isProUser ? (
-                              <button
-                                onClick={() => {
-                                  onOpenOrchestration();
-                                  onToggleMobile();
-                                }}
-                                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                              >
-                                <Zap size={14} />
-                                <span>Document Generator</span>
-                              </button>
-                            ) : (
-                              <div className="relative">
-                                <button
-                                  disabled
-                                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
-                                >
-                                  <Zap size={14} />
-                                  <span>Document Generator</span>
-                                  <Crown size={12} className="text-yellow-400 ml-auto" />
-                                </button>
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <button
-                                    onClick={() => {
-                                      onOpenTierUpgrade();
-                                      onToggleMobile();
-                                    }}
-                                    className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
-                                  >
-                                    Pro Only
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+                            <div className="text-xs text-gray-400 px-3 py-1">
+                              Coming soon...
+                            </div>
                           </div>
                         )}
                       </div>
@@ -597,34 +564,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     
                     {orchestrationExpanded && (
                       <div className="mt-1 ml-4 space-y-1 animate-slideDown">
-                        {isProUser ? (
-                          <button
-                            onClick={onOpenOrchestration}
-                            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                          >
-                            <Zap size={14} />
-                            <span>Document Generator</span>
-                          </button>
-                        ) : (
-                          <div className="relative">
-                            <button
-                              disabled
-                              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg opacity-50 cursor-not-allowed text-sm"
-                            >
-                              <Zap size={14} />
-                              <span>Document Generator</span>
-                              <Crown size={12} className="text-yellow-400 ml-auto" />
-                            </button>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <button
-                                onClick={onOpenTierUpgrade}
-                                className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full hover:bg-yellow-700 transition-colors"
-                              >
-                                Pro Only
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                        <div className="text-xs text-gray-400 px-3 py-1">
+                          Coming soon...
+                        </div>
                       </div>
                     )}
                   </div>
