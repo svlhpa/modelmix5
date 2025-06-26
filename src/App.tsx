@@ -8,7 +8,6 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { TierUpgradeModal } from './components/TierUpgradeModal';
 import { DebateClub } from './components/DebateClub';
 import { AIVideoCall } from './components/AIVideoCall';
-import { WriteupAgent } from './components/WriteupAgent';
 import { VoiceLabs } from './components/VoiceLabs';
 import { GetStartedModal } from './components/GetStartedModal';
 import { useChat } from './hooks/useChat';
@@ -43,7 +42,6 @@ function App() {
   const [showTierUpgrade, setShowTierUpgrade] = useState(false);
   const [showDebateClub, setShowDebateClub] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
-  const [showWriteupAgent, setShowWriteupAgent] = useState(false);
   const [showVoiceLabs, setShowVoiceLabs] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -163,14 +161,6 @@ function App() {
     }
   };
 
-  const handleOpenWriteupAgent = () => {
-    if (user) {
-      setShowWriteupAgent(true);
-    } else {
-      setShowAuth(true);
-    }
-  };
-
   const handleOpenVoiceLabs = () => {
     if (user) {
       setShowVoiceLabs(true);
@@ -205,7 +195,6 @@ function App() {
           onOpenTierUpgrade={() => setShowTierUpgrade(true)}
           onOpenDebateClub={handleOpenDebateClub}
           onOpenVideoCall={handleOpenVideoCall}
-          onOpenWriteupAgent={handleOpenWriteupAgent}
           onOpenVoiceLabs={handleOpenVoiceLabs}
           isCollapsed={sidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
@@ -244,11 +233,6 @@ function App() {
           onClose={() => setShowVoiceLabs(false)}
         />
 
-        <WriteupAgent
-          isOpen={showWriteupAgent}
-          onClose={() => setShowWriteupAgent(false)}
-        />
-
         <TierUpgradeModal
           isOpen={showTierUpgrade}
           onClose={handleTierUpgradeClose}
@@ -273,7 +257,6 @@ function App() {
         onOpenTierUpgrade={() => setShowTierUpgrade(true)}
         onOpenDebateClub={handleOpenDebateClub}
         onOpenVideoCall={handleOpenVideoCall}
-        onOpenWriteupAgent={handleOpenWriteupAgent}
         onOpenVoiceLabs={handleOpenVoiceLabs}
         isCollapsed={sidebarCollapsed}
         isMobileOpen={mobileSidebarOpen}
@@ -330,11 +313,6 @@ function App() {
       <VoiceLabs
         isOpen={showVoiceLabs}
         onClose={() => setShowVoiceLabs(false)}
-      />
-
-      <WriteupAgent
-        isOpen={showWriteupAgent}
-        onClose={() => setShowWriteupAgent(false)}
       />
 
       <TierUpgradeModal

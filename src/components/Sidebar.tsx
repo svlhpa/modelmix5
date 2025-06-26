@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, FileText, ChevronDown, ChevronUp, Sparkles, Headphones } from 'lucide-react';
+import { Plus, MessageCircle, Settings, Trash2, Search, BarChart3, LogOut, User, X, Shield, Crown, Infinity, Mic, Video, ChevronDown, ChevronUp, Sparkles, Headphones } from 'lucide-react';
 import { ChatSession } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from './Logo';
@@ -17,7 +17,6 @@ interface SidebarProps {
   onOpenTierUpgrade: () => void;
   onOpenDebateClub: () => void;
   onOpenVideoCall: () => void;
-  onOpenWriteupAgent: () => void;
   onOpenVoiceLabs: () => void;
   isCollapsed: boolean;
   isMobileOpen: boolean;
@@ -37,7 +36,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTierUpgrade,
   onOpenDebateClub,
   onOpenVideoCall,
-  onOpenWriteupAgent,
   onOpenVoiceLabs,
   isCollapsed,
   isMobileOpen,
@@ -176,17 +174,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                           </div>
                         )}
-
-                        <button
-                          onClick={() => {
-                            onOpenWriteupAgent();
-                            onToggleMobile();
-                          }}
-                          className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                        >
-                          <FileText size={16} />
-                          <span>Write-up Agent</span>
-                        </button>
                       </div>
                     )}
                   </div>
@@ -540,14 +527,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     </div>
                   )}
-
-                  <button
-                    onClick={onOpenWriteupAgent}
-                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm"
-                  >
-                    <FileText size={16} />
-                    <span>Write-up Agent</span>
-                  </button>
                 </div>
               )}
             </div>
