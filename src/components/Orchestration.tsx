@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Zap, FileText, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Target, Users, Shield, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp, Save, Trash2, Plus, Settings, RefreshCw, Copy, Loader2, ArrowRight } from 'lucide-react';
+import { X, Zap, CheckCircle, AlertCircle, Clock, Play, Pause, Download, Eye, Edit, RotateCcw, Target, Users, DollarSign, Sparkles, BookOpen, FileCheck, Layers, Globe, ChevronDown, ChevronUp, Save, FileText, Brain } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
-import jsPDF from 'jspdf';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface OrchestrationProps {
   isOpen: boolean;
@@ -13,22 +15,21 @@ interface OrchestrationProps {
 interface Project {
   id: string;
   title: string;
-  user_id: string;
   original_prompt: string;
   status: 'draft' | 'planning' | 'writing' | 'reviewing' | 'completed' | 'paused' | 'error';
   created_at: string;
   updated_at: string;
+  user_id: string;
 }
 
 interface ProjectMetadata {
   id: string;
   project_id: string;
-  audience: string;
-  tone: string;
-  purpose: string;
-  doc_type: string;
+  audience: string | null;
+  tone: string | null;
+  purpose: string | null;
+  doc_type: string | null;
   word_count: number;
-  created_at: string;
 }
 
 interface Section {
@@ -37,7 +38,7 @@ interface Section {
   title: string;
   assigned_model: string;
   token_budget: number;
-  status: 'pending' | 'writing' | 'completed' | 'error';
+  status: 'pending' | 'writing' | 'completed' | 'reviewing' | 'error';
   order: number;
   created_at: string;
   updated_at: string;
@@ -53,49 +54,63 @@ interface SectionOutput {
   updated_at: string;
 }
 
+interface ProjectWithDetails {
+  id: string;
+  title: string;
+  original_prompt: string;
+  status: 'draft' | 'planning' | 'writing' | 'reviewing' | 'completed' | 'paused' | 'error';
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  metadata: ProjectMetadata | null;
+  sections: (Section & { output?: SectionOutput | null })[];
+  progress: number;
+  currentSection: number;
+  totalSections: number;
+  wordCount: number;
+}
+
+interface OpenRouterModel {
+  id: string;
+  name: string;
+}
+
 export const Orchestration: React.FC<OrchestrationProps> = ({ isOpen, onClose }) => {
   const { user, getCurrentTier } = useAuth();
-  const [step, setStep] = useState<'projects' | 'setup' | 'details' | 'plan' | 'writing' | 'review' | 'export'>('projects');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [projectMetadata, setProjectMetadata] = useState<ProjectMetadata | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
-  const [sectionOutputs, setSectionOutputs] = useState<Record<string, SectionOutput>>({});
-  
-  // Form states
+  const [step, setStep] = useState<'setup' | 'planning' | 'writing' | 'review' | 'completed'>('setup');
+  const [currentProject, setCurrentProject] = useState<ProjectWithDetails | null>(null);
+  const [projects, setProjects] = useState<ProjectWithDetails[]>([]);
   const [prompt, setPrompt] = useState('');
-  const [title, setTitle] = useState('');
-  const [audience, setAudience] = useState('');
-  const [tone, setTone] = useState('professional');
-  const [purpose, setPurpose] = useState('');
-  const [docType, setDocType] = useState('guide');
-  const [wordCount, setWordCount] = useState(5000);
-  
-  // UI states
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [settings, setSettings] = useState({
+    audience: '',
+    tone: 'formal',
+    purpose: '',
+    docType: 'research-paper',
+    wordCount: 5000
+  });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showFullDocument, setShowFullDocument] = useState(false);
-  const [availableModels, setAvailableModels] = useState<{id: string, name: string}[]>([]);
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState('');
-  
+  const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([]);
+  const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const currentTier = getCurrentTier();
   const isProUser = currentTier === 'tier2';
 
   useEffect(() => {
     if (isOpen) {
-      loadProjects();
-      loadAvailableModels();
+      if (isProUser) {
+        loadProjects();
+        loadAvailableModels();
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, isProUser]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [sections]);
+  }, [currentProject?.sections]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -104,50 +119,158 @@ export const Orchestration: React.FC<OrchestrationProps> = ({ isOpen, onClose })
   const loadProjects = async () => {
     if (!user) return;
     
-    setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      setProjects(data || []);
+        .order('updated_at', { ascending: false });
+
+      if (projectsError) throw projectsError;
+
+      const projectsWithDetails: ProjectWithDetails[] = [];
+
+      for (const project of projectsData) {
+        // Get metadata
+        const { data: metadataData } = await supabase
+          .from('project_metadata')
+          .select('*')
+          .eq('project_id', project.id)
+          .single();
+
+        // Get sections
+        const { data: sectionsData } = await supabase
+          .from('sections')
+          .select('*')
+          .eq('project_id', project.id)
+          .order('order', { ascending: true });
+
+        // Get section outputs
+        const sectionsWithOutputs = await Promise.all((sectionsData || []).map(async (section) => {
+          const { data: outputData } = await supabase
+            .from('section_outputs')
+            .select('*')
+            .eq('section_id', section.id)
+            .single();
+
+          return {
+            ...section,
+            output: outputData || null
+          };
+        }));
+
+        // Calculate progress
+        const totalSections = sectionsWithOutputs.length;
+        const completedSections = sectionsWithOutputs.filter(s => s.status === 'completed').length;
+        const progress = totalSections > 0 ? Math.round((completedSections / totalSections) * 100) : 0;
+        
+        // Calculate current section
+        const currentSection = sectionsWithOutputs.findIndex(s => s.status === 'writing' || s.status === 'pending');
+        
+        // Calculate word count
+        const wordCount = sectionsWithOutputs.reduce((total, section) => {
+          if (section.output?.raw_output) {
+            return total + countWords(section.output.raw_output);
+          }
+          return total;
+        }, 0);
+
+        projectsWithDetails.push({
+          ...project,
+          metadata: metadataData || null,
+          sections: sectionsWithOutputs,
+          progress,
+          currentSection: currentSection >= 0 ? currentSection : totalSections,
+          totalSections,
+          wordCount
+        });
+      }
+
+      setProjects(projectsWithDetails);
     } catch (error) {
-      console.error('Error loading projects:', error);
-      setError('Failed to load your projects. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('Failed to load projects:', error);
+      setError('Failed to load projects. Please try again.');
     }
   };
 
   const loadAvailableModels = async () => {
     try {
-      // In a real implementation, this would fetch from OpenRouter API
-      // For now, we'll use a hardcoded list of models
-      setAvailableModels([
-        { id: 'anthropic/claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
-        { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus' },
-        { id: 'openai/gpt-4o', name: 'GPT-4o' },
-        { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-        { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
-        { id: 'mistralai/mistral-large', name: 'Mistral Large' },
-        { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1' }
-      ]);
+      // Get OpenRouter API key from global keys
+      const { data: openRouterKey, error: keyError } = await supabase.rpc(
+        'get_global_api_key',
+        { provider_name: 'openrouter', user_tier: 'tier2' }
+      );
+
+      if (keyError || !openRouterKey) {
+        console.error('Failed to get OpenRouter API key:', keyError);
+        return;
+      }
+
+      // Fetch models from OpenRouter
+      const response = await fetch('https://openrouter.ai/api/v1/models', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Filter models suitable for document generation (with good context length)
+      const filteredModels = data.data
+        .filter((model: any) => {
+          // Filter out models that are likely not suitable for document generation
+          const isChat = !model.id.includes('embedding') && 
+                        !model.id.includes('whisper') && 
+                        !model.id.includes('tts') &&
+                        !model.id.includes('dall-e') &&
+                        !model.id.includes('stable-diffusion');
+          
+          // Only include models with reasonable context length
+          const hasGoodContext = model.context_length >= 8000;
+          
+          return isChat && hasGoodContext;
+        })
+        .sort((a: any, b: any) => {
+          // Sort by quality/preference
+          const getModelPriority = (model: any) => {
+            const id = model.id.toLowerCase();
+            if (id.includes('claude-3.5-sonnet')) return 10;
+            if (id.includes('gpt-4o')) return 9;
+            if (id.includes('claude-3-opus')) return 8;
+            if (id.includes('gemini-1.5-pro')) return 7;
+            if (id.includes('wizardlm-2')) return 6;
+            if (id.includes('mixtral-8x22b')) return 5;
+            if (id.includes('llama-3.1-405b')) return 4;
+            if (id.includes('qwen2.5-72b')) return 3;
+            if (id.includes('deepseek-r1')) return 2;
+            return 1;
+          };
+          return getModelPriority(b) - getModelPriority(a);
+        });
+
+      setAvailableModels(filteredModels.map((model: any) => ({
+        id: model.id,
+        name: model.name
+      })));
     } catch (error) {
-      console.error('Error loading models:', error);
+      console.error('Failed to load models:', error);
     }
   };
 
-  const createProject = async () => {
+  const handleStartProject = async () => {
     if (!user) {
-      setError('Please sign in to create a project');
+      setError('Please sign in to use the Document Generator');
       return;
     }
 
     if (!isProUser) {
-      setError('Orchestration is a Pro feature. Please upgrade to access this feature.');
+      setError('This feature is only available for Pro users');
       return;
     }
 
@@ -156,619 +279,1082 @@ export const Orchestration: React.FC<OrchestrationProps> = ({ isOpen, onClose })
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Generate a title if not provided
-      const projectTitle = title.trim() || generateTitle(prompt);
-      
-      // Create project in database
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({
-          title: projectTitle,
-          user_id: user.id,
-          original_prompt: prompt,
-          status: 'draft'
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      setCurrentProject(data);
-      setTitle(projectTitle);
-      setStep('details');
-      setSuccess('Project created successfully! Now let\'s add some details.');
-    } catch (error) {
-      console.error('Error creating project:', error);
-      setError('Failed to create project. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveProjectMetadata = async () => {
-    if (!currentProject) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Save metadata to database
-      const { data, error } = await supabase
-        .from('project_metadata')
-        .insert({
-          project_id: currentProject.id,
-          audience,
-          tone,
-          purpose,
-          doc_type: docType,
-          word_count: wordCount
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      setProjectMetadata(data);
-      
-      // Update project status
-      await supabase
-        .from('projects')
-        .update({ status: 'planning' })
-        .eq('id', currentProject.id);
-      
-      if (currentProject) {
-        setCurrentProject({
-          ...currentProject,
-          status: 'planning'
-        });
-      }
-      
-      setStep('plan');
-      setSuccess('Details saved! Now generating your writing plan...');
-      
-      // Generate writing plan
-      generateWritingPlan();
-    } catch (error) {
-      console.error('Error saving project metadata:', error);
-      setError('Failed to save project details. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateWritingPlan = async () => {
-    if (!currentProject || !projectMetadata) return;
-    
     setIsGenerating(true);
     setError(null);
-    
+    setStep('planning');
+
     try {
-      // In a real implementation, this would call OpenAI API to generate a plan
-      // For now, we'll simulate the response
-      
-      // Calculate number of sections based on word count
-      const sectionCount = Math.max(3, Math.min(10, Math.ceil(wordCount / 1000)));
-      const tokensPerSection = Math.ceil((wordCount * 1.5) / sectionCount); // ~1.5 tokens per word
-      
-      // Generate section titles based on document type
-      const sectionTitles = generateSectionTitles(docType, prompt, sectionCount);
-      
-      // Create sections in database
-      const sectionsToInsert = sectionTitles.map((title, index) => ({
-        project_id: currentProject.id,
-        title,
-        assigned_model: getRandomModel().id,
-        token_budget: tokensPerSection,
+      // Create project in Supabase
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .insert({
+          title: generateTitle(prompt),
+          user_id: user.id,
+          original_prompt: prompt.trim(),
+          status: 'planning'
+        })
+        .select()
+        .single();
+
+      if (projectError) throw projectError;
+
+      // Create project metadata
+      const { error: metadataError } = await supabase
+        .from('project_metadata')
+        .insert({
+          project_id: projectData.id,
+          audience: settings.audience || null,
+          tone: settings.tone,
+          purpose: settings.purpose || null,
+          doc_type: settings.docType,
+          word_count: settings.wordCount
+        });
+
+      if (metadataError) throw metadataError;
+
+      // Generate document outline using GPT-4o
+      const outline = await generateOutline(prompt, settings);
+
+      // Create sections in Supabase
+      const sectionsToInsert = outline.sections.map((section: any, index: number) => ({
+        project_id: projectData.id,
+        title: section.title,
+        assigned_model: section.assigned_model || getDefaultModel(),
+        token_budget: section.token_budget || Math.round((settings.wordCount / outline.sections.length) * 4), // ~4 tokens per word
         status: 'pending',
-        order: index + 1
+        order: index
       }));
-      
-      const { data, error } = await supabase
+
+      const { data: sectionsData, error: sectionsError } = await supabase
         .from('sections')
         .insert(sectionsToInsert)
         .select();
-      
-      if (error) throw error;
-      
-      setSections(data);
-      
-      // Update project status
-      await supabase
-        .from('projects')
-        .update({ status: 'planning' })
-        .eq('id', currentProject.id);
-      
-      setSuccess('Writing plan generated successfully!');
-    } catch (error) {
-      console.error('Error generating writing plan:', error);
-      setError('Failed to generate writing plan. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
-  const startWritingProcess = async () => {
-    if (!currentProject || sections.length === 0) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
+      if (sectionsError) throw sectionsError;
+
       // Update project status
-      await supabase
+      const { error: updateError } = await supabase
         .from('projects')
-        .update({ status: 'writing' })
-        .eq('id', currentProject.id);
-      
-      if (currentProject) {
-        setCurrentProject({
-          ...currentProject,
-          status: 'writing'
-        });
-      }
-      
+        .update({ 
+          status: 'writing',
+          title: outline.title || generateTitle(prompt),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectData.id);
+
+      if (updateError) throw updateError;
+
+      // Load the full project with details
+      await loadProjectDetails(projectData.id);
       setStep('writing');
-      setSuccess('Starting the writing process...');
       
-      // Start generating content for each section
-      generateSectionContent();
     } catch (error) {
-      console.error('Error starting writing process:', error);
-      setError('Failed to start writing process. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateSectionContent = async () => {
-    if (!currentProject || sections.length === 0) return;
-    
-    setIsGenerating(true);
-    
-    try {
-      // Process sections sequentially
-      for (const section of sections) {
-        if (section.status === 'completed') continue;
-        
-        // Update section status
-        const updatedSection = { ...section, status: 'writing' };
-        await updateSection(updatedSection);
-        
-        // In a real implementation, this would call the assigned AI model
-        // For now, we'll simulate the response with a delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Generate content based on section title and project details
-        const content = await simulateAIResponse(section.title, currentProject.original_prompt, projectMetadata);
-        
-        // Save section output
-        const { data: outputData, error: outputError } = await supabase
-          .from('section_outputs')
-          .insert({
-            section_id: section.id,
-            raw_output: content,
-            ai_notes: `Generated using ${section.assigned_model}`,
-            is_finalized: true
-          })
-          .select()
-          .single();
-        
-        if (outputError) throw outputError;
-        
-        // Update section status
-        const completedSection = { ...section, status: 'completed' };
-        await updateSection(completedSection);
-        
-        // Update local state
-        setSectionOutputs(prev => ({
-          ...prev,
-          [section.id]: outputData
-        }));
-      }
-      
-      // Update project status
-      await supabase
-        .from('projects')
-        .update({ status: 'completed' })
-        .eq('id', currentProject.id);
-      
-      if (currentProject) {
-        setCurrentProject({
-          ...currentProject,
-          status: 'completed'
-        });
-      }
-      
-      setStep('review');
-      setSuccess('All sections completed! You can now review your document.');
-    } catch (error) {
-      console.error('Error generating section content:', error);
-      setError('Failed to generate content. Please try again.');
+      console.error('Failed to start project:', error);
+      setError(error instanceof Error ? error.message : 'Failed to start project');
+      setStep('setup');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const updateSection = async (section: Section) => {
+  const loadProjectDetails = async (projectId: string) => {
     try {
-      const { error } = await supabase
-        .from('sections')
-        .update({
-          assigned_model: section.assigned_model,
-          status: section.status,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', section.id);
-      
-      if (error) throw error;
-      
-      // Update local state
-      setSections(prev => prev.map(s => s.id === section.id ? section : s));
-    } catch (error) {
-      console.error('Error updating section:', error);
-      throw error;
-    }
-  };
-
-  const handleModelChange = async (sectionId: string, modelId: string) => {
-    const section = sections.find(s => s.id === sectionId);
-    if (!section) return;
-    
-    try {
-      const updatedSection = { ...section, assigned_model: modelId };
-      await updateSection(updatedSection);
-      setSuccess(`Model updated for "${section.title}"`);
-    } catch (error) {
-      console.error('Error changing model:', error);
-      setError('Failed to update model. Please try again.');
-    }
-  };
-
-  const handleEditSection = (sectionId: string) => {
-    const output = sectionOutputs[sectionId];
-    if (!output) return;
-    
-    setEditingSectionId(sectionId);
-    setEditingContent(output.raw_output);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingSectionId) return;
-    
-    setLoading(true);
-    
-    try {
-      // Update section output
-      const { error } = await supabase
-        .from('section_outputs')
-        .update({
-          raw_output: editingContent,
-          updated_at: new Date().toISOString()
-        })
-        .eq('section_id', editingSectionId);
-      
-      if (error) throw error;
-      
-      // Update local state
-      if (sectionOutputs[editingSectionId]) {
-        setSectionOutputs(prev => ({
-          ...prev,
-          [editingSectionId]: {
-            ...prev[editingSectionId],
-            raw_output: editingContent
-          }
-        }));
-      }
-      
-      setEditingSectionId(null);
-      setEditingContent('');
-      setSuccess('Section updated successfully!');
-    } catch (error) {
-      console.error('Error saving edit:', error);
-      setError('Failed to save changes. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegenerateSection = async (sectionId: string) => {
-    const section = sections.find(s => s.id === sectionId);
-    if (!section) return;
-    
-    setLoading(true);
-    
-    try {
-      // Update section status
-      const updatedSection = { ...section, status: 'writing' };
-      await updateSection(updatedSection);
-      
-      // In a real implementation, this would call the assigned AI model
-      // For now, we'll simulate the response with a delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Generate new content
-      const content = await simulateAIResponse(section.title, currentProject?.original_prompt || '', projectMetadata, true);
-      
-      // Update section output
-      const { error } = await supabase
-        .from('section_outputs')
-        .update({
-          raw_output: content,
-          ai_notes: `Regenerated using ${section.assigned_model}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('section_id', sectionId);
-      
-      if (error) throw error;
-      
-      // Update local state
-      if (sectionOutputs[sectionId]) {
-        setSectionOutputs(prev => ({
-          ...prev,
-          [sectionId]: {
-            ...prev[sectionId],
-            raw_output: content,
-            ai_notes: `Regenerated using ${section.assigned_model}`
-          }
-        }));
-      }
-      
-      // Update section status
-      const completedSection = { ...section, status: 'completed' };
-      await updateSection(completedSection);
-      
-      setSuccess('Section regenerated successfully!');
-    } catch (error) {
-      console.error('Error regenerating section:', error);
-      setError('Failed to regenerate section. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const exportDocument = async (format: 'pdf' | 'markdown' | 'docx') => {
-    if (!currentProject || sections.length === 0) return;
-    
-    try {
-      switch (format) {
-        case 'pdf':
-          exportToPDF();
-          break;
-        case 'markdown':
-          exportToMarkdown();
-          break;
-        case 'docx':
-          exportToDocx();
-          break;
-      }
-      
-      // Save export record in database
-      await supabase
-        .from('final_exports')
-        .insert({
-          project_id: currentProject.id,
-          format,
-          exported_at: new Date().toISOString()
-        });
-      
-      setSuccess(`Document exported as ${format.toUpperCase()} successfully!`);
-    } catch (error) {
-      console.error(`Error exporting as ${format}:`, error);
-      setError(`Failed to export as ${format}. Please try again.`);
-    }
-  };
-
-  const exportToPDF = () => {
-    if (!currentProject) return;
-    
-    const doc = new jsPDF();
-    let yPosition = 20;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 20;
-    const titleFontSize = 16;
-    const subtitleFontSize = 14;
-    const bodyFontSize = 12;
-    
-    // Add title
-    doc.setFontSize(titleFontSize);
-    doc.setFont('helvetica', 'bold');
-    doc.text(currentProject.title, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 15;
-    
-    // Add metadata
-    doc.setFontSize(bodyFontSize);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Generated by ModelMix Orchestration`, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 10;
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 20;
-    
-    // Add sections
-    for (const section of sections) {
-      // Check if we need a new page
-      if (yPosition > 250) {
-        doc.addPage();
-        yPosition = 20;
-      }
-      
-      // Add section title
-      doc.setFontSize(subtitleFontSize);
-      doc.setFont('helvetica', 'bold');
-      doc.text(section.title, margin, yPosition);
-      yPosition += 10;
-      
-      // Add section content
-      const output = sectionOutputs[section.id];
-      if (output) {
-        doc.setFontSize(bodyFontSize);
-        doc.setFont('helvetica', 'normal');
-        
-        // Split text into lines to fit page width
-        const contentLines = doc.splitTextToSize(output.raw_output, pageWidth - (margin * 2));
-        
-        // Check if we need a new page for content
-        if (yPosition + (contentLines.length * 7) > 280) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        
-        doc.text(contentLines, margin, yPosition);
-        yPosition += (contentLines.length * 7) + 15;
-      }
-    }
-    
-    // Save the PDF
-    doc.save(`${currentProject.title.replace(/\s+/g, '_')}.pdf`);
-  };
-
-  const exportToMarkdown = () => {
-    if (!currentProject) return;
-    
-    let markdown = `# ${currentProject.title}\n\n`;
-    markdown += `*Generated by ModelMix Orchestration on ${new Date().toLocaleDateString()}*\n\n`;
-    
-    // Add sections
-    for (const section of sections) {
-      markdown += `## ${section.title}\n\n`;
-      
-      const output = sectionOutputs[section.id];
-      if (output) {
-        markdown += `${output.raw_output}\n\n`;
-      }
-    }
-    
-    // Create and download file
-    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-    saveAs(blob, `${currentProject.title.replace(/\s+/g, '_')}.md`);
-  };
-
-  const exportToDocx = () => {
-    // In a real implementation, this would use html-docx-js
-    // For now, we'll just export as markdown
-    exportToMarkdown();
-  };
-
-  const selectProject = async (projectId: string) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Load project
+      // Get project
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
         .select('*')
         .eq('id', projectId)
         .single();
-      
+
       if (projectError) throw projectError;
-      setCurrentProject(projectData);
-      
-      // Load project metadata
-      const { data: metadataData, error: metadataError } = await supabase
+
+      // Get metadata
+      const { data: metadataData } = await supabase
         .from('project_metadata')
         .select('*')
         .eq('project_id', projectId)
         .single();
-      
-      if (!metadataError) {
-        setProjectMetadata(metadataData);
-        setAudience(metadataData.audience);
-        setTone(metadataData.tone);
-        setPurpose(metadataData.purpose);
-        setDocType(metadataData.doc_type);
-        setWordCount(metadataData.word_count);
-      }
-      
-      // Load sections
-      const { data: sectionsData, error: sectionsError } = await supabase
+
+      // Get sections
+      const { data: sectionsData } = await supabase
         .from('sections')
         .select('*')
         .eq('project_id', projectId)
         .order('order', { ascending: true });
-      
-      if (sectionsError) throw sectionsError;
-      setSections(sectionsData || []);
-      
-      // Load section outputs
-      if (sectionsData && sectionsData.length > 0) {
-        const sectionIds = sectionsData.map(s => s.id);
-        const { data: outputsData, error: outputsError } = await supabase
+
+      // Get section outputs
+      const sectionsWithOutputs = await Promise.all((sectionsData || []).map(async (section) => {
+        const { data: outputData } = await supabase
           .from('section_outputs')
           .select('*')
-          .in('section_id', sectionIds);
-        
-        if (outputsError) throw outputsError;
-        
-        const outputsMap: Record<string, SectionOutput> = {};
-        outputsData?.forEach(output => {
-          outputsMap[output.section_id] = output;
-        });
-        
-        setSectionOutputs(outputsMap);
-      }
+          .eq('section_id', section.id)
+          .single();
+
+        return {
+          ...section,
+          output: outputData || null
+        };
+      }));
+
+      // Calculate progress
+      const totalSections = sectionsWithOutputs.length;
+      const completedSections = sectionsWithOutputs.filter(s => s.status === 'completed').length;
+      const progress = totalSections > 0 ? Math.round((completedSections / totalSections) * 100) : 0;
       
-      // Set step based on project status
-      switch (projectData.status) {
-        case 'draft':
-          setStep('details');
-          break;
-        case 'planning':
-          setStep('plan');
-          break;
-        case 'writing':
-          setStep('writing');
-          break;
-        case 'completed':
-          setStep('review');
-          break;
-        default:
-          setStep('details');
-      }
+      // Calculate current section
+      const currentSection = sectionsWithOutputs.findIndex(s => s.status === 'writing' || s.status === 'pending');
+      
+      // Calculate word count
+      const wordCount = sectionsWithOutputs.reduce((total, section) => {
+        if (section.output?.raw_output) {
+          return total + countWords(section.output.raw_output);
+        }
+        return total;
+      }, 0);
+
+      const projectWithDetails: ProjectWithDetails = {
+        ...projectData,
+        metadata: metadataData || null,
+        sections: sectionsWithOutputs,
+        progress,
+        currentSection: currentSection >= 0 ? currentSection : totalSections,
+        totalSections,
+        wordCount
+      };
+
+      setCurrentProject(projectWithDetails);
+      
+      // Initialize selected models
+      const modelSelections: Record<string, string> = {};
+      sectionsWithOutputs.forEach(section => {
+        modelSelections[section.id] = section.assigned_model;
+      });
+      setSelectedModels(modelSelections);
+
+      return projectWithDetails;
     } catch (error) {
-      console.error('Error loading project:', error);
-      setError('Failed to load project. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('Failed to load project details:', error);
+      throw error;
     }
   };
 
-  const deleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
-      return;
-    }
-    
-    setLoading(true);
-    
+  const startWritingProcess = async (project: ProjectWithDetails) => {
+    if (!project) return;
+
     try {
-      // Delete project and all related data (cascade delete should handle this)
-      const { error } = await supabase
+      setIsGenerating(true);
+      
+      // Update project status
+      await supabase
         .from('projects')
-        .delete()
-        .eq('id', projectId);
+        .update({ 
+          status: 'writing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', project.id);
       
-      if (error) throw error;
-      
-      // Update local state
-      setProjects(prev => prev.filter(p => p.id !== projectId));
-      
-      if (currentProject?.id === projectId) {
-        setCurrentProject(null);
-        setProjectMetadata(null);
-        setSections([]);
-        setSectionOutputs({});
-        setStep('projects');
+      // Process each section sequentially
+      for (let i = 0; i < project.sections.length; i++) {
+        const section = project.sections[i];
+        
+        // Skip completed sections
+        if (section.status === 'completed' && section.output) {
+          continue;
+        }
+        
+        // Update section status to writing
+        await supabase
+          .from('sections')
+          .update({ 
+            status: 'writing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', section.id);
+        
+        // Reload project to get latest status
+        const updatedProject = await loadProjectDetails(project.id);
+        
+        // Generate content for this section
+        try {
+          const content = await generateSectionContent(
+            updatedProject,
+            section,
+            i > 0 ? updatedProject.sections[i-1] : null
+          );
+          
+          // Save section output
+          const { error: outputError } = await supabase
+            .from('section_outputs')
+            .upsert({
+              section_id: section.id,
+              raw_output: content,
+              ai_notes: `Generated using ${section.assigned_model}`,
+              is_finalized: false,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'section_id'
+            });
+          
+          if (outputError) throw outputError;
+          
+          // Update section status to completed
+          await supabase
+            .from('sections')
+            .update({ 
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', section.id);
+          
+        } catch (error) {
+          console.error(`Error generating content for section ${section.title}:`, error);
+          
+          // Update section status to error
+          await supabase
+            .from('sections')
+            .update({ 
+              status: 'error',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', section.id);
+          
+          // Create error output
+          await supabase
+            .from('section_outputs')
+            .upsert({
+              section_id: section.id,
+              raw_output: `Error generating content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              ai_notes: 'Error occurred during generation',
+              is_finalized: false,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'section_id'
+            });
+        }
+        
+        // Reload project after each section
+        await loadProjectDetails(project.id);
       }
       
-      setSuccess('Project deleted successfully!');
+      // Update project status to completed
+      await supabase
+        .from('projects')
+        .update({ 
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', project.id);
+      
+      // Final reload
+      await loadProjectDetails(project.id);
+      setStep('completed');
+      
     } catch (error) {
-      console.error('Error deleting project:', error);
-      setError('Failed to delete project. Please try again.');
+      console.error('Writing process failed:', error);
+      setError(error instanceof Error ? error.message : 'Writing process failed');
+      
+      // Update project status to error
+      await supabase
+        .from('projects')
+        .update({ 
+          status: 'error',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', project.id);
+        
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
+    }
+  };
+
+  const generateOutline = async (prompt: string, settings: any): Promise<any> => {
+    try {
+      // Get OpenAI API key from global keys
+      const { data: openaiKey, error: keyError } = await supabase.rpc(
+        'get_global_api_key',
+        { provider_name: 'openai', user_tier: 'tier2' }
+      );
+
+      if (keyError || !openaiKey) {
+        throw new Error('Failed to get OpenAI API key');
+      }
+
+      const targetWordCount = settings.wordCount;
+      const sectionsCount = Math.max(5, Math.min(15, Math.round(targetWordCount / 1000))); // ~1000 words per section
+
+      const plannerPrompt = `You are an expert academic writer and content strategist. Create a comprehensive outline for a ${settings.docType} about: "${prompt}"
+
+Requirements:
+- Target length: ${targetWordCount} words (${Math.round(targetWordCount / 250)} pages)
+- Writing style: ${settings.tone}
+- Audience: ${settings.audience || 'General audience'}
+- Purpose: ${settings.purpose || 'Informational'}
+- Number of sections: ${sectionsCount}
+
+Create a detailed outline with:
+1. A compelling title
+2. ${sectionsCount} main sections with descriptive titles
+3. Each section should target approximately ${Math.round(targetWordCount / sectionsCount)} words
+4. Ensure logical flow and comprehensive coverage of the topic
+5. For each section, suggest an appropriate AI model from this list:
+   - anthropic/claude-3.5-sonnet (best for creative writing)
+   - anthropic/claude-3-opus (best for detailed analysis)
+   - openai/gpt-4o (best for technical content)
+   - google/gemini-1.5-pro (best for research)
+   - meta-llama/llama-3.1-70b-instruct (good general purpose)
+   - mistralai/mistral-large (good for structured content)
+
+Format your response as a JSON object with this structure:
+{
+  "title": "Compelling title here",
+  "sections": [
+    {
+      "id": "section-1",
+      "title": "Section title",
+      "token_budget": ${Math.round((targetWordCount / sectionsCount) * 4)},
+      "order": 1,
+      "assigned_model": "anthropic/claude-3.5-sonnet",
+      "key_points": ["point 1", "point 2", "point 3"],
+      "description": "Brief description of what this section covers"
+    }
+  ]
+}
+
+Provide a comprehensive, well-structured outline that ensures complete coverage of the topic.`;
+
+      // Call OpenAI API
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: plannerPrompt }],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || `OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const outlineText = data.choices[0]?.message?.content || '';
+      
+      // Increment global usage
+      await supabase.rpc('increment_global_usage', { provider_name: 'openai' });
+      
+      // Extract JSON from the response
+      const jsonMatch = outlineText.match(/```json\n([\s\S]*?)\n```/) || 
+                        outlineText.match(/```\n([\s\S]*?)\n```/) || 
+                        outlineText.match(/{[\s\S]*}/);
+      
+      const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : outlineText;
+      
+      try {
+        const outline = JSON.parse(jsonString);
+        if (outline.sections && Array.isArray(outline.sections)) {
+          return outline;
+        }
+      } catch (parseError) {
+        console.error('Failed to parse outline JSON:', parseError);
+      }
+      
+      // Fallback to manual outline generation
+      return generateFallbackOutline(prompt, settings, sectionsCount, targetWordCount);
+    } catch (error) {
+      console.error('Failed to generate outline:', error);
+      return generateFallbackOutline(prompt, settings, sectionsCount, targetWordCount);
+    }
+  };
+
+  const generateFallbackOutline = (prompt: string, settings: any, sectionsCount: number, targetWordCount: number): any => {
+    const title = generateTitle(prompt);
+    const sections = [];
+    
+    // Generate section titles based on document type
+    const sectionTitles = generateSectionTitles(settings.docType, sectionsCount);
+    
+    // Assign models in a round-robin fashion
+    const defaultModels = [
+      'anthropic/claude-3.5-sonnet',
+      'openai/gpt-4o',
+      'google/gemini-1.5-pro',
+      'meta-llama/llama-3.1-70b-instruct',
+      'mistralai/mistral-large'
+    ];
+    
+    for (let i = 0; i < sectionTitles.length; i++) {
+      sections.push({
+        id: `section-${i + 1}`,
+        title: sectionTitles[i],
+        token_budget: Math.round((targetWordCount / sectionsCount) * 4), // ~4 tokens per word
+        order: i,
+        assigned_model: defaultModels[i % defaultModels.length],
+        key_points: [`Key point 1 for ${sectionTitles[i]}`, `Key point 2 for ${sectionTitles[i]}`],
+        description: `This section covers ${sectionTitles[i].toLowerCase()}`
+      });
+    }
+
+    return {
+      title,
+      sections
+    };
+  };
+
+  const generateSectionTitles = (docType: string, count: number): string[] => {
+    switch (docType) {
+      case 'research-paper':
+        return [
+          'Abstract',
+          'Introduction',
+          'Literature Review',
+          'Methodology',
+          'Results',
+          'Discussion',
+          'Conclusion',
+          'References',
+          ...Array.from({length: Math.max(0, count - 8)}, (_, i) => `Additional Analysis ${i + 1}`)
+        ].slice(0, count);
+      
+      case 'report':
+        return [
+          'Executive Summary',
+          'Introduction',
+          'Background',
+          'Analysis',
+          'Findings',
+          'Recommendations',
+          'Implementation Plan',
+          'Conclusion',
+          ...Array.from({length: Math.max(0, count - 8)}, (_, i) => `Section ${i + 9}`)
+        ].slice(0, count);
+      
+      case 'book':
+        return Array.from({length: count}, (_, i) => `Chapter ${i + 1}`);
+      
+      default:
+        return Array.from({length: count}, (_, i) => `Section ${i + 1}`);
+    }
+  };
+
+  const generateSectionContent = async (
+    project: ProjectWithDetails,
+    section: Section & { output?: SectionOutput | null },
+    previousSection: (Section & { output?: SectionOutput | null }) | null
+  ): Promise<string> => {
+    // Get OpenRouter API key from global keys
+    const { data: openRouterKey, error: keyError } = await supabase.rpc(
+      'get_global_api_key',
+      { provider_name: 'openrouter', user_tier: 'tier2' }
+    );
+
+    if (keyError || !openRouterKey) {
+      throw new Error('Failed to get OpenRouter API key');
+    }
+
+    // Build context from previous sections
+    let previousContent = '';
+    if (previousSection && previousSection.output) {
+      previousContent = `
+Previous section "${previousSection.title}":
+${previousSection.output.raw_output.substring(0, 1000)}...
+`;
+    }
+
+    // Build prompt for section generation
+    const prompt = `You are an expert writer creating a comprehensive ${project.metadata?.doc_type || 'document'} about "${project.original_prompt}".
+
+Write a detailed section titled "${section.title}" with the following requirements:
+
+CRITICAL REQUIREMENTS:
+- Target length: ${Math.round(section.token_budget / 4)} words (this is important - write substantial content)
+- Writing style: ${project.metadata?.tone || 'formal'}
+- Audience: ${project.metadata?.audience || 'General audience'}
+- Purpose: ${project.metadata?.purpose || 'Informational'}
+- This is section ${project.sections.indexOf(section) + 1} of ${project.totalSections}
+
+CONTEXT:
+- Overall document topic: ${project.original_prompt}
+- Document format: ${project.metadata?.doc_type || 'document'}
+${previousContent}
+
+CONTENT GUIDELINES:
+1. Write comprehensive, well-researched content that thoroughly covers the topic
+2. Include specific examples, analysis, and insights relevant to the subject
+3. Maintain consistency with the overall document theme and previous sections
+4. Use proper language appropriate for the format and audience
+5. Include relevant details, explanations, and supporting information
+6. Ensure the content flows naturally and logically
+7. Write at least ${Math.round(section.token_budget / 4)} words of substantial, meaningful content
+
+Write the complete section content now. Make it comprehensive and detailed:`;
+
+    try {
+      // Call OpenRouter API with the assigned model
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'ModelMix - Document Generator'
+        },
+        body: JSON.stringify({
+          model: section.assigned_model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: Math.min(section.token_budget, 4000), // Limit to model's max tokens or section budget
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || `OpenRouter API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Increment global usage
+      await supabase.rpc('increment_global_usage', { provider_name: 'openrouter' });
+      
+      return data.choices[0]?.message?.content || 'No content generated';
+    } catch (error) {
+      console.error(`Error generating content for section ${section.title}:`, error);
+      throw error;
+    }
+  };
+
+  const handlePauseResume = async () => {
+    if (!currentProject) return;
+
+    try {
+      if (currentProject.status === 'writing') {
+        // Pause the project
+        await supabase
+          .from('projects')
+          .update({ 
+            status: 'paused',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentProject.id);
+        
+        await loadProjectDetails(currentProject.id);
+      } else if (currentProject.status === 'paused' || currentProject.status === 'error') {
+        // Resume the project
+        await supabase
+          .from('projects')
+          .update({ 
+            status: 'writing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentProject.id);
+        
+        const updatedProject = await loadProjectDetails(currentProject.id);
+        startWritingProcess(updatedProject);
+      }
+    } catch (error) {
+      console.error('Failed to pause/resume project:', error);
+      setError(error instanceof Error ? error.message : 'Failed to pause/resume project');
+    }
+  };
+
+  const handleSectionAction = async (sectionId: string, action: 'accept' | 'edit' | 'regenerate') => {
+    if (!currentProject) return;
+
+    try {
+      const section = currentProject.sections.find(s => s.id === sectionId);
+      if (!section) return;
+
+      switch (action) {
+        case 'accept':
+          // Mark section output as finalized
+          await supabase
+            .from('section_outputs')
+            .update({ 
+              is_finalized: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('section_id', sectionId);
+          break;
+          
+        case 'edit':
+          // In a real implementation, this would open an editor
+          // For now, we'll just mark it as reviewing
+          await supabase
+            .from('sections')
+            .update({ 
+              status: 'reviewing',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', sectionId);
+          break;
+          
+        case 'regenerate':
+          // Reset section status and delete output
+          await supabase
+            .from('sections')
+            .update({ 
+              status: 'pending',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', sectionId);
+          
+          // Delete existing output
+          await supabase
+            .from('section_outputs')
+            .delete()
+            .eq('section_id', sectionId);
+          
+          // Reload project
+          const updatedProject = await loadProjectDetails(currentProject.id);
+          
+          // Generate new content for this section
+          setIsGenerating(true);
+          
+          try {
+            const sectionIndex = updatedProject.sections.findIndex(s => s.id === sectionId);
+            const previousSection = sectionIndex > 0 ? updatedProject.sections[sectionIndex - 1] : null;
+            
+            // Update section status to writing
+            await supabase
+              .from('sections')
+              .update({ 
+                status: 'writing',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', sectionId);
+            
+            // Reload to get latest status
+            await loadProjectDetails(currentProject.id);
+            
+            // Generate content
+            const content = await generateSectionContent(
+              updatedProject,
+              section,
+              previousSection
+            );
+            
+            // Save section output
+            await supabase
+              .from('section_outputs')
+              .insert({
+                section_id: sectionId,
+                raw_output: content,
+                ai_notes: `Regenerated using ${section.assigned_model}`,
+                is_finalized: false
+              });
+            
+            // Update section status to completed
+            await supabase
+              .from('sections')
+              .update({ 
+                status: 'completed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', sectionId);
+            
+          } catch (error) {
+            console.error(`Error regenerating content for section ${section.title}:`, error);
+            
+            // Update section status to error
+            await supabase
+              .from('sections')
+              .update({ 
+                status: 'error',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', sectionId);
+            
+            setError(`Failed to regenerate section: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } finally {
+            setIsGenerating(false);
+            await loadProjectDetails(currentProject.id);
+          }
+          break;
+      }
+
+      // Reload project to get latest status
+      await loadProjectDetails(currentProject.id);
+    } catch (error) {
+      console.error('Failed to handle section action:', error);
+      setError(error instanceof Error ? error.message : 'Failed to process section action');
+    }
+  };
+
+  const handleUpdateSectionModel = async (sectionId: string, modelId: string) => {
+    if (!currentProject) return;
+
+    try {
+      await supabase
+        .from('sections')
+        .update({ 
+          assigned_model: modelId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sectionId);
+      
+      // Update local state
+      setSelectedModels(prev => ({
+        ...prev,
+        [sectionId]: modelId
+      }));
+      
+      // Reload project
+      await loadProjectDetails(currentProject.id);
+    } catch (error) {
+      console.error('Failed to update section model:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update section model');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!currentProject) return;
+
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Set up document properties
+      pdf.setProperties({
+        title: currentProject.title,
+        subject: 'Generated by ModelMix Orchestration',
+        author: 'ModelMix AI',
+        creator: 'ModelMix Document Generator'
+      });
+
+      let yPosition = 20;
+      const pageHeight = pdf.internal.pageSize.height;
+      const pageWidth = pdf.internal.pageSize.width;
+      const margin = 20;
+      const maxWidth = pageWidth - (margin * 2);
+
+      // Helper function to add new page if needed
+      const checkPageBreak = (requiredHeight: number) => {
+        if (yPosition + requiredHeight > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+      };
+
+      // Helper function to add text with word wrapping
+      const addText = (text: string, fontSize: number, isBold: boolean = false, isTitle: boolean = false) => {
+        pdf.setFontSize(fontSize);
+        pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
+
+        if (isTitle) {
+          checkPageBreak(20);
+          pdf.text(text, pageWidth / 2, yPosition, { align: 'center' });
+          yPosition += 15;
+        } else {
+          const lines = pdf.splitTextToSize(text, maxWidth);
+          
+          for (let i = 0; i < lines.length; i++) {
+            checkPageBreak(8);
+            pdf.text(lines[i], margin, yPosition);
+            yPosition += 7;
+          }
+          yPosition += 5; // Extra spacing after paragraphs
+        }
+      };
+
+      // Title Page
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(currentProject.title, pageWidth / 2, 60, { align: 'center' });
+
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('Generated by ModelMix Document Generator', pageWidth / 2, 80, { align: 'center' });
+      pdf.text(`Created: ${new Date(currentProject.created_at).toLocaleDateString()}`, pageWidth / 2, 90, { align: 'center' });
+      pdf.text(`Word Count: ${currentProject.wordCount.toLocaleString()}`, pageWidth / 2, 100, { align: 'center' });
+      pdf.text(`Pages: ${Math.round(currentProject.wordCount / 250)}`, pageWidth / 2, 110, { align: 'center' });
+
+      // Document details
+      yPosition = 130;
+      addText(`Format: ${currentProject.metadata?.doc_type || 'Document'}`, 10);
+      addText(`Tone: ${currentProject.metadata?.tone || 'Formal'}`, 10);
+      if (currentProject.metadata?.audience) {
+        addText(`Audience: ${currentProject.metadata.audience}`, 10);
+      }
+      if (currentProject.metadata?.purpose) {
+        addText(`Purpose: ${currentProject.metadata.purpose}`, 10);
+      }
+
+      // Add separator line
+      yPosition += 10;
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 20;
+
+      // Add new page for content
+      pdf.addPage();
+      yPosition = margin;
+
+      // Process each section
+      currentProject.sections.forEach((section, index) => {
+        if (section.output?.raw_output) {
+          // Section title
+          addText(`${index + 1}. ${section.title}`, 16, true);
+          yPosition += 5;
+
+          // Section content - clean up markdown and format
+          const cleanContent = cleanMarkdownForPDF(section.output.raw_output);
+          const paragraphs = cleanContent.split('\n\n').filter(p => p.trim());
+
+          paragraphs.forEach(paragraph => {
+            if (paragraph.trim()) {
+              addText(paragraph.trim(), 11);
+            }
+          });
+
+          // Add section separator
+          yPosition += 10;
+          checkPageBreak(5);
+          pdf.setLineWidth(0.2);
+          pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+          yPosition += 15;
+        }
+      });
+
+      // Save the PDF
+      pdf.save(`${sanitizeFilename(currentProject.title)}.pdf`);
+      
+      // Record export in database
+      await supabase
+        .from('final_exports')
+        .insert({
+          project_id: currentProject.id,
+          format: 'pdf'
+        });
+        
+    } catch (error) {
+      console.error('PDF export error:', error);
+      setError('Failed to export PDF. Please try again.');
+    }
+  };
+
+  const handleExportDocx = async () => {
+    if (!currentProject) return;
+
+    try {
+      // Create paragraphs array
+      const paragraphs: Paragraph[] = [];
+
+      // Title page
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: currentProject.title,
+              bold: true,
+              size: 32,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        })
+      );
+
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: 'Generated by ModelMix Document Generator',
+              size: 20,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        })
+      );
+
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Created: ${new Date(currentProject.created_at).toLocaleDateString()}`,
+              size: 16,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 100 },
+        })
+      );
+
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Word Count: ${currentProject.wordCount.toLocaleString()} | Pages: ${Math.round(currentProject.wordCount / 250)}`,
+              size: 16,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        })
+      );
+
+      // Document metadata
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Format: ${currentProject.metadata?.doc_type || 'Document'} | Tone: ${currentProject.metadata?.tone || 'Formal'}${
+                currentProject.metadata?.audience ? ` | Audience: ${currentProject.metadata.audience}` : ''
+              }${
+                currentProject.metadata?.purpose ? ` | Purpose: ${currentProject.metadata.purpose}` : ''
+              }`,
+              size: 14,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 600 },
+        })
+      );
+
+      // Page break before content
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: '' })],
+          pageBreakBefore: true,
+        })
+      );
+
+      // Process each section
+      currentProject.sections.forEach((section, index) => {
+        if (section.output?.raw_output) {
+          // Section heading
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${index + 1}. ${section.title}`,
+                  bold: true,
+                  size: 24,
+                }),
+              ],
+              heading: HeadingLevel.HEADING_1,
+              spacing: { before: 400, after: 200 },
+            })
+          );
+
+          // Section content
+          const cleanContent = cleanMarkdownForText(section.output.raw_output);
+          const contentParagraphs = cleanContent.split('\n\n').filter(p => p.trim());
+
+          contentParagraphs.forEach(paragraph => {
+            if (paragraph.trim()) {
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: paragraph.trim(),
+                      size: 22, // 11pt in half-points
+                    }),
+                  ],
+                  spacing: { after: 200 },
+                })
+              );
+            }
+          });
+
+          // Section separator
+          paragraphs.push(
+            new Paragraph({
+              children: [new TextRun({ text: '' })],
+              spacing: { after: 400 },
+            })
+          );
+        }
+      });
+
+      // Create document
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: paragraphs,
+          },
+        ],
+        title: currentProject.title,
+        description: 'Generated by ModelMix Document Generator',
+        creator: 'ModelMix AI',
+      });
+
+      // Generate buffer and save
+      const buffer = await Packer.toBuffer(doc);
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      
+      saveAs(blob, `${sanitizeFilename(currentProject.title)}.docx`);
+      
+      // Record export in database
+      await supabase
+        .from('final_exports')
+        .insert({
+          project_id: currentProject.id,
+          format: 'docx'
+        });
+        
+    } catch (error) {
+      console.error('Word export error:', error);
+      setError(`Failed to export Word document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleExportText = async () => {
+    if (!currentProject) return;
+
+    try {
+      let content = `${currentProject.title}\n\n`;
+      content += `Generated by ModelMix Document Generator\n`;
+      content += `Created: ${new Date(currentProject.created_at).toLocaleDateString()}\n`;
+      content += `Word Count: ${currentProject.wordCount.toLocaleString()}\n`;
+      content += `Pages: ${Math.round(currentProject.wordCount / 250)}\n\n`;
+      content += `Format: ${currentProject.metadata?.doc_type || 'Document'}\n`;
+      content += `Tone: ${currentProject.metadata?.tone || 'Formal'}\n`;
+      if (currentProject.metadata?.audience) {
+        content += `Audience: ${currentProject.metadata.audience}\n`;
+      }
+      if (currentProject.metadata?.purpose) {
+        content += `Purpose: ${currentProject.metadata.purpose}\n`;
+      }
+      content += '='.repeat(80) + '\n\n';
+
+      currentProject.sections.forEach((section, index) => {
+        if (section.output?.raw_output) {
+          content += `${index + 1}. ${section.title}\n\n`;
+          
+          // Clean markdown for text export
+          const cleanContent = cleanMarkdownForText(section.output.raw_output);
+          content += `${cleanContent}\n\n`;
+          content += '-'.repeat(60) + '\n\n';
+        }
+      });
+
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      saveAs(blob, `${sanitizeFilename(currentProject.title)}.txt`);
+      
+      // Record export in database
+      await supabase
+        .from('final_exports')
+        .insert({
+          project_id: currentProject.id,
+          format: 'txt'
+        });
+        
+    } catch (error) {
+      console.error('Text export error:', error);
+      setError('Failed to export text file. Please try again.');
     }
   };
 
@@ -782,170 +1368,66 @@ export const Orchestration: React.FC<OrchestrationProps> = ({ isOpen, onClose })
     setExpandedSections(newExpanded);
   };
 
-  const resetForm = () => {
-    setPrompt('');
-    setTitle('');
-    setAudience('');
-    setTone('professional');
-    setPurpose('');
-    setDocType('guide');
-    setWordCount(5000);
-    setCurrentProject(null);
-    setProjectMetadata(null);
-    setSections([]);
-    setSectionOutputs({});
-    setError(null);
-    setSuccess(null);
-  };
-
-  // Helper functions
   const generateTitle = (prompt: string): string => {
     // Extract a title from the prompt
     const words = prompt.split(' ').slice(0, 8);
     return words.join(' ').replace(/[^\w\s]/g, '').trim();
   };
 
-  const generateSectionTitles = (docType: string, prompt: string, count: number): string[] => {
-    // Generate section titles based on document type
-    switch (docType) {
-      case 'guide':
-        return [
-          'Introduction',
-          'Background',
-          'Key Concepts',
-          'Step-by-Step Process',
-          'Best Practices',
-          'Common Challenges',
-          'Case Studies',
-          'Tools and Resources',
-          'Future Trends',
-          'Conclusion'
-        ].slice(0, count);
-      
-      case 'research':
-        return [
-          'Abstract',
-          'Introduction',
-          'Literature Review',
-          'Methodology',
-          'Results',
-          'Analysis',
-          'Discussion',
-          'Limitations',
-          'Future Research',
-          'Conclusion'
-        ].slice(0, count);
-      
-      case 'business':
-        return [
-          'Executive Summary',
-          'Company Overview',
-          'Market Analysis',
-          'Competitive Landscape',
-          'Product/Service Description',
-          'Marketing Strategy',
-          'Operations Plan',
-          'Financial Projections',
-          'Risk Assessment',
-          'Implementation Timeline'
-        ].slice(0, count);
-      
-      case 'creative':
-        return Array.from({ length: count }, (_, i) => `Chapter ${i + 1}`);
-      
-      default:
-        return Array.from({ length: count }, (_, i) => `Section ${i + 1}`);
-    }
+  const getDefaultModel = (): string => {
+    // Return a default model for section generation
+    return 'anthropic/claude-3.5-sonnet';
   };
 
-  const getRandomModel = () => {
-    return availableModels[Math.floor(Math.random() * availableModels.length)];
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
 
-  const simulateAIResponse = async (
-    sectionTitle: string, 
-    originalPrompt: string, 
-    metadata: ProjectMetadata | null,
-    isRegeneration: boolean = false
-  ): Promise<string> => {
-    // In a real implementation, this would call the OpenAI API
-    // For now, we'll return a placeholder response based on the section title
-    
-    const baseContent = `# ${sectionTitle}
-
-${isRegeneration ? 'This is a regenerated section with improved content.' : 'This is an AI-generated section.'} 
-
-## Overview
-
-This section covers ${sectionTitle.toLowerCase()} in the context of ${originalPrompt}. The content is tailored for ${metadata?.audience || 'a general audience'} with a ${metadata?.tone || 'professional'} tone.
-
-## Main Points
-
-1. First key point about ${sectionTitle.toLowerCase()}
-2. Second key point with detailed explanation
-3. Third key point with examples and case studies
-
-## Detailed Analysis
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam auctor, nisl eget ultricies tincidunt, nisl nisl aliquam nisl, eget ultricies nisl nisl eget nisl. Nullam auctor, nisl eget ultricies tincidunt, nisl nisl aliquam nisl, eget ultricies nisl nisl eget nisl.
-
-## Practical Applications
-
-- Application 1: Description and benefits
-- Application 2: Implementation strategies
-- Application 3: Case study and results
-
-## Summary
-
-In conclusion, ${sectionTitle.toLowerCase()} plays a crucial role in ${originalPrompt}. The key takeaways are...`;
-
-    // Add some randomness to make each section unique
-    const randomParagraphs = [
-      "The implementation of these concepts requires careful planning and execution. Organizations should consider their specific needs and constraints before proceeding with any major changes.",
-      
-      "Research has shown that early adopters of these methodologies often gain significant competitive advantages. However, the learning curve can be steep and requires dedicated resources.",
-      
-      "Industry experts predict that these trends will continue to evolve over the next decade, with increasing integration of artificial intelligence and machine learning technologies.",
-      
-      "Case studies from leading companies demonstrate the potential for substantial return on investment when these principles are applied correctly and consistently.",
-      
-      "It's important to note that regional regulations may impact implementation strategies, and organizations should consult with legal experts to ensure compliance."
-    ];
-    
-    // Add 2-3 random paragraphs
-    const paragraphCount = 2 + Math.floor(Math.random() * 2);
-    let additionalContent = "\n\n## Additional Insights\n\n";
-    
-    for (let i = 0; i < paragraphCount; i++) {
-      const randomIndex = Math.floor(Math.random() * randomParagraphs.length);
-      additionalContent += randomParagraphs[randomIndex] + "\n\n";
-    }
-    
-    return baseContent + additionalContent;
+  const cleanMarkdownForPDF = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s+/g, '') // Remove markdown headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic markdown
+      .replace(/`(.*?)`/g, '$1') // Remove code markdown
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/^\s*[-*+]\s+/gm, '• ') // Convert bullet points
+      .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+      .trim();
   };
 
-  const getModelNameById = (modelId: string): string => {
-    const model = availableModels.find(m => m.id === modelId);
-    return model ? model.name : modelId;
+  const cleanMarkdownForText = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s+/g, '') // Remove markdown headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic markdown
+      .replace(/`(.*?)`/g, '$1') // Remove code markdown
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/^\s*[-*+]\s+/gm, '• ') // Convert bullet points
+      .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+      .trim();
   };
 
-  const getTotalWordCount = (): number => {
-    return Object.values(sectionOutputs).reduce((total, output) => {
-      const wordCount = output.raw_output.split(/\s+/).length;
-      return total + wordCount;
-    }, 0);
+  const sanitizeFilename = (filename: string): string => {
+    return filename
+      .replace(/[^a-z0-9\s]/gi, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toLowerCase();
   };
 
-  const getProjectProgress = (): number => {
-    if (!sections.length) return 0;
-    
-    const completedSections = sections.filter(s => s.status === 'completed').length;
-    return Math.round((completedSections / sections.length) * 100);
+  const getProgressColor = (progress: number) => {
+    if (progress < 25) return 'bg-red-500';
+    if (progress < 50) return 'bg-orange-500';
+    if (progress < 75) return 'bg-yellow-500';
+    return 'bg-green-500';
   };
 
   if (!isOpen) return null;
 
-  // Pro-only check
+  // Pro-only feature check
   if (!isProUser) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
@@ -955,28 +1437,45 @@ In conclusion, ${sectionTitle.toLowerCase()} plays a crucial role in ${originalP
               <div className="p-2 bg-yellow-100 rounded-lg">
                 <Crown size={20} className="text-yellow-600" />
               </div>
-              <h2 className="text-xl font-semibold text-gray-900">Pro Feature</h2>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Pro Feature</h2>
+                <p className="text-sm text-gray-500">Upgrade to access Document Generator</p>
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:scale-110"
             >
               <X size={20} className="text-gray-500" />
             </button>
           </div>
-          
-          <div className="text-center py-6">
-            <Zap size={48} className="text-yellow-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Upgrade to Pro</h3>
-            <p className="text-gray-600 mb-6">
-              Orchestration is a Pro-only feature that lets you generate comprehensive, long-form documents using AI.
+
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <h3 className="font-medium text-yellow-800 mb-2 flex items-center space-x-2">
+              <Zap size={18} className="text-yellow-600" />
+              <span>Document Generator</span>
+            </h3>
+            <p className="text-sm text-yellow-700 mb-4">
+              Generate comprehensive, long-form documents using AI orchestration. This Pro feature allows you to:
             </p>
-            <button
-              className="w-full px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-lg hover:from-yellow-700 hover:to-orange-700 transition-colors"
-            >
-              Upgrade to Pro
-            </button>
+            <ul className="text-sm text-yellow-700 space-y-1 mb-4">
+              <li>• Create documents up to 30,000 characters</li>
+              <li>• Use multiple AI models for different sections</li>
+              <li>• Export in PDF, Word, or Markdown formats</li>
+              <li>• Save and resume document generation</li>
+              <li>• Edit and regenerate specific sections</li>
+            </ul>
+            <p className="text-sm text-yellow-700">
+              Upgrade to Pro to unlock this and other premium features.
+            </p>
           </div>
+
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     );
@@ -986,57 +1485,54 @@ In conclusion, ${sectionTitle.toLowerCase()} plays a crucial role in ${originalP
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
       <div className="bg-white rounded-xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden transform animate-slideUp">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-white/20 rounded-lg animate-bounceIn">
                 <Zap size={24} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold">AI Orchestration</h2>
-                <p className="text-blue-100">Generate comprehensive documents with orchestrated AI models</p>
+                <h2 className="text-2xl font-bold">Document Generator</h2>
+                <p className="text-emerald-100">Generate comprehensive documents with AI orchestration</p>
               </div>
             </div>
             <button
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200 hover:scale-110"
+              disabled={isGenerating}
             >
               <X size={24} />
             </button>
           </div>
 
-          {/* Project Progress Bar (only show when project is selected) */}
-          {currentProject && step !== 'projects' && (
+          {/* Enhanced Progress Bar with Real-time Updates */}
+          {currentProject && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm mb-2">
                 <span>{currentProject.title}</span>
                 <div className="flex items-center space-x-4">
-                  <span>{getProjectProgress()}% Complete</span>
-                  {sections.length > 0 && (
-                    <span className="text-blue-200">
-                      {sections.filter(s => s.status === 'completed').length} of {sections.length} sections
-                    </span>
-                  )}
-                  {Object.keys(sectionOutputs).length > 0 && (
-                    <span className="text-blue-200">
-                      {getTotalWordCount().toLocaleString()} words
-                    </span>
-                  )}
+                  <span>{currentProject.progress}% Complete</span>
+                  <span className="text-emerald-200">
+                    Section {currentProject.currentSection + 1} of {currentProject.totalSections}
+                  </span>
+                  <span className="text-emerald-200">
+                    {currentProject.wordCount.toLocaleString()} words
+                  </span>
                 </div>
               </div>
               <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
                 <div
-                  className="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-green-400 to-blue-400"
-                  style={{ width: `${getProjectProgress()}%` }}
+                  className={`h-3 rounded-full transition-all duration-500 ease-out ${getProgressColor(currentProject.progress)}`}
+                  style={{ width: `${currentProject.progress}%` }}
                 />
               </div>
-              {/* Status indicator */}
-              <div className="flex items-center justify-between text-xs mt-2 text-blue-200">
+              {/* Real-time status indicator */}
+              <div className="flex items-center justify-between text-xs mt-2 text-emerald-200">
                 <span>Status: {currentProject.status}</span>
                 {isGenerating && (
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    <span>AI is working...</span>
+                    <span>AI is writing...</span>
                   </div>
                 )}
               </div>
@@ -1046,186 +1542,215 @@ In conclusion, ${sectionTitle.toLowerCase()} plays a crucial role in ${originalP
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
-          {/* Projects List */}
-          {step === 'projects' && (
-            <div className="h-full flex flex-col">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">Your Projects</h3>
-                  <button
-                    onClick={() => {
-                      resetForm();
-                      setStep('setup');
-                    }}
-                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    <Plus size={16} />
-                    <span>New Project</span>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="flex flex-col items-center">
-                      <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                      <p className="text-gray-600">Loading your projects...</p>
-                    </div>
-                  </div>
-                ) : projects.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <FileText size={48} className="text-gray-300 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Projects Yet</h3>
-                    <p className="text-gray-600 mb-6 max-w-md">
-                      Create your first project to start generating comprehensive documents with AI orchestration.
-                    </p>
-                    <button
-                      onClick={() => {
-                        resetForm();
-                        setStep('setup');
-                      }}
-                      className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <Plus size={18} />
-                      <span>Create Your First Project</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {projects.map(project => (
-                      <div
-                        key={project.id}
-                        className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h4 className="font-semibold text-gray-900 mb-1">{project.title}</h4>
-                            <p className="text-sm text-gray-600">
-                              Created: {new Date(project.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              project.status === 'completed' ? 'bg-green-100 text-green-800' :
-                              project.status === 'writing' ? 'bg-blue-100 text-blue-800' :
-                              project.status === 'planning' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                            </span>
-                            <button
-                              onClick={() => deleteProject(project.id)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Delete project"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-gray-700 mb-4 line-clamp-2">{project.original_prompt}</p>
-                        <button
-                          onClick={() => selectProject(project.id)}
-                          className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
-                        >
-                          <Eye size={16} />
-                          <span>Open Project</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Project Setup */}
           {step === 'setup' && (
-            <div className="h-full overflow-y-auto p-6">
-              <div className="max-w-3xl mx-auto">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Create New Project</h3>
-                  <p className="text-gray-600">
-                    Describe what you want to write about, and our AI orchestration system will help you create a comprehensive document.
-                  </p>
+            <div className="p-6 h-full overflow-y-auto">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* Feature Overview */}
+                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-emerald-800 mb-4 flex items-center space-x-2">
+                    <Sparkles className="text-emerald-600" size={20} />
+                    <span>AI-Orchestrated Document Generation</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-start space-x-3">
+                      <Brain className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="font-medium text-emerald-800">Smart Planning</p>
+                        <p className="text-emerald-700">AI creates structured outlines and assigns tasks to optimal models</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-3">
+                      <Layers className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="font-medium text-emerald-800">Sequential Writing</p>
+                        <p className="text-emerald-700">Context-aware section generation with automatic checkpointing</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-3">
+                      <Eye className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="font-medium text-emerald-800">Quality Review</p>
+                        <p className="text-emerald-700">Self-critic models ensure consistency and quality</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-3">
+                      <DollarSign className="text-emerald-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="font-medium text-emerald-800">Cost Efficient</p>
+                        <p className="text-emerald-700">Smart model selection and caching reduce token usage</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 animate-shakeX">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle size={16} />
-                      <span>{error}</span>
-                    </div>
-                  </div>
-                )}
-
-                {success && (
-                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 animate-fadeInUp">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle size={16} />
-                      <span>{success}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                  <div className="space-y-6">
+                {/* Project Setup */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Setup</h3>
+                  
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        What would you like to write about? *
+                        Project Prompt *
                       </label>
                       <textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Describe your document in detail. For example: 'Write a comprehensive guide on sustainable farming practices for small-scale farmers in temperate climates.'"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 resize-none"
-                        rows={5}
-                        required
+                        placeholder="Describe what you want to write about. Be specific about the topic, scope, and any requirements..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                        rows={4}
+                        maxLength={2000}
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Be specific about the topic, scope, and any particular requirements.
-                      </p>
+                      <p className="text-xs text-gray-500 mt-1">{prompt.length}/2000 characters</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Target Word Count</label>
+                        <input
+                          type="number"
+                          value={settings.wordCount}
+                          onChange={(e) => setSettings({ ...settings, wordCount: parseInt(e.target.value) || 5000 })}
+                          min={1000}
+                          max={30000}
+                          step={1000}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Recommended: 5,000 - 30,000 words</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Document Format</label>
+                        <select
+                          value={settings.docType}
+                          onChange={(e) => setSettings({ ...settings, docType: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="research-paper">Research Paper</option>
+                          <option value="report">Business Report</option>
+                          <option value="book">Book/Novel</option>
+                          <option value="article">Article/Blog</option>
+                          <option value="manual">Technical Manual</option>
+                          <option value="proposal">Project Proposal</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                        <select
+                          value={settings.tone}
+                          onChange={(e) => setSettings({ ...settings, tone: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="formal">Formal</option>
+                          <option value="casual">Casual</option>
+                          <option value="persuasive">Persuasive</option>
+                          <option value="informative">Informative</option>
+                          <option value="engaging">Engaging</option>
+                          <option value="technical">Technical</option>
+                          <option value="academic">Academic</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Target Audience</label>
+                        <input
+                          type="text"
+                          value={settings.audience}
+                          onChange={(e) => setSettings({ ...settings, audience: e.target.value })}
+                          placeholder="e.g., Professionals, Students, General public..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Document Title (Optional)
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Purpose</label>
                       <input
                         type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Leave blank to auto-generate from your prompt"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                        value={settings.purpose}
+                        onChange={(e) => setSettings({ ...settings, purpose: e.target.value })}
+                        placeholder="e.g., Educational, Informational, Persuasive..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        If left blank, we'll generate a title based on your prompt.
-                      </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-between">
+                {/* Existing Projects */}
+                {projects.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Projects</h3>
+                    <div className="space-y-3">
+                      {projects.map(project => (
+                        <div 
+                          key={project.id}
+                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => {
+                            loadProjectDetails(project.id);
+                            setStep(project.status === 'completed' ? 'completed' : 'writing');
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{project.title}</h4>
+                              <p className="text-sm text-gray-500">
+                                {new Date(project.created_at).toLocaleDateString()} • {project.wordCount.toLocaleString()} words • {project.sections.length} sections
+                              </p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                project.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                project.status === 'error' ? 'bg-red-100 text-red-800' :
+                                project.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                              </span>
+                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full ${getProgressColor(project.progress)}`}
+                                  style={{ width: `${project.progress}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 text-red-700">
+                      <AlertCircle size={16} />
+                      <span className="text-sm">{error}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3">
                   <button
-                    onClick={() => setStep('projects')}
-                    className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={onClose}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    disabled={isGenerating}
                   >
-                    Back to Projects
+                    Cancel
                   </button>
                   <button
-                    onClick={createProject}
-                    disabled={!prompt.trim() || loading}
-                    className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    onClick={handleStartProject}
+                    disabled={!prompt.trim() || isGenerating}
+                    className="flex items-center space-x-2 px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 transform"
                   >
-                    {loading ? (
+                    {isGenerating ? (
                       <>
-                        <Loader2 size={18} className="animate-spin" />
-                        <span>Creating...</span>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Starting...</span>
                       </>
                     ) : (
                       <>
-                        <ArrowRight size={18} />
-                        <span>Continue</span>
+                        <Play size={16} />
+                        <span>Start Document Generation</span>
                       </>
                     )}
                   </button>
@@ -1234,674 +1759,324 @@ In conclusion, ${sectionTitle.toLowerCase()} plays a crucial role in ${originalP
             </div>
           )}
 
-          {/* Project Details */}
-          {step === 'details' && currentProject && (
-            <div className="h-full overflow-y-auto p-6">
-              <div className="max-w-3xl mx-auto">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{currentProject.title}</h3>
-                  <p className="text-gray-600">
-                    Let's add some details to help the AI generate better content for your document.
-                  </p>
-                </div>
-
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 animate-shakeX">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle size={16} />
-                      <span>{error}</span>
-                    </div>
+          {(step === 'planning' || step === 'writing' || step === 'review') && currentProject && (
+            <div className="h-full flex flex-col">
+              {/* Project Info */}
+              <div className="bg-gray-50 border-b border-gray-200 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{currentProject.title}</h3>
+                    <p className="text-sm text-gray-600">
+                      {currentProject.wordCount.toLocaleString()} words • {Math.round(currentProject.wordCount / 250)} pages • {currentProject.status}
+                    </p>
                   </div>
-                )}
-
-                {success && (
-                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 animate-fadeInUp">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle size={16} />
-                      <span>{success}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        <Users size={16} className="inline mr-1" />
-                        Target Audience
-                      </label>
-                      <input
-                        type="text"
-                        value={audience}
-                        onChange={(e) => setAudience(e.target.value)}
-                        placeholder="e.g., Beginners, Professionals, Students, etc."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        <BookOpen size={16} className="inline mr-1" />
-                        Document Type
-                      </label>
-                      <select
-                        value={docType}
-                        onChange={(e) => setDocType(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                  <div className="flex items-center space-x-2">
+                    {currentProject.status === 'writing' && (
+                      <button
+                        onClick={handlePauseResume}
+                        className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                        disabled={isGenerating}
                       >
-                        <option value="guide">Guide / Tutorial</option>
-                        <option value="research">Research Paper</option>
-                        <option value="business">Business Document</option>
-                        <option value="creative">Creative Writing</option>
-                        <option value="technical">Technical Documentation</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        <Target size={16} className="inline mr-1" />
-                        Purpose
-                      </label>
-                      <input
-                        type="text"
-                        value={purpose}
-                        onChange={(e) => setPurpose(e.target.value)}
-                        placeholder="e.g., Educate, Persuade, Inform, Entertain, etc."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        <Settings size={16} className="inline mr-1" />
-                        Tone
-                      </label>
-                      <select
-                        value={tone}
-                        onChange={(e) => setTone(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                      >
-                        <option value="professional">Professional</option>
-                        <option value="casual">Casual</option>
-                        <option value="academic">Academic</option>
-                        <option value="technical">Technical</option>
-                        <option value="persuasive">Persuasive</option>
-                        <option value="conversational">Conversational</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        <FileText size={16} className="inline mr-1" />
-                        Target Word Count
-                      </label>
-                      <input
-                        type="range"
-                        min="1000"
-                        max="30000"
-                        step="1000"
-                        value={wordCount}
-                        onChange={(e) => setWordCount(parseInt(e.target.value))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>1,000 words</span>
-                        <span>{wordCount.toLocaleString()} words (~{Math.round(wordCount / 250)} pages)</span>
-                        <span>30,000 words</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => {
-                      resetForm();
-                      setStep('setup');
-                    }}
-                    className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={saveProjectMetadata}
-                    disabled={loading}
-                    className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" />
-                        <span>Saving...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ArrowRight size={18} />
-                        <span>Continue</span>
-                      </>
+                        <Pause size={16} />
+                        <span>Pause</span>
+                      </button>
                     )}
-                  </button>
+                    {(currentProject.status === 'paused' || currentProject.status === 'error') && (
+                      <button
+                        onClick={handlePauseResume}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        disabled={isGenerating}
+                      >
+                        <Play size={16} />
+                        <span>Resume</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Writing Plan */}
-          {step === 'plan' && currentProject && (
-            <div className="h-full overflow-y-auto p-6">
-              <div className="max-w-4xl mx-auto">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Writing Plan</h3>
-                  <p className="text-gray-600">
-                    Review the AI-generated writing plan for your document. You can adjust the assigned models for each section.
-                  </p>
-                </div>
-
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 animate-shakeX">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle size={16} />
-                      <span>{error}</span>
-                    </div>
-                  </div>
-                )}
-
-                {success && (
-                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 animate-fadeInUp">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle size={16} />
-                      <span>{success}</span>
-                    </div>
-                  </div>
-                )}
-
-                {isGenerating ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-6"></div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Generating Writing Plan</h3>
-                    <p className="text-gray-600 mb-2">
-                      Our AI is creating a detailed plan for your document...
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      This may take a moment as we analyze your requirements and structure the content.
-                    </p>
-                  </div>
-                ) : sections.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <RefreshCw size={48} className="text-blue-300 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Generating Plan</h3>
-                    <p className="text-gray-600 mb-4">
-                      We're preparing to generate your writing plan.
-                    </p>
-                    <button
-                      onClick={generateWritingPlan}
-                      className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <Play size={18} />
-                      <span>Generate Plan Now</span>
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-6">
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Section</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Model</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Budget</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {sections.map((section) => (
-                              <tr key={section.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm font-medium text-gray-900">{section.title}</div>
-                                  <div className="text-xs text-gray-500">Section {section.order}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <select
-                                    value={section.assigned_model}
-                                    onChange={(e) => handleModelChange(section.id, e.target.value)}
-                                    className="text-sm border border-gray-300 rounded px-2 py-1"
-                                  >
-                                    {availableModels.map((model) => (
-                                      <option key={model.id} value={model.id}>
-                                        {model.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900">{section.token_budget.toLocaleString()} tokens</div>
-                                  <div className="text-xs text-gray-500">~{Math.round(section.token_budget / 1.5).toLocaleString()} words</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    section.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                    section.status === 'writing' ? 'bg-blue-100 text-blue-800' :
-                                    section.status === 'error' ? 'bg-red-100 text-red-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {section.status.charAt(0).toUpperCase() + section.status.slice(1)}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <button
-                        onClick={() => setStep('details')}
-                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Back
-                      </button>
-                      <button
-                        onClick={startWritingProcess}
-                        disabled={loading || sections.length === 0}
-                        className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {loading ? (
-                          <>
-                            <Loader2 size={18} className="animate-spin" />
-                            <span>Starting...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play size={18} />
-                            <span>Start Writing</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Writing Process */}
-          {step === 'writing' && currentProject && (
-            <div className="h-full overflow-y-auto p-6">
-              <div className="max-w-4xl mx-auto">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Writing in Progress</h3>
-                  <p className="text-gray-600">
-                    Our AI models are generating content for your document. This process may take a few minutes.
-                  </p>
-                </div>
-
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 animate-shakeX">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle size={16} />
-                      <span>{error}</span>
-                    </div>
-                  </div>
-                )}
-
-                {success && (
-                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 animate-fadeInUp">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle size={16} />
-                      <span>{success}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-6">
-                  {sections.map((section) => (
+              {/* Sections */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-4">
+                  {currentProject.sections.map((section, index) => (
                     <div
                       key={section.id}
-                      className={`border rounded-lg p-6 transition-all duration-300 ${
+                      className={`border rounded-lg p-4 transition-all duration-200 ${
                         section.status === 'completed' ? 'border-green-200 bg-green-50' :
-                        section.status === 'writing' ? 'border-blue-200 bg-blue-50 animate-pulse' :
+                        section.status === 'writing' ? 'border-blue-200 bg-blue-50' :
                         section.status === 'error' ? 'border-red-200 bg-red-50' :
                         'border-gray-200 bg-white'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          {section.status === 'completed' ? (
-                            <CheckCircle size={20} className="text-green-600" />
-                          ) : section.status === 'writing' ? (
-                            <Loader2 size={20} className="text-blue-600 animate-spin" />
-                          ) : section.status === 'error' ? (
-                            <AlertCircle size={20} className="text-red-600" />
-                          ) : (
-                            <Clock size={20} className="text-gray-400" />
-                          )}
-                          <div>
-                            <h4 className="font-medium text-gray-900">{section.title}</h4>
-                            <div className="flex items-center space-x-2 text-sm text-gray-500">
-                              <span>Model: {getModelNameById(section.assigned_model)}</span>
-                              <span>•</span>
-                              <span>Budget: {Math.round(section.token_budget / 1.5).toLocaleString()} words</span>
-                            </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-medium text-gray-900">{section.title}</h4>
+                          <div className="flex items-center space-x-2">
+                            <select
+                              value={selectedModels[section.id] || section.assigned_model}
+                              onChange={(e) => handleUpdateSectionModel(section.id, e.target.value)}
+                              className="text-xs border border-gray-300 rounded px-2 py-1"
+                              disabled={section.status === 'writing' || section.status === 'completed' || isGenerating}
+                            >
+                              {availableModels.map(model => (
+                                <option key={model.id} value={model.id}>
+                                  {model.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
-                        
                         <div className="flex items-center space-x-2">
-                          {section.status === 'completed' && sectionOutputs[section.id] && (
-                            <button
-                              onClick={() => toggleSectionExpansion(section.id)}
-                              className="p-1 rounded hover:bg-gray-100 transition-colors"
-                            >
-                              {expandedSections.has(section.id) ? (
-                                <ChevronUp size={20} className="text-gray-600" />
-                              ) : (
-                                <ChevronDown size={20} className="text-gray-600" />
-                              )}
-                            </button>
+                          {section.status === 'completed' && (
+                            <CheckCircle size={16} className="text-green-600" />
                           )}
+                          {section.status === 'writing' && (
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          )}
+                          {section.status === 'error' && (
+                            <AlertCircle size={16} className="text-red-600" />
+                          )}
+                          <span className="text-xs text-gray-500">{section.output ? countWords(section.output.raw_output) : 0} words</span>
                         </div>
                       </div>
-                      
-                      {section.status === 'completed' && sectionOutputs[section.id] && expandedSections.has(section.id) && (
-                        <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
-                          <div className="prose prose-sm max-w-none">
-                            <div dangerouslySetInnerHTML={{ 
-                              __html: sectionOutputs[section.id].raw_output
-                                .replace(/\n\n/g, '<br/><br/>')
-                                .replace(/# (.*)/g, '<h1>$1</h1>')
-                                .replace(/## (.*)/g, '<h2>$1</h2>')
-                                .replace(/### (.*)/g, '<h3>$1</h3>')
-                            }} />
+
+                      {section.output?.raw_output && (
+                        <div className="prose prose-sm max-w-none mb-4">
+                          <div className="text-gray-800 text-sm leading-relaxed">
+                            {expandedSections.has(section.id) ? (
+                              <div dangerouslySetInnerHTML={{ __html: section.output.raw_output.replace(/\n/g, '<br>') }} />
+                            ) : (
+                              <>
+                                {section.output.raw_output.substring(0, 300)}
+                                {section.output.raw_output.length > 300 && '...'}
+                              </>
+                            )}
                           </div>
+                          <button
+                            onClick={() => toggleSectionExpansion(section.id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 mt-2"
+                          >
+                            {expandedSections.has(section.id) ? 'Show less' : 'Show more'}
+                          </button>
+                        </div>
+                      )}
+
+                      {section.status === 'completed' && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleSectionAction(section.id, 'accept')}
+                            className="flex items-center space-x-1 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+                            disabled={isGenerating}
+                          >
+                            <CheckCircle size={14} />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => handleSectionAction(section.id, 'edit')}
+                            className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                            disabled={isGenerating}
+                          >
+                            <Edit size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleSectionAction(section.id, 'regenerate')}
+                            className="flex items-center space-x-1 px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors"
+                            disabled={isGenerating}
+                          >
+                            <RotateCcw size={14} />
+                            <span>Regenerate</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {section.status === 'pending' && index === currentProject.currentSection && !isGenerating && (
+                        <button
+                          onClick={() => startWritingProcess(currentProject)}
+                          className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                        >
+                          <Play size={14} />
+                          <span>Start Writing</span>
+                        </button>
+                      )}
+
+                      {section.status === 'error' && (
+                        <div className="bg-red-50 p-2 rounded text-xs text-red-700 mt-2">
+                          Error occurred during generation. Please try regenerating this section.
                         </div>
                       )}
                     </div>
                   ))}
+                  
+                  {isGenerating && (
+                    <div className="text-center py-8">
+                      <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-gray-600">AI is working on your document...</p>
+                      {currentProject && (
+                        <div className="mt-2 text-sm text-gray-500">
+                          <p>Section {currentProject.currentSection + 1} of {currentProject.totalSections}</p>
+                          <p>{currentProject.wordCount.toLocaleString()} words written so far</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                {isGenerating && (
-                  <div className="flex flex-col items-center justify-center py-8 mt-6">
-                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">AI Orchestration in Progress</h3>
-                    <p className="text-gray-600 text-center max-w-md">
-                      Our AI models are working together to generate high-quality content for your document. This process may take a few minutes depending on the length and complexity.
-                    </p>
-                  </div>
-                )}
-
                 <div ref={messagesEndRef} />
               </div>
             </div>
           )}
 
-          {/* Review Document */}
-          {step === 'review' && currentProject && (
-            <div className="h-full overflow-y-auto p-6">
+          {step === 'completed' && currentProject && (
+            <div className="p-6 h-full overflow-y-auto">
               <div className="max-w-4xl mx-auto">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Review Your Document</h3>
-                  <p className="text-gray-600">
-                    Your document is complete! Review the content, make any edits, and export when ready.
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle size={32} className="text-green-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Document Completed!</h3>
+                  <p className="text-gray-600 mb-6">
+                    Your {currentProject.wordCount.toLocaleString()}-word document is ready for export.
                   </p>
                 </div>
 
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 animate-shakeX">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle size={16} />
-                      <span>{error}</span>
-                    </div>
-                  </div>
-                )}
-
-                {success && (
-                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 animate-fadeInUp">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle size={16} />
-                      <span>{success}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-lg font-semibold text-gray-900">Document Overview</h4>
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => setShowFullDocument(!showFullDocument)}
-                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        {showFullDocument ? (
-                          <>
-                            <ChevronUp size={16} />
-                            <span>Hide Full Document</span>
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown size={16} />
-                            <span>Show Full Document</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                {/* Document Review Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                      <Eye size={20} />
+                      <span>Document Review</span>
+                    </h4>
+                    <button
+                      onClick={() => setShowFullDocument(!showFullDocument)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                      {showFullDocument ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      <span>{showFullDocument ? 'Hide' : 'Show'} Full Document</span>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500 mb-1">Total Sections</div>
-                      <div className="text-2xl font-bold text-gray-900">{sections.length}</div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500 mb-1">Word Count</div>
-                      <div className="text-2xl font-bold text-gray-900">{getTotalWordCount().toLocaleString()}</div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500 mb-1">Estimated Pages</div>
-                      <div className="text-2xl font-bold text-gray-900">{Math.round(getTotalWordCount() / 250)}</div>
-                    </div>
-                  </div>
-
-                  {/* Section List */}
-                  {!showFullDocument && (
-                    <div className="space-y-4">
-                      {sections.map((section) => (
-                        <div key={section.id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h5 className="font-medium text-gray-900">{section.title}</h5>
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() => toggleSectionExpansion(section.id)}
-                                className="p-1 rounded hover:bg-gray-100 transition-colors"
-                              >
-                                {expandedSections.has(section.id) ? (
-                                  <ChevronUp size={16} className="text-gray-600" />
-                                ) : (
-                                  <ChevronDown size={16} className="text-gray-600" />
-                                )}
-                              </button>
-                            </div>
+                  {/* Section Overview */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {currentProject.sections.map((section) => (
+                      <div key={section.id} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <h5 className="font-medium text-gray-900 text-sm truncate">{section.title}</h5>
+                            <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full text-gray-600 flex items-center space-x-0.5 flex-shrink-0 truncate max-w-[120px]">
+                              {section.assigned_model.split('/').pop()}
+                            </span>
                           </div>
-                          
-                          {expandedSections.has(section.id) && sectionOutputs[section.id] && (
-                            <div className="mt-2">
-                              <div className="p-4 bg-gray-50 rounded-lg max-h-64 overflow-y-auto">
-                                <div className="prose prose-sm max-w-none">
-                                  <div dangerouslySetInnerHTML={{ 
-                                    __html: sectionOutputs[section.id].raw_output
-                                      .replace(/\n\n/g, '<br/><br/>')
-                                      .replace(/# (.*)/g, '<h1>$1</h1>')
-                                      .replace(/## (.*)/g, '<h2>$1</h2>')
-                                      .replace(/### (.*)/g, '<h3>$1</h3>')
-                                  }} />
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center space-x-2 mt-3">
-                                <button
-                                  onClick={() => handleEditSection(section.id)}
-                                  className="flex items-center space-x-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors text-sm"
-                                >
-                                  <Edit size={14} />
-                                  <span>Edit</span>
-                                </button>
-                                <button
-                                  onClick={() => handleRegenerateSection(section.id)}
-                                  className="flex items-center space-x-1 px-3 py-1.5 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors text-sm"
-                                >
-                                  <RefreshCw size={14} />
-                                  <span>Regenerate</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(sectionOutputs[section.id].raw_output);
-                                    setSuccess('Section copied to clipboard!');
-                                  }}
-                                  className="flex items-center space-x-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm"
-                                >
-                                  <Copy size={14} />
-                                  <span>Copy</span>
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-500">{section.output ? countWords(section.output.raw_output) : 0} words</span>
+                            <button
+                              onClick={() => toggleSectionExpansion(section.id)}
+                              className="p-1 rounded hover:bg-gray-100"
+                            >
+                              {expandedSections.has(section.id) ? 
+                                <ChevronUp size={14} /> : 
+                                <ChevronDown size={14} />
+                              }
+                            </button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        
+                        {expandedSections.has(section.id) && section.output && (
+                          <div className="text-xs text-gray-700 leading-relaxed max-h-40 overflow-y-auto">
+                            <div dangerouslySetInnerHTML={{ __html: section.output.raw_output.replace(/\n/g, '<br>') }} />
+                          </div>
+                        )}
+                        
+                        {!expandedSections.has(section.id) && section.output && (
+                          <div className="text-xs text-gray-600">
+                            {section.output.raw_output.substring(0, 150)}...
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
 
                   {/* Full Document View */}
                   {showFullDocument && (
-                    <div className="border border-gray-200 rounded-lg p-6 max-h-[50vh] overflow-y-auto">
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 max-h-96 overflow-y-auto">
                       <div className="prose prose-sm max-w-none">
                         <h1 className="text-2xl font-bold mb-6">{currentProject.title}</h1>
-                        
-                        {sections.map((section) => {
-                          const output = sectionOutputs[section.id];
-                          if (!output) return null;
-                          
-                          return (
-                            <div key={section.id} className="mb-8">
-                              <div dangerouslySetInnerHTML={{ 
-                                __html: output.raw_output
-                                  .replace(/\n\n/g, '<br/><br/>')
-                                  .replace(/# (.*)/g, '<h1>$1</h1>')
-                                  .replace(/## (.*)/g, '<h2>$1</h2>')
-                                  .replace(/### (.*)/g, '<h3>$1</h3>')
-                              }} />
-                            </div>
-                          );
-                        })}
+                        {currentProject.sections.map((section) => (
+                          <div key={section.id} className="mb-8">
+                            <h2 className="text-xl font-semibold mb-4 border-b border-gray-200 pb-2">
+                              {section.title}
+                            </h2>
+                            {section.output && (
+                              <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                <div dangerouslySetInnerHTML={{ __html: section.output.raw_output.replace(/\n/g, '<br>') }} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Section Editor Modal */}
-                {editingSectionId && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Edit Section: {sections.find(s => s.id === editingSectionId)?.title}
-                        </h3>
-                        <button
-                          onClick={() => {
-                            setEditingSectionId(null);
-                            setEditingContent('');
-                          }}
-                          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                          <X size={20} className="text-gray-500" />
-                        </button>
-                      </div>
-                      
-                      <textarea
-                        value={editingContent}
-                        onChange={(e) => setEditingContent(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 resize-none font-mono"
-                        rows={20}
-                      />
-                      
-                      <div className="flex justify-end space-x-3 mt-4">
-                        <button
-                          onClick={() => {
-                            setEditingSectionId(null);
-                            setEditingContent('');
-                          }}
-                          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleSaveEdit}
-                          disabled={loading}
-                          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {loading ? (
-                            <>
-                              <Loader2 size={16} className="animate-spin" />
-                              <span>Saving...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Save size={16} />
-                              <span>Save Changes</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Export Options */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Export Options</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                  <h4 className="font-semibold text-gray-900 mb-4">Export Options</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <button
-                      onClick={() => exportDocument('pdf')}
-                      className="flex flex-col items-center p-6 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                      onClick={handleExportPDF}
+                      className="flex flex-col items-center space-y-2 p-4 border border-gray-200 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200 hover:scale-105"
                     >
-                      <FileText size={32} className="text-red-500 mb-3" />
-                      <span className="font-medium text-gray-900">Export as PDF</span>
-                      <span className="text-xs text-gray-500 mt-1">Portable Document Format</span>
+                      <FileText size={24} className="text-emerald-600" />
+                      <span className="text-sm font-medium">PDF</span>
+                      <span className="text-xs text-gray-500 text-center">Portable Document Format</span>
                     </button>
                     
                     <button
-                      onClick={() => exportDocument('markdown')}
-                      className="flex flex-col items-center p-6 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                      onClick={handleExportDocx}
+                      className="flex flex-col items-center space-y-2 p-4 border border-gray-200 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200 hover:scale-105"
                     >
-                      <FileCheck size={32} className="text-blue-500 mb-3" />
-                      <span className="font-medium text-gray-900">Export as Markdown</span>
-                      <span className="text-xs text-gray-500 mt-1">Plain text with formatting</span>
+                      <FileCheck size={24} className="text-emerald-600" />
+                      <span className="text-sm font-medium">Word</span>
+                      <span className="text-xs text-gray-500 text-center">Microsoft Word Document</span>
                     </button>
                     
                     <button
-                      onClick={() => exportDocument('docx')}
-                      className="flex flex-col items-center p-6 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                      onClick={handleExportText}
+                      className="flex flex-col items-center space-y-2 p-4 border border-gray-200 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200 hover:scale-105"
                     >
-                      <FileText size={32} className="text-blue-600 mb-3" />
-                      <span className="font-medium text-gray-900">Export as DOCX</span>
-                      <span className="text-xs text-gray-500 mt-1">Microsoft Word format</span>
+                      <FileText size={24} className="text-emerald-600" />
+                      <span className="text-sm font-medium">Text</span>
+                      <span className="text-xs text-gray-500 text-center">Plain Text File</span>
                     </button>
                   </div>
                 </div>
 
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => setStep('plan')}
-                    className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Back to Plan
-                  </button>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center space-x-2 text-red-700">
+                      <AlertCircle size={16} />
+                      <span className="text-sm">{error}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-center space-x-3">
                   <button
                     onClick={() => {
-                      resetForm();
-                      setStep('projects');
+                      setStep('setup');
+                      setCurrentProject(null);
+                      setPrompt('');
+                      setExpandedSections(new Set());
+                      setShowFullDocument(false);
                     }}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    Finish & Return to Projects
+                    New Document
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                  >
+                    Close
                   </button>
                 </div>
               </div>
