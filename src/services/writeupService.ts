@@ -258,7 +258,7 @@ class WriteupService {
       // CRITICAL: Prioritize premium traditional models
       const premiumTraditionalModels = [
         { name: 'OpenAI GPT-4o', provider: 'openai', id: 'gpt-4o', tier: 'premium' as const },
-        { name: 'Google Gemini 1.5 Pro', provider: 'gemini', id: 'gemini-1.5-pro', tier: 'premium' as const },
+        { name: 'Google Gemini 2.0 Flash', provider: 'gemini', id: 'gemini-2.0-flash-001', tier: 'premium' as const },
         { name: 'DeepSeek Chat', provider: 'deepseek', id: 'deepseek-chat', tier: 'premium' as const }
       ];
 
@@ -299,8 +299,11 @@ class WriteupService {
                 )) ||
                 // GPT models (premium)
                 (modelId.includes('gpt-4') && !modelId.includes('mini')) ||
-                // Gemini models (premium)
-                (modelId.includes('gemini') && modelId.includes('pro')) ||
+                // Gemini models (premium) - use correct model IDs
+                (modelId.includes('gemini') && (
+                  modelId.includes('2.0-flash') ||
+                  modelId.includes('1.5-pro')
+                )) ||
                 // Other premium models
                 modelId.includes('wizardlm-2') ||
                 modelId.includes('mixtral-8x22b') ||
@@ -321,13 +324,14 @@ class WriteupService {
                 if (id.includes('claude-3.5-sonnet')) return 10;
                 if (id.includes('gpt-4o')) return 9;
                 if (id.includes('claude-3-opus')) return 8;
-                if (id.includes('gemini-1.5-pro')) return 7;
-                if (id.includes('wizardlm-2')) return 6;
-                if (id.includes('mixtral-8x22b')) return 5;
-                if (id.includes('llama-3.1-405b')) return 4;
-                if (id.includes('qwen2.5-72b')) return 3;
-                if (id.includes('deepseek-r1')) return 2;
-                return 1;
+                if (id.includes('gemini-2.0-flash')) return 7;
+                if (id.includes('gemini-1.5-pro')) return 6;
+                if (id.includes('wizardlm-2')) return 5;
+                if (id.includes('mixtral-8x22b')) return 4;
+                if (id.includes('llama-3.1-405b')) return 3;
+                if (id.includes('qwen2.5-72b')) return 2;
+                if (id.includes('deepseek-r1')) return 1;
+                return 0;
               };
               return getModelPriority(b) - getModelPriority(a);
             })
@@ -727,7 +731,7 @@ Write the complete section content now. Make it comprehensive and detailed:`;
         parts: [{ text: msg.content }]
       }));
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

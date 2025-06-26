@@ -78,7 +78,7 @@ class OrchestrationService {
           .from('project_metadata')
           .select('*')
           .eq('project_id', project.id)
-          .single();
+          .maybeSingle();
 
         // Get sections
         const { data: sectionsData } = await supabase
@@ -87,13 +87,13 @@ class OrchestrationService {
           .eq('project_id', project.id)
           .order('order', { ascending: true });
 
-        // Get section outputs
+        // Get section outputs - use maybeSingle() to handle cases where no output exists
         const sectionsWithOutputs = await Promise.all((sectionsData || []).map(async (section) => {
           const { data: outputData } = await supabase
             .from('section_outputs')
             .select('*')
             .eq('section_id', section.id)
-            .single();
+            .maybeSingle();
 
           return {
             ...section,
@@ -151,7 +151,7 @@ class OrchestrationService {
         .from('project_metadata')
         .select('*')
         .eq('project_id', projectId)
-        .single();
+        .maybeSingle();
 
       // Get sections
       const { data: sectionsData } = await supabase
@@ -160,13 +160,13 @@ class OrchestrationService {
         .eq('project_id', projectId)
         .order('order', { ascending: true });
 
-      // Get section outputs
+      // Get section outputs - use maybeSingle() to handle cases where no output exists
       const sectionsWithOutputs = await Promise.all((sectionsData || []).map(async (section) => {
         const { data: outputData } = await supabase
           .from('section_outputs')
           .select('*')
           .eq('section_id', section.id)
-          .single();
+          .maybeSingle();
 
         return {
           ...section,
@@ -294,7 +294,7 @@ Create a detailed outline with:
    - anthropic/claude-3.5-sonnet (best for creative writing)
    - anthropic/claude-3-opus (best for detailed analysis)
    - openai/gpt-4o (best for technical content)
-   - google/gemini-1.5-pro (best for research)
+   - google/gemini-2.0-flash-001 (best for research)
    - meta-llama/llama-3.1-70b-instruct (good general purpose)
    - mistralai/mistral-large (good for structured content)
 
@@ -458,7 +458,26 @@ Write the complete section content now. Make it comprehensive and detailed:`;
       // Increment global usage
       await supabase.rpc('increment_global_usage', { provider_name: 'openrouter' });
       
-      return data.choices[0]?.message?.content || 'No content generated';
+      const content = data.choices[0]?.message?.content || 'No content generated';
+      
+      // Save section output using upsert (now that we have unique constraint)
+      const { error: outputError } = await supabase
+        .from('section_outputs')
+        .upsert({
+          section_id: sectionId,
+          raw_output: content,
+          ai_notes: `Generated using ${section.assigned_model}`,
+          is_finalized: false
+        }, {
+          onConflict: 'section_id'
+        });
+      
+      if (outputError) {
+        console.error('Failed to save section output:', outputError);
+        // Don't throw error here, just log it - we still have the content
+      }
+      
+      return content;
     } catch (error) {
       console.error('Failed to generate section content:', error);
       throw error;
@@ -554,11 +573,11 @@ Write the complete section content now. Make it comprehensive and detailed:`;
     // Generate section titles based on document type
     const sectionTitles = this.generateSectionTitles(settings.docType, sectionsCount);
     
-    // Assign models in a round-robin fashion
+    // Assign models in a round-robin fashion - use valid OpenRouter model IDs
     const defaultModels = [
       'anthropic/claude-3.5-sonnet',
       'openai/gpt-4o',
-      'google/gemini-1.5-pro',
+      'google/gemini-2.0-flash-001',
       'meta-llama/llama-3.1-70b-instruct',
       'mistralai/mistral-large'
     ];
